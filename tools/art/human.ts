@@ -13,7 +13,9 @@ import { readPng } from "../pack/png-read.ts";
 import { cookBody, restBody, RIGID_BONES, type Cooked, type CookOptions } from "../pack/body.ts";
 import { bodyField, headShift, refitPiece, shiftLod, type BodyField, type HeadShift } from "../pack/refit.ts";
 import { fitBody, type FittedBody } from "../makehuman/fit.ts";
-import { scriptedBody } from "../makehuman/cooked.ts";
+import { fittedSourceOf, scriptedBody } from "../makehuman/cooked.ts";
+import { cookFaces } from "../makehuman/faces.ts";
+import { encodeFaces, remapFaces } from "../../shared/people/faces.ts";
 import { convertBody, rigOf, type ColorRule, type MaterialRule } from "../pack/skin.ts";
 import { buildPack, unpackMeshes, type SourceMesh } from "../pack/write.ts";
 import { calibrateHand } from "../pack/grips.ts";
@@ -200,6 +202,17 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, described: Re
     warn(id, body.warnings);
     meshes.push(...body.meshes);
     rigs.push(body.rig);
+    if (spec.body === "makehuman") {
+      // The head's face table goes with it, its vertices those of its finest level (shared/people/faces.ts).
+      const head = body.meshes.find((m) => m.id === `${id}/head`);
+      if (!head) throw new Error(`${id}: no head mesh for the face table`);
+      const faces = cookFaces(sex === 0 ? "male" : "female", spec.rigs[sex]!);
+      const from = fittedSourceOf(head.lods[0]!.positions, hairOn);
+      const lost = from.reduce((n, v) => n + (v < 0 ? 1 : 0), 0);
+      if (lost > 0) throw new Error(`${id}/head: ${lost} vertices of its finest level are not the fitted body's, so no face reaches them`);
+      head.faces = encodeFaces(remapFaces(faces.table, from));
+      lines.push(`${id}/head: face table ${head.faces.length} bytes; sides kept below 100%: ${faces.modifiers.flatMap((m) => m.kept.flatMap((k, s) => (k < 0.995 ? [`${m.name} ${s ? "+" : "-"}${(k * 100).toFixed(0)}%`] : []))).join(", ") || "none"}`);
+    }
     // Garment cuts are made on the MakeHuman body's own surface, each cooked as a mesh of its own.
     if (spec.garments && spec.body === "makehuman") for (const g of spec.garments.make(body.meshes, id, body.rig.rest)) {
       const d = described.get(g.material);

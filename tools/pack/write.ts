@@ -3,7 +3,7 @@
 import type { Clip } from "../../shared/anim/clip.ts";
 import { B_FOOT_L, B_FOOT_R, B_TOE_L, B_TOE_R, B_LOWER_LEG_L, B_LOWER_LEG_R, HUMAN } from "../../shared/anim/human.ts";
 import {
-  CLIP_ROOT_BYTES, CLIP_ROOT_STEPS, CLIP_ROT_STEPS, MATERIAL_CUTOUT, MOST_SECTIONS, MOST_ZONES, PACK_MAGIC, PACK_VERSION, SKIN_BYTES, VERTEX_BYTES, clipRotBytes, lodSkin, lodSurface, lodVertices, readIndices,
+  CLIP_ROOT_BYTES, CLIP_ROOT_STEPS, CLIP_ROT_STEPS, MATERIAL_CUTOUT, MOST_SECTIONS, MOST_ZONES, PACK_MAGIC, PACK_VERSION, SKIN_BYTES, VERTEX_BYTES, clipRotBytes, lodSkin, lodSurface, lodVertices, meshFaces, readIndices,
   setTexture, textureOf, type Pack, type PackHeader, type PackLod, type PackMaterial, type PackMesh, type PackRig, type PackTexture,
 } from "../../shared/pack/pack.ts";
 import type { PackDetails } from "../../shared/pack/details.ts";
@@ -63,6 +63,8 @@ export interface SourceMesh {
   seeThrough?: boolean;
   /** The box its positions are stored in, where it shares one with other meshes; its own where not given. */
   bounds?: { center: [number, number, number]; half: [number, number, number] };
+  /** Its face table (shared/people/faces.ts), bytes the pack carries as they are. */
+  faces?: Uint8Array;
 }
 
 /** The blob of a pack as it is put together: runs of bytes, each padded to a multiple of 4. */
@@ -310,6 +312,7 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: read
       if (sorted?.zones) made.zones = sorted.zones;
       out.lods.push(made);
     });
+    if (mesh.faces && mesh.faces.length > 0) out.faces = { offset: append(mesh.faces), length: mesh.faces.length };
     header.meshes.push(out);
   }
 
@@ -406,6 +409,8 @@ export function unpackMeshes(pack: Pack): SourceMesh[] {
     if (m.collider) out.collider = m.collider;
     if (m.skeleton) out.skeleton = m.skeleton;
     if (m.rig !== undefined) out.rig = pack.header.rigs[m.rig]!.id;
+    const faces = meshFaces(pack, m);
+    if (faces) out.faces = faces.slice();
     if (m.flat === undefined) return out;
     // The mesh's own lists: the pack's materials that its sections name, and the textures those name.
     const all = pack.header.materials ?? [];

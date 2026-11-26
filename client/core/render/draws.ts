@@ -230,9 +230,10 @@ export class Draws {
    * and its cut-out leaves at a share, the first of them (tools/pack/sprays.ts): its bark from the level wanted and the
    * rest from the crown's, while both are drawn with their materials, else all of it at the crown's. Where the level is
    * cut by skin zone (PackLod.zones), the zones `hide` names, a bit each, are left out: each run of the rest is a draw of
-   * its own, a ranged one where flat. A level not cut by zone is drawn whole.
+   * its own, a ranged one where flat. A level not cut by zone is drawn whole. `made` is the slot of a mesh made from level
+   * `wanted` on the card (faces.ts), drawn in its place while that level is drawn with its materials; 0 for none.
    */
-  draw(mesh: number, wanted: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags: number, passes: number, hand = 0, layer = 0, crown = wanted, leaves = 1, hide = 0): void {
+  draw(mesh: number, wanted: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags: number, passes: number, hand = 0, layer = 0, crown = wanted, leaves = 1, hide = 0, made = 0): void {
     const p = this.packet;
     const n = p.drawCount;
     const copies = passes === (NEAR | FAR) ? 2 : 1;
@@ -271,7 +272,8 @@ export class Draws {
       p.dropped++;
       return;
     }
-    const slot = this.assets.residency.slot(mesh, lod);
+    // A made head (faces.ts) is drawn in place of the level it was made from, once that level is drawn with its materials.
+    const slot = made !== 0 && lod === wanted && this.ready ? made : this.assets.residency.slot(mesh, lod);
     const topSlot = top === lod ? slot : this.assets.residency.slot(mesh, top);
     let tris = 0, crowns = 0;
     for (let k = 0; k < draws; k++) {

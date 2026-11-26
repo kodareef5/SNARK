@@ -192,6 +192,31 @@ export class Assets {
     return this.residency.clips(c);
   }
 
+  /** Whether the manifest has a face table for `mesh`. */
+  facesOf(mesh: number): boolean {
+    return this.residency.facesOf(mesh);
+  }
+
+  /** Says the face table of `mesh` is wanted: asked for at once and until it comes, then kept. Once is enough. */
+  wantFaces(mesh: number): void {
+    this.residency.wantFaces(mesh);
+  }
+
+  /** The face table of `mesh` as the bytes that came, or null until they have. */
+  faces(mesh: number): Uint8Array | null {
+    return this.residency.faces(mesh);
+  }
+
+  /** From now on keeps a copy of a level's bytes and its surface's as they reach the card (Residency.keepBytes). */
+  keepBytes(mesh: number, level: number): void {
+    this.residency.keepBytes(mesh, level);
+  }
+
+  /** The copies `keepBytes` keeps, once both are (Residency.keptBytes). */
+  keptBytes(mesh: number, level: number): ReturnType<Residency["keptBytes"]> {
+    return this.residency.keptBytes(mesh, level);
+  }
+
   /**
    * The level of `mesh` to draw when `wanted` is asked for: that level if the mesh has it and it is resident, else the
    * nearest that is, else -1. Every draw of the scene passes through here.

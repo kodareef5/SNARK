@@ -203,6 +203,7 @@ const ROLE_NAMES: Readonly<Record<string, string>> = { base: "colour", normal: "
 export function slotName(r: Residency, slot: number, step: number, pair = false): string {
   const m = r["manifest"], levels = r["levels"];
   if (slot >= r["pageBase"]) return `Rows of models, page ${slot - r["pageBase"]}`;
+  if (slot >= r["faceBase"]) return `${meshName(m.meshes[m.faces?.[slot - r["faceBase"]]?.mesh ?? -1]?.id ?? "")} face table`;
   if (slot >= r["clipBase"]) return `${plainName(m.clips?.[slot - r["clipBase"]]?.rig ?? "")} clips`;
   if (slot >= r["texBase"]) {
     const t = m.textures?.[slot - r["texBase"]];

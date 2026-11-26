@@ -53,6 +53,8 @@ import type { CollisionWorld } from "../../../shared/world/collide.ts";
 import { groundSpeedScale } from "../../../shared/anim/ground-conform.ts";
 import { poseCreatureOn } from "../../../shared/anim/creature.ts";
 import type { Assets } from "../assets/assets.ts";
+import { Faces, type MadeHead } from "./faces.ts";
+import { FACE_EYE_L, FACE_EYE_R, FACE_JAW, FACE_LID_L, FACE_LID_R, FACE_ROWS, PIVOT_EYE_L, PIVOT_EYE_R, PIVOT_JAW } from "../../../shared/people/faces.ts";
 import { Corpses, type Corpse, type HumanFall } from "../ragdoll.ts";
 import type { CorpseMotion } from "../../../shared/net/corpse.ts";
 import type { RemoteSample } from "../session.ts";
@@ -299,9 +301,10 @@ interface BodyKind {
 /**
  * `layer` is the level of the bodies' hurt and decay layer (layers.ts), 0 for none, and their wear story with it
  * (wear.ts WEAR_KEY). `standIn`, on a DRAW_ONE_BONE draw, is the first bone of the pose its bodies stand in. `hide` is
- * the skin zones its bodies leave undrawn, a bit each (shared/anim/skin-zones.ts), 0 for none.
+ * the skin zones its bodies leave undrawn, a bit each (shared/anim/skin-zones.ts), 0 for none. `made` is the slot of the
+ * made head (faces.ts) its bodies draw in place of the level's own, 0 for none.
  */
-export type DrawFn = (mesh: number, lod: number, first: number, count: number, flags: number, layer: number, standIn: number, hide: number) => void;
+export type DrawFn = (mesh: number, lod: number, first: number, count: number, flags: number, layer: number, standIn: number, hide: number, made: number) => void;
 /** Puts instances into the shadow caster list for `cascades`, a bit each. `lod` is the level the view would draw them at. */
 export type CastFn = (mesh: number, lod: number, first: number, count: number, flags: number, cascades: number, standIn: number) => void;
 
@@ -384,6 +387,9 @@ const FORGET_GAIT = 600;
 const HELD_FIELDS = 10;
 /** Draws a frame may have of bodies whose layer shows or that stand in a pose, each a mesh, level, layer and pose of its own. */
 const EXTRA_KEYS = 1024;
+/** Numbers `extra` holds a key: its plain key, layer, stand-in, hide mask and made head. */
+const EXTRA_FIELDS = 5;
+const ONES = new Float32Array(HUMAN_BONES * 3).fill(1);
 /**
  * A body is posed every frame while a metre of it covers FULL_RATE_PIXELS, then every 2nd, 4th or 8th frame as that halves,
  * and no less often than a planted foot slides SLIDE_PIXELS between poses at 60 frames a second.
@@ -504,7 +510,7 @@ export class Characters {
   private readonly seatPlace = new Float64Array(3);
   private readonly seating: { role: MountMotionRole; tick: number; startTick: number; durationTicks: number; steering: number | undefined; upper: Pose | undefined } = { role: "ride", tick: 0, startTick: 0, durationTicks: 1, steering: undefined, upper: undefined };
   /** What the meshes of the survivor being added share (queuePart). `stand` is its stand-in's first bone, or -1 posed. */
-  private readonly part = { lod: 0, far: 0, stand: -1, first: 0, color: 0, id: 0, own: false, casts: 0, rest: null as Float32Array | null };
+  private readonly part = { lod: 0, far: 0, stand: -1, first: 0, color: 0, id: 0, own: false, casts: 0, rest: null as Float32Array | null, made: 0 };
   /** The level each slot of the survivor being added is drawn at: its body's level, or the next where the tier's finestBodies leave it out. */
   private readonly slotLod = new Uint8Array(SLOT_COUNT);
   /** The frame each survivor last drew a slot at its finest level, by its id, which keeps its place in the near ranks (finestKept). */
@@ -513,13 +519,13 @@ export class Characters {
   // Instances queued this frame, one per mesh of each body.
   private count = 0;
   /**
-   * Pack mesh * levels + level of detail. A body whose layer shows, that stands in a pose or hides skin zones takes a key
-   * from `plain` on, for that key, its layer level, its stand-in's first bone (-1 for none) and its hide mask, which
-   * `extra` holds.
+   * Pack mesh * levels + level of detail. A body whose layer shows, that stands in a pose, hides skin zones or draws a
+   * made head takes a key from `plain` on, for that key, its layer level, its stand-in's first bone (-1 for none), its
+   * hide mask and the made head's slot (0 for none), which `extra` holds.
    */
   private readonly key = new Uint32Array(MAX_SKINNED);
   private readonly plain: number;
-  private readonly extra = new Int32Array(EXTRA_KEYS * 4);
+  private readonly extra = new Int32Array(EXTRA_KEYS * EXTRA_FIELDS);
   private extraKeys = 0;
   /** An open hash of those keys: one more than each one's place in `extra`, and 0 where there is none. */
   private readonly extraAt = new Int32Array(EXTRA_KEYS * 4);
@@ -562,6 +568,11 @@ export class Characters {
   private readonly lastHeavy = new Map<number, number>();
   /** The level each survivor's head was last chosen at by its own error, as `last` is the body's. */
   private readonly lastHead = new Map<number, number>();
+  /** Heads made from face tables (faces.ts), and the one the survivor being added draws. */
+  readonly faces: Faces;
+  private madeHead: MadeHead | null = null;
+  /** How open a survivor's mouth is as it is heard speaking, 0 to 1, by its id; null where nothing is heard. */
+  voice: ((id: number, own: boolean, tick: number) => number) | null = null;
   /** Each body's gait, by its id, so its legs go by the ground it covers (shared/anim/gait.ts). */
   private readonly gaits = new Map<number, Stride>();
   private frame = 0;
@@ -723,6 +734,12 @@ export class Characters {
       }
       return bodies.length > 0 ? { sets: bodies, color: d.color } : null;
     });
+    const r = assets.residency;
+    this.faces = new Faces({
+      facesOf: (m) => r.facesOf(m), wantFaces: (m) => r.wantFaces(m), faces: (m) => r.faces(m), keepBytes: (m, l) => r.keepBytes(m, l), keptBytes: (m, l) => r.keptBytes(m, l),
+      bounds: (m) => assets.manifest.meshes[m]!, spend: (b) => r.spend(b), reserve: (name, b) => r.reserve(name, b),
+    });
+    for (const k of this.kinds) for (const set of k?.sets ?? []) this.faces.register(set.slots[SLOT_HEAD]!, set.rest);
     this.anims = this.creatures.map((c) => c?.anim ?? null);
     this.waiting = this.creatures.flatMap((c, kind) => (c && c.clips >= 0 ? [kind] : []));
     this.dead = new Corpses(this.anims, reg.birthScale, (kind) => survivorKind(reg, kind), (kind) => solidOf(reg, kind));
@@ -1551,24 +1568,26 @@ export class Characters {
    * for none) and leave the skin zones `hide` undrawn. With no key left those with a layer or a mask are drawn as `key`'s,
    * without them, and those standing in a pose not at all: -1, counted dropped.
    */
-  private keyOf(key: number, layer: number, stand: number, hide = 0): number {
-    if (layer === 0 && stand < 0 && hide === 0) return key;
+  private keyOf(key: number, layer: number, stand: number, hide = 0, made = 0): number {
+    if (layer === 0 && stand < 0 && hide === 0 && made === 0) return key;
     const l = this.extra;
     const at = this.extraAt;
-    let h = (Math.imul(key, 0x9e3779b1) ^ Math.imul(stand + 1, 0x85ebca6b) ^ Math.imul(hide, 0xc2b2ae35) ^ layer) & (at.length - 1);
+    let h = (Math.imul(key, 0x9e3779b1) ^ Math.imul(stand + 1, 0x85ebca6b) ^ Math.imul(hide, 0xc2b2ae35) ^ Math.imul(made, 0x27d4eb2f) ^ layer) & (at.length - 1);
     for (; at[h] !== 0; h = (h + 1) & (at.length - 1)) {
-      const k = at[h]! - 1;
-      if (l[k * 4] === key && l[k * 4 + 1] === layer && l[k * 4 + 2] === stand && l[k * 4 + 3] === hide) return this.plain + k;
+      const k = (at[h]! - 1) * EXTRA_FIELDS;
+      if (l[k] === key && l[k + 1] === layer && l[k + 2] === stand && l[k + 3] === hide && l[k + 4] === made) return this.plain + at[h]! - 1;
     }
     if (this.extraKeys === EXTRA_KEYS) {
       if (stand < 0) return key;
       if (this.packet) this.packet.dropped++;
       return -1;
     }
-    l[this.extraKeys * 4] = key;
-    l[this.extraKeys * 4 + 1] = layer;
-    l[this.extraKeys * 4 + 2] = stand;
-    l[this.extraKeys * 4 + 3] = hide;
+    const k = this.extraKeys * EXTRA_FIELDS;
+    l[k] = key;
+    l[k + 1] = layer;
+    l[k + 2] = stand;
+    l[k + 3] = hide;
+    l[k + 4] = made;
     at[h] = this.extraKeys + 1;
     return this.plain + this.extraKeys++;
   }
@@ -1645,6 +1664,36 @@ export class Characters {
     return bits;
   }
 
+  /** The level add() draws the head of survivor `id` of `set` at, `far` metres off, without keeping what it chose. */
+  private headLevelAt(id: number, set: BodySet, far: number, own: boolean, rank: number): number {
+    const flatFrom = this.flatFrom(set);
+    const least = flatBodies(this.assets.tier) ? flatFrom : 0;
+    const relax = least === 0 && flatFrom > 0 ? TEXTURED_BODY_RELAX : 1;
+    const error = this.assets.tier.bodyError;
+    const lod = own ? this.assets.choose(set.error, 0, -1, least) : this.assets.choose(set.error, far * relax * error, this.last.get(id) ?? -1, least);
+    const finest = own || rank < 0 ? null : this.assets.tier.finestBodies, next = Math.min(1, set.error.length - 1);
+    let level = finest && rank >= (finest[SLOT_HEAD] ?? 0) ? Math.max(lod, next) : lod;
+    const head = set.slots[SLOT_HEAD]!;
+    if (!own && head >= 0 && level === 0 && this.assets.choose(this.assets.table.error[head]!, far * relax * error, this.lastHead.get(id) ?? -1, least) > 0) level = next;
+    return level;
+  }
+
+  /**
+   * Writes the face rows of the survivor posed from bone `first`: its jaw, each upper lid and each eye, its head's row
+   * turned about a pivot of its made head. It blinks and glances on the clock; its jaw opens as it is heard to speak.
+   */
+  private faceRows(p: FramePacket, first: number, pivots: Float32Array, id: number, tick: number, own: boolean): void {
+    const t = tick / TICK_RATE, b = p.bones, head = (first + B_HEAD) * BONE_FLOATS, rows = (first + HUMAN_BONES) * BONE_FLOATS;
+    const yaw = glance(id, t, 0) * GLANCE_YAW, pitch = glance(id, t, 1) * GLANCE_PITCH;
+    const shut = Math.min(1, blinkAt(id, t) + Math.max(0, pitch) * LID_FOLLOW) * LID_SHUT;
+    const jaw = (this.voice?.(id, own, tick) ?? 0) * JAW_OPEN;
+    turned(b, head, rows + FACE_JAW * BONE_FLOATS, pivots, PIVOT_JAW, 0, jaw);
+    turned(b, head, rows + FACE_LID_L * BONE_FLOATS, pivots, PIVOT_EYE_L, 0, shut);
+    turned(b, head, rows + FACE_LID_R * BONE_FLOATS, pivots, PIVOT_EYE_R, 0, shut);
+    turned(b, head, rows + FACE_EYE_L * BONE_FLOATS, pivots, PIVOT_EYE_L, yaw, pitch);
+    turned(b, head, rows + FACE_EYE_R * BONE_FLOATS, pivots, PIVOT_EYE_R, yaw, pitch);
+  }
+
   /**
    * Takes `bones` bones for a body of `parts` meshes and returns the first, or returns -1, counting the body as dropped if
    * `counted`. A frame has the bones its tier has, and the texture holds no more.
@@ -1701,6 +1750,7 @@ export class Characters {
     if (this.lastHeavy.size > 4096) this.lastHeavy.clear();
     if (this.lastHead.size > 4096) this.lastHead.clear();
     if (++this.frame % FORGET_GAIT === 0) for (const id of this.gaits.keys()) if (this.frame - this.gaits.get(id)!.seen > FORGET_GAIT) this.gaits.delete(id);
+    if (p) this.faces.begin(p.tier, p.assetUploads, p.assetDrops);
     if (this.waiting.length > 0) this.takeClips();
     if (this.emoteSlot >= 0 && this.emotesWanted) this.takeEmotes();
   }
@@ -1815,7 +1865,10 @@ export class Characters {
     const all = onOne !== null || stepShare(lying) === 1;
     const standing = !rigid ? null : lying >= 0 ? this.lyingStandIn(kind, at, lying, all ? STILL : standMove(st), all ? STANCE_STAND : st.stance) : this.standIn(kind, at, st, seat !== null, tick, impaled, rider, foot, hand);
     const stand = standing ? this.standInAt(p, standing) : -1;
-    const first = rigid && stand < 0 ? -1 : this.room(p, rigid ? 1 : HUMAN_BONES, PARTS, !unseen);
+    // A head drawn at its finest level with a face of its own takes the face rows, decided before the bones are counted.
+    const headMesh = set.slots[SLOT_HEAD]!;
+    const faced = !rigid && !unseen && !headless && look !== null && headMesh >= 0 && this.headLevelAt(id, set, own ? 0 : Math.sqrt(x * x + y * y + z * z), own, rank) === 0 && this.faces.ready(headMesh);
+    const first = rigid && stand < 0 ? -1 : this.room(p, rigid ? 1 : faced ? HUMAN_BONES + FACE_ROWS : HUMAN_BONES, PARTS, !unseen);
     if (first < 0) {
       if (rigid && stand < 0 && !unseen) p.dropped++;
       return false;
@@ -1890,6 +1943,10 @@ export class Characters {
         writeBones(p.bones, first * BONE_FLOATS, solved, set.rest, scales, x, y, z, yaw);
       }
       this.posed++;
+      if (faced) {
+        this.madeHead = this.faces.head(headMesh, look!, lookAt, scales ?? ONES, B_HEAD * 3, rank < 0 ? 0 : rank);
+        this.faceRows(p, first, this.madeHead.pivots, id, tick, own);
+      }
       if (st.action >>> 3 === HOLD_CARRY) {
         // Where the palms are drawn, for the creature in them.
         const at = this.palmPool.pop() ?? new Float64Array(3);
@@ -1997,7 +2054,12 @@ export class Characters {
       }
       // Open headgear keeps the underlying face visible.
       const body = set.slots[slot]!;
-      if (body >= 0 && (piece < 0 || (slot === SLOT_HEAD && !sealed))) this.queuePart(body, tint, tintAt, -1, unseen || hidden, hide);
+      if (body >= 0 && (piece < 0 || (slot === SLOT_HEAD && !sealed))) {
+        // A head with face rows draws its own made head at its finest level, which reads them; any other the pack's.
+        part.made = slot === SLOT_HEAD && faced && part.lod === 0 && !(unseen || hidden) && this.madeHead ? this.madeHead.slot : 0;
+        this.queuePart(body, tint, tintAt, -1, unseen || hidden, hide);
+        part.made = 0;
+      }
     }
     this.queueGarments(tint, tintAt);
     // Hair and a beard go with the head; wings and what is held with the hands.
@@ -2224,7 +2286,7 @@ export class Characters {
     }
     const n = this.count++;
     if (!only) this.assets.wantTextured(m, part.lod, part.far);
-    const key = this.keyOf(m * this.levels + part.lod, 0, part.stand, only ? 0 : hide);
+    const key = this.keyOf(m * this.levels + part.lod, 0, part.stand, only ? 0 : hide, only ? 0 : part.made);
     this.key[n] = key < 0 ? 0 : key;
     this.firstBone[n] = part.first;
     this.region0[n] = part.color;
@@ -2357,14 +2419,14 @@ export class Characters {
     for (let k = 0; k < counts.length; k++) {
       this.cursor[k] = total;
       if (counts[k] === 0) continue;
-      const x = (k - this.plain) * 4;
+      const x = (k - this.plain) * EXTRA_FIELDS;
       const key = x < 0 ? k : this.extra[x]!;
       const stand = x < 0 ? -1 : this.extra[x + 2]!;
       const mesh = Math.floor(key / this.levels), lod = key % this.levels;
       // Bodies standing in a pose on one bone are a draw of their own. Each shows as hot as its kind in a heat view.
       const f = (stand >= 0 ? flags | DRAW_ONE_BONE : flags) | (this.heatView ? (this.meshHeat.get(mesh) ?? HEAT_WARM) << DRAW_HEAT_SHIFT : 0) | (printed[k] === 1 ? DRAW_PRINTED : 0);
       printed[k] = 0;
-      draw?.(mesh, lod, total, counts[k]!, f, x < 0 ? 0 : this.extra[x + 1]!, stand < 0 ? 0 : stand, x < 0 ? 0 : this.extra[x + 3]!);
+      draw?.(mesh, lod, total, counts[k]!, f, x < 0 ? 0 : this.extra[x + 1]!, stand < 0 ? 0 : stand, x < 0 ? 0 : this.extra[x + 3]!, x < 0 ? 0 : this.extra[x + 4]!);
       if (byMask) {
         for (let m = 0, at = total; m < MASKS; m++) {
           const n = byMask[k * MASKS + m]!;
@@ -2524,6 +2586,70 @@ function orientSolved(source: Solved, rotation: Float64Array, out: Solved): void
  * turned and placed body. `scale` is each bone's stretch along its own axes, or null. `size` scales the whole body
  * about its origin.
  */
+/** How far a face row turns, in radians: the lids shut, the jaw at its widest as it speaks, and a glance either way. */
+const LID_SHUT = 0.55;
+const JAW_OPEN = 0.2;
+const GLANCE_YAW = 0.25;
+const GLANCE_PITCH = 0.1;
+/** The share of a glance down the upper lids follow. */
+const LID_FOLLOW = 0.6;
+/** A body's blinks: at most one in each cycle of its own length, from 2.5 to 5.5 seconds, each a fifth of a second. */
+const BLINK_SHORTEST = 2.5;
+const BLINK_SPREAD = 3;
+const BLINK_HALF = 0.1;
+/** Its glances: one each 1.2 to 2.4 seconds, the eyes getting there in a twentieth of a second. */
+const GLANCE_SHORTEST = 1.2;
+const GLANCE_SPREAD = 1.2;
+const SACCADE = 0.05;
+
+/** A number from 0 to 1 for body `id`, cycle `k` and what it is for, `n`. */
+function draw01(id: number, k: number, n: number): number {
+  let h = Math.imul(id ^ 0x5bd1e995, 0x9e3779b1) ^ Math.imul(k + 0x27d4eb2f, 0x85ebca6b) ^ Math.imul(n + 1, 0xc2b2ae35);
+  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
+  h = Math.imul(h ^ (h >>> 12), 0x297a2d39);
+  return ((h ^ (h >>> 15)) >>> 0) / 4294967296;
+}
+
+/** How shut body `id`'s upper lids are at `t` seconds, 0 to 1. */
+export function blinkAt(id: number, t: number): number {
+  const cycle = BLINK_SHORTEST + BLINK_SPREAD * draw01(id, 0, 0);
+  const shifted = t + cycle * draw01(id, 0, 1), k = Math.floor(shifted / cycle), at = shifted - k * cycle;
+  const middle = BLINK_HALF + (cycle - 2 * BLINK_HALF) * draw01(id, k, 2);
+  const d = Math.abs(at - middle) / BLINK_HALF;
+  return d >= 1 ? 0 : 1 - d * d * (3 - 2 * d);
+}
+
+/** Where body `id` looks at `t` seconds, -1 to 1: across for `axis` 0, down for 1. */
+export function glance(id: number, t: number, axis: number): number {
+  const span = GLANCE_SHORTEST + GLANCE_SPREAD * draw01(id, 1, 3);
+  const shifted = t + span * draw01(id, 1, 4), k = Math.floor(shifted / span), at = shifted - k * span;
+  const to = draw01(id, k, 5 + axis) * 2 - 1, from = draw01(id, k - 1, 5 + axis) * 2 - 1;
+  const s = at >= SACCADE ? 1 : at / SACCADE;
+  return from + (to - from) * s * s * (3 - 2 * s);
+}
+
+/**
+ * Writes at `to` the bone row at `from` (a 3 x 4 matrix of the head's rest into the frame) after a turn of the head's rest
+ * about pivot `k` of `pivots`: `yaw` about +Y, then `pitch` about +X, which brings the front down.
+ */
+function turned(b: Float32Array, from: number, to: number, pivots: Float32Array, k: number, yaw: number, pitch: number): void {
+  const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  // R = Ry(yaw) Rx(pitch), rows.
+  const r00 = cy, r01 = sy * sp, r02 = sy * cp;
+  const r10 = 0, r11 = cp, r12 = -sp;
+  const r20 = -sy, r21 = cy * sp, r22 = cy * cp;
+  const px = pivots[k * 3]!, py = pivots[k * 3 + 1]!, pz = pivots[k * 3 + 2]!;
+  // The turn keeps the pivot where it is: it moves a point by p - R p.
+  const ox = px - (r00 * px + r01 * py + r02 * pz), oy = py - (r10 * px + r11 * py + r12 * pz), oz = pz - (r20 * px + r21 * py + r22 * pz);
+  for (let row = 0; row < 3; row++) {
+    const a0 = b[from + row * 4]!, a1 = b[from + row * 4 + 1]!, a2 = b[from + row * 4 + 2]!, t = b[from + row * 4 + 3]!;
+    b[to + row * 4] = a0 * r00 + a1 * r10 + a2 * r20;
+    b[to + row * 4 + 1] = a0 * r01 + a1 * r11 + a2 * r21;
+    b[to + row * 4 + 2] = a0 * r02 + a1 * r12 + a2 * r22;
+    b[to + row * 4 + 3] = a0 * ox + a1 * oy + a2 * oz + t;
+  }
+}
+
 export function writeBones(out: Float32Array, at: number, solved: Solved, rest: Float32Array, scale: Float32Array | null, x: number, y: number, z: number, yaw: number, size = 1): void {
   const s = Math.sin(yaw);
   const c = Math.cos(yaw);

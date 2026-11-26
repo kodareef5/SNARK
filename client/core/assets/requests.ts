@@ -14,12 +14,13 @@ import type { Residency } from "./residency.ts";
 export const LOG_ROWS = 512;
 
 /** What a request is for. */
-export const FOR_PAGE = 0, FOR_LEVEL = 1, FOR_SURFACE = 2, FOR_TEXTURE = 3, FOR_CLIPS = 4;
+export const FOR_PAGE = 0, FOR_LEVEL = 1, FOR_SURFACE = 2, FOR_TEXTURE = 3, FOR_CLIPS = 4, FOR_FACES = 5;
 /**
  * Why it was asked: rows of meshes (a page), a level, a level with its surface in the same request, a surface alone, a
- * texture's first step, a texture climbing to a larger step, a smaller copy to give room back, a skeleton's clips.
+ * texture's first step, a texture climbing to a larger step, a smaller copy to give room back, a skeleton's clips, a
+ * mesh's face table.
  */
-export const WHY_PAGE = 0, WHY_LEVEL = 1, WHY_PAIR = 2, WHY_SURFACE = 3, WHY_FIRST = 4, WHY_CLIMB = 5, WHY_SHRINK = 6, WHY_CLIPS = 7;
+export const WHY_PAGE = 0, WHY_LEVEL = 1, WHY_PAIR = 2, WHY_SURFACE = 3, WHY_FIRST = 4, WHY_CLIMB = 5, WHY_SHRINK = 6, WHY_CLIPS = 7, WHY_FACES = 8;
 /** Bits of `again`: it failed before and is asked again; its bytes came wrong, and it is asked past the port's cache. */
 export const AGAIN_RETRY = 1, AGAIN_FRESH = 2;
 /** Where its bytes came from, a bit each. */
@@ -33,7 +34,7 @@ export class RequestLog {
   readonly slot = new Int32Array(LOG_ROWS);
   readonly generation = new Uint32Array(LOG_ROWS);
   readonly what = new Uint8Array(LOG_ROWS);
-  /** The mesh, texture, skeleton or page it is for, and the level or the step asked to (-1 for neither). */
+  /** The mesh, texture, skeleton or page it is for (a face table's mesh), and the level or the step asked to (-1 for neither). */
   readonly index = new Int32Array(LOG_ROWS);
   readonly step = new Int8Array(LOG_ROWS);
   readonly why = new Uint8Array(LOG_ROWS);
@@ -78,7 +79,7 @@ export class RequestLog {
   asked(r: Residency, slot: number, rider: number, goal: number, nowMs: number): void {
     const k = this.rows % LOG_ROWS;
     this.rows++;
-    const levels = r["levels"], texBase = r["texBase"], clipBase = r["clipBase"], pageBase = r["pageBase"];
+    const levels = r["levels"], texBase = r["texBase"], clipBase = r["clipBase"], faceBase = r["faceBase"], pageBase = r["pageBase"];
     this.levels = levels;
     this.slot[k] = slot;
     this.generation[k] = r["generation"][slot]!;
@@ -88,6 +89,10 @@ export class RequestLog {
       this.what[k] = FOR_PAGE;
       this.index[k] = slot - pageBase;
       this.why[k] = WHY_PAGE;
+    } else if (slot >= faceBase) {
+      this.what[k] = FOR_FACES;
+      this.index[k] = r["manifest"].faces![slot - faceBase]!.mesh;
+      this.why[k] = WHY_FACES;
     } else if (slot >= clipBase) {
       this.what[k] = FOR_CLIPS;
       this.index[k] = slot - clipBase;
@@ -117,7 +122,7 @@ export class RequestLog {
     if (rider >= 0) this.rowOf[rider] = k;
   }
 
-  /** The residency has taken in the answer for `slot`; `done` where nothing of it goes to the card (rows of meshes, clips). */
+  /** The residency has taken in the answer for `slot`; `done` where nothing of it goes to the card (rows of meshes, clips, face tables). */
   came(slot: number, a: AssetArrival, nowMs: number, done: boolean): void {
     const k = this.rowFor(slot);
     if (k < 0 || this.slot[k] !== slot || this.generation[k] !== a.generation || this.state[k] !== IS_ASKED) return;
@@ -155,7 +160,7 @@ export function requestFrom(log: RequestLog, k: number): string {
   if (s === IS_ASKED) return "downloading";
   if (s === IS_FAILED) return "failed";
   const from = f & FROM_NETWORK ? "network" : f & FROM_DISK ? "disk" : "memory";
-  const card = log.what[k] !== FOR_PAGE && log.what[k] !== FOR_CLIPS;
+  const card = log.what[k] !== FOR_PAGE && log.what[k] !== FOR_CLIPS && log.what[k] !== FOR_FACES;
   return s === IS_ARRIVED ? `${from}, waiting` : card ? `${from} → card` : from;
 }
 

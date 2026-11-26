@@ -1,16 +1,25 @@
 // Bakes the 32 face modifiers of a look (bytes 40 to 71) as sparse deltas on a fitted MakeHuman body (fit.ts): each
 // modifier's MakeHuman targets added to the shaped base, faded out across the neck, carried through the fit (the head
-// moves as one piece), with the eyes, brows, lashes, teeth and tongue bound again on the moved base. Then every face
-// the bytes can make is held inside the hit head grown by HEAD_SLACK, cutting a modifier's side where it must.
+// moves as one piece), with the eyes, brows, lashes, teeth and tongue bound again on the moved base. A modifier's side is
+// cut only where it alone would carry a vertex out of the hit head grown by HEAD_SLACK: the client holds each summed face
+// inside that bound as it blends it (shared/people/faces.ts clampFace). The face rows (jaw, lids, eyes) come from
+// MakeHuman's own weights.
 
 import { dirname, join } from "node:path";
-import { B_HEAD, B_HIPS, HUMAN, SLOT_HEAD } from "../../shared/anim/human.ts";
+import { B_HEAD, SLOT_HEAD } from "../../shared/anim/human.ts";
 import { SKIN_ZONE_SLOT, skinZoneAt } from "../../shared/anim/skin-zones.ts";
-import { FACE_COUNT, HEAD_GROW, HEAD_SLACK } from "../../shared/anim/look.ts";
-import { blendFace, decodeFaces, encodeFaces, type FaceSide, type FaceTable } from "../../shared/people/faces.ts";
+import { FACE_COUNT, HEAD_GROW } from "../../shared/anim/look.ts";
+import {
+  allowed, blendFace, decodeFaces, drawnAt, encodeFaces, FACE_EYE_L, FACE_EYE_R, FACE_JAW, FACE_LID_L, FACE_LID_R, FACE_PIVOTS, FACE_ROWS, headBound, type FaceRows, type FaceSide, type FaceTable,
+  type HeadBound,
+} from "../../shared/people/faces.ts";
 import { fit, readBinding, type Binding } from "./bind.ts";
 import { fitBody, fitStages, PART_NAMES, type FitOptions, type FitStages, type FittedBody, type Sex } from "./fit.ts";
-import { BASE_OBJ, MAKEHUMAN, TARGETS } from "./index.ts";
+import { BASE_OBJ, DEFAULT_SKELETON, MAKEHUMAN, TARGETS } from "./index.ts";
+import { readSkeleton, type Skeleton } from "./skeleton.ts";
+import { readWeights } from "./weights.ts";
+
+export { allowed, drawnAt, headBound, OUTSIDE_TOLERANCE, type HeadBound } from "../../shared/people/faces.ts";
 import { groupVertices, readObj, type ObjMesh } from "./obj.ts";
 import { readTarget, type Target } from "./target.ts";
 
@@ -77,8 +86,6 @@ const PART_FILES = [
 const ROUNDING_ROOM = 1e-4;
 /** A delta under this, in metres on every axis, is left out. */
 const LEAST = 5e-5;
-/** How much farther out than the neutral head a face may put a vertex the neutral head already has outside the bound. */
-export const OUTSIDE_TOLERANCE = 0.001;
 
 // ---- The mirror, read once ----------------------------------------------------------------------------------------
 
@@ -310,40 +317,8 @@ function fittedDelta(d: Float64Array, stages: FitStages, src: Sources, count: nu
 
 // ---- The bound ----------------------------------------------------------------------------------------------------
 
-/** The hit head as the drawn head meets it at rest: its capsule's ends and radius grown by HEAD_SLACK, in model space. */
-export interface HeadBound {
-  readonly a: readonly number[];
-  readonly b: readonly number[];
-  readonly r: number;
-  /** Where the drawn head's joint is, on foot at rest (look.ts lookJoints), and where it rests on the body's own rig. */
-  readonly drawn: readonly number[];
-  readonly rig: readonly number[];
-}
-
-/** Read from shared/anim/human.ts when called, for the rig the body was fitted to. */
-export function headBound(rig: readonly number[]): HeadBound {
-  const j = (arr: ArrayLike<number>, b: number): number[] => [arr[b * 3]!, arr[b * 3 + 1]!, arr[b * 3 + 2]!];
-  const hit = j(HUMAN.rest, B_HEAD);
-  // lookJoints keeps the hit body's lengths over the hips, so the drawn head is the rig's hips plus the hit body's reach.
-  const drawn = [0, 1, 2].map((k) => rig[B_HIPS * 3 + k]! + hit[k]! - HUMAN.rest[B_HIPS * 3 + k]!);
-  return {
-    a: [0, 1, 2].map((k) => hit[k]! + HUMAN.capA[B_HEAD * 3 + k]!),
-    b: [0, 1, 2].map((k) => hit[k]! + HUMAN.capB[B_HEAD * 3 + k]!),
-    r: HUMAN.capR[B_HEAD]! + HEAD_SLACK,
-    drawn,
-    rig: j(rig, B_HEAD),
-  };
-}
-
 /** The head's stretch on each axis, 1 or HEAD_GROW: a body is drawn at most this grown, and the bound is checked at each. */
 export const GROWTHS: readonly (readonly number[])[] = Array.from({ length: 8 }, (_, c) => [0, 1, 2].map((k) => ((c >> k) & 1 ? HEAD_GROW : 1)));
-
-/** Where a fitted vertex is drawn at rest, its head stretched by `grow`. */
-export function drawnAt(bound: HeadBound, grow: readonly number[], x: number, y: number, z: number, out: number[]): void {
-  out[0] = bound.drawn[0]! + grow[0]! * (x - bound.rig[0]!);
-  out[1] = bound.drawn[1]! + grow[1]! * (y - bound.rig[1]!);
-  out[2] = bound.drawn[2]! + grow[2]! * (z - bound.rig[2]!);
-}
 
 /** The nearest point of the capsule's axis to p, written to out. */
 function nearestOnAxis(bound: HeadBound, p: readonly number[], out: number[]): void {
@@ -361,9 +336,6 @@ export function axisDistance(bound: HeadBound, p: readonly number[]): number {
   nearestOnAxis(bound, p, c);
   return Math.hypot(p[0]! - c[0]!, p[1]! - c[1]!, p[2]! - c[2]!);
 }
-
-/** The most a vertex may be from the axis: the bound, or a little past where the neutral head already puts it. */
-export const allowed = (bound: HeadBound, neutral: number): number => Math.max(bound.r, neutral + OUTSIDE_TOLERANCE);
 
 /**
  * A checked vertex at one stretch: how far the neutral head puts it from the axis, how far it may be, and each side's
@@ -461,43 +433,117 @@ function unit3(a: readonly number[], or: readonly number[]): number[] {
 }
 
 /**
- * Cuts each side's scale in `k` (minus then plus of each modifier) only where some face would leave the bound. At each
- * vertex over it, every side's move there is capped at one share, the largest that brings the vertex back: the sides
- * that move it most are cut and the rest keep what they have, and no side is cut to nothing while another keeps more.
+ * Cuts each side's scale in `k` (minus then plus of each modifier) only where that side alone would carry a vertex out
+ * of the bound: to the largest scale that keeps every vertex it moves inside, a little short for the rounding after.
+ * Faces that sum several sides are held inside by clampFace as they are blended.
  */
-function cuts(ps: readonly Probe[], k: Float64Array): void {
-  const was = new Float64Array(k.length);
+function aloneCuts(ps: readonly Probe[], k: Float64Array): void {
   for (const p of ps) {
-    if (worst(p, k) <= p.limit) continue;
-    // A cut aims a little inside, so that rounding the deltas to steps after it leaves the vertex inside.
     const limit = p.limit - ROUNDING_ROOM;
-    was.set(k);
-    const size = new Float64Array(p.side.length);
-    let top = 0;
     for (let e = 0; e < p.side.length; e++) {
-      size[e] = Math.hypot(p.part[e * 3]!, p.part[e * 3 + 1]!, p.part[e * 3 + 2]!);
-      top = Math.max(top, k[p.side[e]!]! * size[e]!);
+      const j = p.side[e]!, o = p.part[e * 3]!, u = p.part[e * 3 + 1]!, w = p.part[e * 3 + 2]!;
+      const s = k[j]!;
+      if (Math.hypot(p.d0 + s * o, s * u, s * w) <= p.limit) continue;
+      // The largest scale t with (d0 + t o)^2 + t^2 (u^2 + w^2) at the limit.
+      const a = o * o + u * u + w * w, b = p.d0 * o, c = p.d0 * p.d0 - limit * limit;
+      k[j] = Math.max(0, Math.min(s, (-b + Math.sqrt(Math.max(0, b * b - a * c))) / a));
     }
-    const capAt = (share: number): void => {
-      for (let e = 0; e < p.side.length; e++) {
-        const j = p.side[e]!;
-        k[j] = size[e]! > 0 ? Math.min(was[j]!, share / size[e]!) : was[j]!;
-      }
-    };
-    let lo = 0, hi = top;
-    capAt(0);
-    if (worst(p, k) > limit) throw new Error("a face vertex is over its bound with every side cut");
-    for (let i = 0; i < 40; i++) {
-      const mid = (lo + hi) / 2;
-      capAt(mid);
-      if (worst(p, k) > limit) hi = mid;
-      else lo = mid;
-    }
-    capAt(lo);
   }
 }
 
+/** The farthest one side alone puts a vertex past what it may reach, in metres: at most 0 when every side keeps inside. */
+function aloneWorst(ps: readonly Probe[]): number {
+  let over = -Infinity;
+  for (const p of ps) for (let e = 0; e < p.side.length; e++) over = Math.max(over, Math.hypot(p.d0 + p.part[e * 3]!, p.part[e * 3 + 1]!, p.part[e * 3 + 2]!) - p.limit);
+  return over;
+}
+
 const scaled = (s: FaceSide, k: number): FaceSide => ({ vertices: s.vertices, deltas: Float32Array.from(s.deltas, (d) => d * k) });
+
+// ---- Face rows ----------------------------------------------------------------------------------------------------
+
+/** The MakeHuman joints face rows turn about, in the order of shared/people/faces.ts PIVOT_. */
+const PIVOT_JOINTS = ["jaw____head", "eye.L____head", "eye.R____head"];
+
+let skeleton: Skeleton | null = null;
+/** Per base vertex, the share of its MakeHuman weight on the bones of each face row, FACE_ROWS a vertex. */
+let rowWeights: Float64Array | null = null;
+
+/** The row of each MakeHuman bone: the jaw and every bone under it, each upper lid, each eye; -1 for the rest. */
+function rowOfBones(skel: Skeleton): Int8Array {
+  const index = new Map(skel.bones.map((b, i) => [b.name, i]));
+  const own: Readonly<Record<string, number>> = { "jaw": FACE_JAW, "orbicularis03.L": FACE_LID_L, "orbicularis03.R": FACE_LID_R, "eye.L": FACE_EYE_L, "eye.R": FACE_EYE_R };
+  return Int8Array.from(skel.bones, (b) => {
+    for (let at = index.get(b.name)!; at >= 0; at = skel.bones[at]!.parent) {
+      const name = skel.bones[at]!.name;
+      if (own[name] !== undefined) return own[name]!;
+    }
+    return -1;
+  });
+}
+
+function readRows(): { skel: Skeleton; rows: Float64Array } {
+  if (skeleton && rowWeights) return { skel: skeleton, rows: rowWeights };
+  const skel = readSkeleton(DEFAULT_SKELETON);
+  const weights = readWeights(join(dirname(DEFAULT_SKELETON), skel.weightsFile));
+  const n = readParts().base.positions.length / 3;
+  const rowOf = rowOfBones(skel);
+  const sum = new Float64Array(n), rows = new Float64Array(n * FACE_ROWS);
+  skel.bones.forEach((b, i) => {
+    const w = weights.bones.get(b.name);
+    if (!w) return;
+    for (let e = 0; e < w.vertices.length; e++) {
+      const v = w.vertices[e]!, x = w.weights[e]!;
+      if (!(x > 0)) continue;
+      sum[v]! += x;
+      if (rowOf[i]! >= 0) rows[v * FACE_ROWS + rowOf[i]!]! += x;
+    }
+  });
+  for (let v = 0; v < n; v++) for (let r = 0; r < FACE_ROWS; r++) if (sum[v]! > 0) rows[v * FACE_ROWS + r]! /= sum[v]!;
+  skeleton = skel;
+  rowWeights = rows;
+  return { skel, rows };
+}
+
+/**
+ * Each fitted vertex that follows a face row, its heaviest: the share of its head weight that row takes. A body vertex
+ * takes MakeHuman's weights faded to nothing at the head slot's border (shares), a bound one its binding's three.
+ */
+function faceRows(body: FittedBody, src: Sources, share: Float64Array): FaceRows {
+  const { rows } = readRows();
+  const { bindings } = readParts();
+  const vertices: number[] = [], row: number[] = [], amount: number[] = [];
+  const of = new Float64Array(FACE_ROWS);
+  for (let i = 0; i < src.part.length; i++) {
+    of.fill(0);
+    let head = 1;
+    if (src.part[i] === 0) {
+      const v = src.vertex[i]!;
+      for (let r = 0; r < FACE_ROWS; r++) of[r] = rows[v * FACE_ROWS + r]! * share[v]!;
+      head = headWeightOf(body, i);
+    } else {
+      const b = bindings[src.part[i]! - 1]!, at = src.vertex[i]! * 3;
+      for (let c = 0; c < 3; c++) for (let r = 0; r < FACE_ROWS; r++) of[r]! += b.weights[at + c]! * rows[b.refs[at + c]! * FACE_ROWS + r]!;
+    }
+    let best = 0;
+    for (let r = 1; r < FACE_ROWS; r++) if (of[r]! > of[best]!) best = r;
+    if (!(of[best]! > 0) || !(head > 0)) continue;
+    vertices.push(i);
+    row.push(best);
+    amount.push(Math.min(1, of[best]! / head));
+  }
+  return { vertices: Uint32Array.from(vertices), row: Uint8Array.from(row), share: Float32Array.from(amount) };
+}
+
+/** The middle of each pivot's joint on base positions `p` (or moves of them), x, y, z each, added to `out` at `at`. */
+function pivotsOn(p: Float64Array, out: Float64Array, at: number): void {
+  const { skel } = readRows();
+  PIVOT_JOINTS.forEach((joint, k) => {
+    const verts = skel.joints.get(joint);
+    if (!verts || verts.length === 0) throw new Error(`MakeHuman's skeleton has no joint ${joint}`);
+    for (const v of verts) for (let c = 0; c < 3; c++) out[at + k * 3 + c]! += p[v * 3 + c]! / verts.length;
+  });
+}
 
 // ---- The cook -----------------------------------------------------------------------------------------------------
 
@@ -524,6 +570,8 @@ export interface FaceCook {
   /** The middle of each eye's joint, left then right, three each: at neutral, then each side's move of it as cut. */
   readonly eyeJoints: Float64Array;
   readonly eyeJointMoves: Float64Array;
+  /** Each side's worst alone, past what a vertex may reach, in metres: at most 0. */
+  readonly aloneOver: number;
 }
 
 const cooked = new Map<string, FaceCook>();
@@ -554,13 +602,20 @@ export function cookFaces(sex: Sex, rig: readonly number[], opts: FitOptions = {
     });
   };
   middle(stages.landed, eyeJoints, 0);
+  const pivots = new Float64Array(FACE_PIVOTS * 3);
+  const pivotMoves = new Float64Array(FACE_COUNT * 2 * FACE_PIVOTS * 3);
+  pivotsOn(stages.landed, pivots, 0);
+  // MakeHuman's left is the body's +X, as the fit keeps it.
+  if (!(pivots[3]! > 0 && pivots[6]! < 0)) throw new Error("the left eye's joint is not on the body's left");
   for (const m of FACE_MODIFIERS) {
     for (const files of [m.minus, m.plus]) {
       const d = baseDelta(sideFiles(files), share);
       middle(d, eyeJointMoves, sides.length * 6);
+      pivotsOn(d, pivotMoves, sides.length * FACE_PIVOTS * 3);
       sides.push(fittedDelta(d, stages, src, count));
     }
   }
+  const rows = faceRows(body, src, share);
   const bound = headBound(rig);
   const k = new Float64Array(sides.length).fill(1);
   // Cut on the deltas as decoded, so the rounding to steps cannot carry a face out.
@@ -568,13 +623,17 @@ export function cookFaces(sex: Sex, rig: readonly number[], opts: FitOptions = {
   let bytes: Uint8Array = new Uint8Array();
   for (let round = 0; ; round++) {
     if (round > 20) throw new Error("the face cut and its rounding do not settle");
-    const now = { vertexCount: count, modifiers: FACE_MODIFIERS.map((_, m) => ({ minus: scaled(sides[m * 2]!, k[m * 2]!), plus: scaled(sides[m * 2 + 1]!, k[m * 2 + 1]!) })) };
+    const moves = Float32Array.from(pivotMoves, (v, i) => v * k[Math.floor(i / (FACE_PIVOTS * 3))]!);
+    const now: FaceTable = {
+      vertexCount: count, modifiers: FACE_MODIFIERS.map((_, m) => ({ minus: scaled(sides[m * 2]!, k[m * 2]!), plus: scaled(sides[m * 2 + 1]!, k[m * 2 + 1]!) })),
+      rows, pivots: Float32Array.from(pivots), pivotMoves: moves,
+    };
     bytes = encodeFaces(now);
     table = decodeFaces(bytes);
     const decoded = table.modifiers.flatMap((m) => [m.minus, m.plus]);
     const ps = probes(body, src, decoded, bound);
     const step = new Float64Array(sides.length).fill(1);
-    cuts(ps, step);
+    aloneCuts(ps, step);
     if (step.every((s) => s === 1)) break;
     for (let j = 0; j < k.length; j++) k[j]! *= step[j]!;
   }
@@ -600,6 +659,7 @@ export function cookFaces(sex: Sex, rig: readonly number[], opts: FitOptions = {
     outsideAtNeutral: outside,
     eyeJoints,
     eyeJointMoves: eyeJointMoves.map((v, i) => v * k[Math.floor(i / 6)]!),
+    aloneOver: aloneWorst(probes(body, src, table.modifiers.flatMap((m) => [m.minus, m.plus]), bound)),
   };
   cooked.set(key, out);
   return out;

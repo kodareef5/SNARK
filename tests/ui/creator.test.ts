@@ -7,15 +7,18 @@ import { App } from "../../client/core/app.ts";
 import { DRAW_NEAR, DRAW_SKINNED } from "../../client/core/render/packet.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import {
+  CreatorScreen, KEY_CREATOR_FACE, KEY_CREATOR_FACE_GROUP, KEY_CREATOR_FACE_PRESET, KEY_CREATOR_FACE_RANDOM, KEY_CREATOR_FACE_RESET,
   KEY_CREATOR_BEARD, KEY_CREATOR_CREATE, KEY_CREATOR_HAIR, KEY_CREATOR_HAIR_COLOR, KEY_CREATOR_NOTE, KEY_CREATOR_PANEL, KEY_CREATOR_RANDOM, KEY_CREATOR_REGION,
-  KEY_CREATOR_KEEP, KEY_CREATOR_RESET, KEY_CREATOR_SEX, KEY_CREATOR_SKIN, KEY_CREATOR_TAB, KEY_CREATOR_TITLE, KEY_CREATOR_TURN, type CreatorScreen,
+  KEY_CREATOR_KEEP, KEY_CREATOR_RESET, KEY_CREATOR_SEX, KEY_CREATOR_SKIN, KEY_CREATOR_TAB, KEY_CREATOR_TITLE, KEY_CREATOR_TURN,
 } from "../../client/core/ui/creator.ts";
+import type { ScreenCtx } from "../../client/core/ui/screen.ts";
+import { FACE_GROUPS, FACE_LABELS, FACE_PRESETS, setFaces } from "../../shared/people/face-controls.ts";
 import { KEY_CROSS, KEY_VITAL } from "../../client/core/ui/hud.ts";
-import { K_BAR, K_TEXT, textWidth, type UiFrame } from "../../client/core/ui/nodes.ts";
+import { K_BAR, K_TEXT, textWidth, UiFrame } from "../../client/core/ui/nodes.ts";
 import { Pose } from "../../shared/anim/clip.ts";
 import { B_FOOT_L, B_HAND_L, B_HEAD, B_LOWER_ARM_L, B_UPPER_ARM_L, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
 import {
-  HEAD_SLACK, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, REGIONS, REGION_COUNT, defaultLook, lookColors, lookLift, lookScales, randomLook, regionOf,
+  FACE_COUNT, HEAD_SLACK, LOOK_BEARD, LOOK_BYTES, LOOK_FACE, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, REGIONS, REGION_COUNT, defaultLook, faceOf, lookColors, lookLift, lookScales, randomLook, regionOf,
   setRegion, validLook,
 } from "../../shared/anim/look.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
@@ -110,8 +113,15 @@ artTest("a new name arrives in the creator with no body; it makes a look, and th
       ui.build(aspect, app.hud, session);
       fits(f, `${name} tab ${tab}`);
     }
+    ui.screen<CreatorScreen>("creator").tab = 2;
+    for (let g = 0; g < FACE_GROUPS.length; g++) {
+      ui.screen<CreatorScreen>("creator").faceGroup = g;
+      ui.build(aspect, app.hud, session);
+      fits(f, `${name} face group ${g}`);
+    }
   }
   ui.screen<CreatorScreen>("creator").tab = 0;
+  ui.screen<CreatorScreen>("creator").faceGroup = 0;
   run(34);
 
   // Female, the eighth skin tone, long hair, the tenth hair colour.
@@ -398,6 +408,104 @@ test("a look picks colours and stretches bones along their own axes: longer legs
   }
   expect(Math.min(...beards)).toBeGreaterThan(100);
   expect(f(KEY_CREATOR_NOTE)).toBe(KEY_CREATOR_NOTE);
+});
+
+/** A creator screen drawn on its own frame, pressed as the app would press it. */
+function bareCreator(): { s: CreatorScreen; f: UiFrame; press: (key: number) => void } {
+  const s = new CreatorScreen(), f = new UiFrame();
+  const c = { session: { name: "ada" } } as unknown as ScreenCtx;
+  const draw = (): void => {
+    f.begin(16 / 9);
+    s.draw(f, null, "ada");
+  };
+  draw();
+  const press = (key: number): void => {
+    expect(f.find(key)?.interactive, `node ${key}`).toBe(true);
+    expect(s.pointer(0, key, 0, 0, 0, c)).toBe(true);
+    s.pointer(1, key, 0, 0, 0, c);
+    draw();
+  };
+  return { s, f, press };
+}
+
+const faceBytes = (look: Uint8Array): number[] => [...look.subarray(LOOK_FACE, LOOK_FACE + FACE_COUNT)];
+const otherBytes = (look: Uint8Array): number[] => [...look.subarray(0, LOOK_FACE)];
+
+test("the face tab pages its sliders by group and fits every aspect", () => {
+  const { s, f, press } = bareCreator();
+  expect(f.find(KEY_CREATOR_FACE + 2)).toBeNull();
+  press(KEY_CREATOR_TAB + 2);
+  expect(s.tab).toBe(2);
+  expect(f.find(KEY_CREATOR_FACE)!.text).toBe(FACE_LABELS[0]!);
+  expect(f.find(KEY_CREATOR_REGION + 2)).toBeNull();
+  for (let g = 0; g < FACE_GROUPS.length; g++) {
+    press(KEY_CREATOR_FACE_GROUP + g);
+    for (let i = 0; i < FACE_COUNT; i++) expect(f.find(KEY_CREATOR_FACE + i * 4 + 2) !== null).toBe(FACE_GROUPS[g]!.faces.includes(i));
+    for (const [name, aspect] of ASPECTS) {
+      f.begin(aspect);
+      s.draw(f, null, "ada");
+      fits(f, `${name} face group ${g}`);
+    }
+  }
+  press(KEY_CREATOR_TAB + 1);
+  expect(f.find(KEY_CREATOR_REGION)!.text).toBe(REGIONS[0]!.label);
+});
+
+test("a face button moves only its own byte, by one step", () => {
+  const { s, f, press } = bareCreator();
+  press(KEY_CREATOR_TAB + 2);
+  // Eye slant is modifier 11, in the eyes group.
+  const eyes = KEY_CREATOR_FACE_GROUP + FACE_GROUPS.findIndex((g) => g.faces.includes(11));
+  press(eyes);
+  const before = [...s.look];
+  press(KEY_CREATOR_FACE + 11 * 4 + 3);
+  expect(faceOf(s.look, 11)).toBeCloseTo(0.1, 1);
+  expect([...s.look].map((b, i) => (i === LOOK_FACE + 11 ? before[i] : b))).toEqual(before);
+  press(KEY_CREATOR_FACE + 11 * 4 + 1);
+  press(KEY_CREATOR_FACE + 11 * 4 + 1);
+  expect(faceOf(s.look, 11)).toBeCloseTo(-0.1, 1);
+  // The bar takes a value from 0 to 1, as the body's do.
+  expect(s.value(KEY_CREATOR_FACE + 11 * 4 + 2, 0.75)).toBe(true);
+  expect(faceOf(s.look, 11)).toBeCloseTo(0.5, 2);
+  press(eyes);
+  expect(f.find(KEY_CREATOR_FACE + 11 * 4 + 2)!.value).toBeCloseTo(0.75, 2);
+  expect(s.value(KEY_CREATOR_FACE + 11 * 4 + 1, 0.75)).toBe(false);
+});
+
+test("a preset writes its face; face random and reset leave the rest", () => {
+  const { s, press } = bareCreator();
+  press(KEY_CREATOR_TAB + 2);
+  s.look[LOOK_SKIN] = 6;
+  const rest = otherBytes(s.look);
+  for (let p = 0; p < FACE_PRESETS.length; p++) {
+    press(KEY_CREATOR_FACE_PRESET + p);
+    expect(faceBytes(s.look)).toEqual(faceBytes(setFaces(defaultLook(), FACE_PRESETS[p]!.values)));
+    expect(otherBytes(s.look)).toEqual(rest);
+  }
+  press(KEY_CREATOR_FACE_RANDOM);
+  const first = faceBytes(s.look);
+  press(KEY_CREATOR_FACE_RANDOM);
+  expect(faceBytes(s.look)).not.toEqual(first);
+  expect(otherBytes(s.look)).toEqual(rest);
+  expect(validLook(s.look)).toBe(true);
+  press(KEY_CREATOR_FACE_RESET);
+  expect(faceBytes(s.look)).toEqual(faceBytes(defaultLook()));
+  expect(otherBytes(s.look)).toEqual(rest);
+});
+
+test("the whole-look random throws a face at the creator's spread", () => {
+  const { s, press } = bareCreator();
+  let most = 0;
+  for (let i = 0; i < 20; i++) {
+    press(KEY_CREATOR_RANDOM);
+    expect(validLook(s.look)).toBe(true);
+    for (let k = 0; k < FACE_COUNT; k++) most = Math.max(most, Math.abs(faceOf(s.look, k)));
+  }
+  // randomLook alone stays within 0.4.
+  expect(most).toBeGreaterThan(0.45);
+  expect(most).toBeLessThanOrEqual(0.6 + 1 / 127);
+  press(KEY_CREATOR_RESET);
+  expect([...s.look]).toEqual([...defaultLook()]);
 });
 
 /** Keeps the KEY_CREATOR_NOTE import in use. */

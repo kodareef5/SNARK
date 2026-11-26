@@ -2,7 +2,8 @@
 // A level is the indices and flat vertices of one level of a mesh. A surface is what that level needs besides to be
 // drawn with materials, its surface and its skin, and is of use only with its level. A texture holds its pictures up
 // to some step, and changes step by being made again from its first picture while the card still draws with the old.
-// A skeleton's clips never go on the card: they are read as they come and kept. A page is the rows of some meshes and
+// A skeleton's clips never go on the card: they are read as they come and kept, and so is a mesh's face table, as the
+// bytes that came. A page is the rows of some meshes and
 // of what they are drawn with, and their smallest levels: a mesh whose page has not come is asked for by its page,
 // before anything else, and is not drawn.
 //
@@ -118,6 +119,7 @@ export const WHY_FULL = 9;
 
 const STEPS = LAST_STEP + 1;
 const NONE: readonly number[] = [];
+const EMPTY = new Uint8Array(0);
 
 /** The first step whose pictures are at least `px` pixels across, and `most` if none before it is. */
 export function stepFor(px: number, most: number): number {
@@ -165,14 +167,26 @@ export class Residency {
   private readonly first: Uint32Array;
   /**
    * How many levels there are. The surface of the level in slot s is slot `levels + s`, texture t is slot `texBase + t`,
-   * the clips of the manifest's skeleton c are slot `clipBase + c`, and page p is slot `pageBase + p`.
+   * the clips of the manifest's skeleton c are slot `clipBase + c`, the manifest's face table f is slot `faceBase + f`,
+   * and page p is slot `pageBase + p`.
    */
   private readonly levels: number;
   private readonly texBase: number;
   private readonly clipBase: number;
+  private readonly faceBase: number;
   private readonly pageBase: number;
   /** Each skeleton's clips once they have come. */
   private readonly clipSets: (ClipSet | null)[];
+  /** By mesh, its face table in the manifest's list, -1 for none; by table, its bytes once come, and whether it is wanted. */
+  private readonly faceOf: Int32Array;
+  private readonly faceData: (Uint8Array | null)[];
+  private readonly faceWanted: Uint8Array;
+  /** By level slot, whether a copy of its bytes and its surface's is kept; by level or surface slot, the copy kept of what went on the card. */
+  private readonly keepOf: Uint8Array;
+  private readonly keptData: (Uint8Array | null)[];
+  /** Levels `keepBytes` found on the card with no copy: they are let go at the next `begin`, to come again. */
+  private readonly recopy: number[] = [];
+  private readonly lateDrops: number[] = [];
   private readonly meshOf: Uint32Array;
   private readonly levelOf: Uint8Array;
   /** Each mesh's page, -1 for one the boot pack holds, and whether its row is here. */
@@ -303,7 +317,13 @@ export class Residency {
     this.clipBase = this.texBase + textures.length;
     const clips = manifest.clips ?? [];
     this.clipSets = clips.map(() => null);
-    this.pageBase = this.clipBase + clips.length;
+    const faces = manifest.faces ?? [];
+    this.faceBase = this.clipBase + clips.length;
+    this.faceOf = new Int32Array(manifest.meshes.length).fill(-1);
+    faces.forEach((e, f) => (this.faceOf[e.mesh] = f));
+    this.faceData = faces.map(() => null);
+    this.faceWanted = new Uint8Array(faces.length);
+    this.pageBase = this.faceBase + faces.length;
     const slots = this.pageBase + (manifest.pages?.length ?? 0);
     this.meshOf = new Uint32Array(this.levels);
     this.levelOf = new Uint8Array(this.levels);
@@ -325,6 +345,9 @@ export class Residency {
       this.learnMesh(i, m.page === undefined ? null : pages[m.page]!);
     });
     clips.forEach((e, c) => (this.size[this.clipBase + c] = e.part.bytes));
+    faces.forEach((e, f) => (this.size[this.faceBase + f] = e.part.bytes));
+    this.keepOf = new Uint8Array(this.levels);
+    this.keptData = new Array<Uint8Array | null>(this.levels * 2).fill(null);
     (manifest.pages ?? []).forEach((p, k) => (this.size[this.pageBase + k] = p.part.bytes));
     this.state = new Uint8Array(slots);
     pages.forEach((blob, p) => blob && (this.state[this.pageBase + p] = RESIDENT));
@@ -561,6 +584,8 @@ export class Residency {
     this.unstarted = 0;
     if (this.format !== this.made) this.remake();
     this.learned.length = 0;
+    for (const slot of this.recopy) this.dropUncopied(slot);
+    this.recopy.length = 0;
     if (!this.port) return;
     const shared = this.port.protocol === "h2" || this.port.protocol.startsWith("h3");
     this.inFlight = this.holdBack ? IN_FLIGHT_HELD : shared ? IN_FLIGHT_SHARED : IN_FLIGHT;
@@ -595,6 +620,11 @@ export class Residency {
             if (this.state[slot + k] === DEAD) this.stats.dead++;
           }
           this.run[slot - this.pageBase] = 0;
+          continue;
+        }
+        if (slot >= this.faceBase) {
+          this.faceData[slot - this.faceBase] = a.data;
+          this.state[slot] = RESIDENT;
           continue;
         }
         if (slot >= this.clipBase) {
@@ -692,6 +722,68 @@ export class Residency {
   /** The clips of the manifest's skeleton `c`, or null until they have come. */
   clips(c: number): ClipSet | null {
     return this.clipSets[c]!;
+  }
+
+  /** Whether the manifest has a face table for `mesh`. */
+  facesOf(mesh: number): boolean {
+    return this.faceOf[mesh]! >= 0;
+  }
+
+  /** Says the face table of `mesh` is wanted: it is asked for at once, and again after a failure, until it comes, and then kept. */
+  wantFaces(mesh: number): void {
+    const f = this.faceOf[mesh]!;
+    if (f < 0) return;
+    this.faceWanted[f] = 1;
+    this.askFaces(f);
+  }
+
+  /** The face table of `mesh` as the bytes that came, or null until they have. */
+  faces(mesh: number): Uint8Array | null {
+    const f = this.faceOf[mesh]!;
+    return f < 0 ? null : this.faceData[f]!;
+  }
+
+  private askFaces(f: number): void {
+    const slot = this.faceBase + f;
+    this.seen[slot] = this.frame;
+    this.urgency[slot] = FIRST;
+    if (this.state[slot] === ABSENT && this.port && this.retryAt[slot]! <= this.now) this.ask(slot, -1, 0);
+  }
+
+  /**
+   * From now on a copy is kept of a level's bytes and its surface's as they go on the card, or as the boot file or its
+   * page holds them, and outlasts the card's letting them go. A level already on the card with no copy is let go at the
+   * next frame to come again.
+   */
+  keepBytes(mesh: number, level: number): void {
+    const slot = this.slot(mesh, level);
+    if (this.keepOf[slot] === 1) return;
+    this.keepOf[slot] = 1;
+    this.recopy.push(slot);
+  }
+
+  /**
+   * The copies `keepBytes` keeps once both are: `level` is its indices, padded to a multiple of 4, then its vertices;
+   * `surface` is a surface entry for every vertex and from `skinAt` a skin entry for every vertex, empty for a flat level.
+   */
+  keptBytes(mesh: number, level: number): { level: Uint8Array; surface: Uint8Array; indexCount: number; indexBytes: 2 | 4; skinAt: number } | null {
+    const slot = this.slot(mesh, level);
+    if (this.keepOf[slot] === 0 || this.knownMesh[mesh] === 0) return null;
+    const own = this.keptData[slot] ?? this.heldBytes[slot];
+    const surface = this.size[this.levels + slot] === 0 ? EMPTY : (this.keptData[this.levels + slot] ?? this.heldBytes[this.levels + slot]);
+    if (!own || !surface) return null;
+    const l = this.levelAt(slot);
+    return { level: own, surface, indexCount: l.tris * 3, indexBytes: l.index, skinAt: l.parts[1]?.bytes ?? 0 };
+  }
+
+  /** Lets go of a kept level, and its surface, that the card holds with no copy kept, so it comes again. */
+  private dropUncopied(slot: number): void {
+    const s = this.levels + slot;
+    const bare = (x: number): boolean => this.state[x] === RESIDENT && this.inBoot[x] === 0 && !this.keptData[x];
+    if (bare(slot)) {
+      if (this.state[s] === RESIDENT && this.inBoot[s] === 0) this.evict(s, this.lateDrops);
+      this.evict(slot, this.lateDrops);
+    } else if (bare(s)) this.evict(s, this.lateDrops);
   }
 
   /**
@@ -1006,7 +1098,7 @@ export class Residency {
         for (const p of levelParts(level, 1, level.parts.length)) add((level.surface ?? level).file, p);
       }
     }
-    if (whole) for (const e of [...(this.manifest.clips ?? []), ...(this.manifest.pages ?? [])]) add(e.file, wholePart(e));
+    if (whole) for (const e of [...(this.manifest.clips ?? []), ...(this.manifest.faces ?? []), ...(this.manifest.pages ?? [])]) add(e.file, wholePart(e));
     if (cap >= 0) {
       // A texture is taken as far as the material that shows it widest would.
       const most = new Int8Array(this.has.length).fill(-1);
@@ -1056,6 +1148,8 @@ export class Residency {
     this.fromBoot.length = 0;
     for (const t of this.late) texDrops.push(t);
     this.late.length = 0;
+    for (const slot of this.lateDrops) drops.push(slot);
+    this.lateDrops.length = 0;
     if (!this.port) return;
     if (this.keepAll) for (let slot = this.pageBase; slot < this.size.length; slot++) this.wantSlot(slot, 0);
 
@@ -1072,10 +1166,11 @@ export class Residency {
       this.state[slot] = ABSENT;
       this.stats.cancelled++;
     }
-    // What nobody wants any longer is given up, on its way or arrived, but for a page, which every mesh of it needs. What the card has begun is finished.
+    // What nobody wants any longer is given up, on its way or arrived, but for a page, which every mesh of it needs, and a
+    // face table, which is wanted once. What the card has begun is finished.
     let kept = 0;
     for (const slot of this.under) {
-      const idle = slot < this.pageBase && this.frame - this.seen[slot]! > IDLE_FRAMES;
+      const idle = slot < this.faceBase && this.frame - this.seen[slot]! > IDLE_FRAMES;
       if (this.state[slot] === LOADING && idle) {
         this.port.cancel(slot);
         this.land(slot);
@@ -1144,6 +1239,7 @@ export class Residency {
     }
     this.under.length = kept;
 
+    for (let f = 0; f < this.faceWanted.length; f++) if (this.faceWanted[f] === 1) this.askFaces(f);
     const wants = this.wants.sort(byUrgency);
     for (let i = 0; i < wants.length; i++) {
       const slot = wants[i]!;
@@ -1223,7 +1319,7 @@ export class Residency {
     this.ask(this.pageBase + first, -1, 0);
   }
 
-  /** Asks the port for a level, with its surface if `rider` is that, for a surface, for steps 0 to `goal` of a texture, or for clips or pages. */
+  /** Asks the port for a level, with its surface if `rider` is that, for a surface, for steps 0 to `goal` of a texture, or for clips, a face table or pages. */
   private ask(slot: number, rider: number, goal: number): void {
     const parts: AssetPart[] = [];
     let file: number;
@@ -1231,6 +1327,10 @@ export class Residency {
       const first = slot - this.pageBase;
       file = this.manifest.pages![first]!.file;
       for (let q = first; q <= first + this.run[first]!; q++) parts.push(wholePart(this.manifest.pages![q]!));
+    } else if (slot >= this.faceBase) {
+      const e = this.manifest.faces![slot - this.faceBase]!;
+      file = e.file;
+      parts.push(wholePart(e));
     } else if (slot >= this.clipBase) {
       const e = this.manifest.clips![slot - this.clipBase]!;
       file = e.file;
@@ -1273,6 +1373,7 @@ export class Residency {
     this.given[slot] = at + bytes < size ? at + bytes : 0;
     if (at + bytes < size) return bytes;
     this.apart[slot < this.levels ? slot : slot - this.levels] = 0;
+    if (this.keepOf[slot < this.levels ? slot : slot - this.levels] === 1) this.keptData[slot] = this.data[slot];
     this.data[slot] = null;
     this.state[slot] = RESIDENT;
     this.waiting -= size;
@@ -1473,7 +1574,7 @@ export class Residency {
     this.retable();
   }
 
-  /** The graphics card has lost everything. What had arrived and what is on its way are kept, and clips, which were never on it. */
+  /** The graphics card has lost everything. What had arrived and what is on its way are kept, and clips and face tables, which were never on it. */
   reset(): void {
     for (let slot = 0; slot < this.clipBase; slot++) if (this.state[slot] === RESIDENT) this.state[slot] = ABSENT;
     for (let t = 0; t < this.has.length; t++) {

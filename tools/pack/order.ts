@@ -2,7 +2,7 @@
 // in the order the triangles first use them. Every score is made of square roots and the four operations, which IEEE 754
 // rounds exactly, so the order is the same on any machine.
 
-import { CLIP_ROOT_BYTES, MATERIAL_CUTOUT, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodSkin, lodSurface, lodVertices, parsePack, readIndices, type Pack, type PackLod } from "../../shared/pack/pack.ts";
+import { CLIP_ROOT_BYTES, MATERIAL_CUTOUT, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodSkin, lodSurface, lodVertices, meshFaces, parsePack, readIndices, type Pack, type PackLod } from "../../shared/pack/pack.ts";
 import { farMeshId } from "../../shared/pack/far.ts";
 import { PackBlob } from "./write.ts";
 
@@ -232,7 +232,8 @@ function weldFlat(pack: Pack, lod: PackLod, runs: readonly number[] = [lod.index
 
 /**
  * The pack with every level ordered as above and written again in the same layout. Nothing moves between runs, and every
- * triangle keeps its corners in their order, with each corner's bytes as they were.
+ * triangle keeps its corners in their order, with each corner's bytes as they were. The finest level of a mesh with a
+ * face table is kept as it is: the table is by that level's vertices.
  */
 export function orderPack(file: Uint8Array): Uint8Array {
   const pack = parsePack(file);
@@ -244,7 +245,7 @@ export function orderPack(file: Uint8Array): Uint8Array {
   if (header.details) header.details.atlas.offset = out.append(detailsAtlas(pack));
   for (const mesh of header.meshes) {
     for (const [l, lod] of mesh.lods.entries()) {
-      const level = lod.sections ? orderRuns(pack, lod, cutout) : weldFlat(pack, lod, far.get(mesh.id)?.[l]);
+      const level = mesh.faces && l === 0 ? { indices: readIndices(pack, lod), vertices: lodVertices(pack, lod), surface: lodSurface(pack, lod), skin: lodSkin(pack, lod) } : lod.sections ? orderRuns(pack, lod, cutout) : weldFlat(pack, lod, far.get(mesh.id)?.[l]);
       lod.vertexCount = level.vertices.length / VERTEX_BYTES;
       lod.indexBytes = lod.vertexCount > 65535 ? 4 : 2;
       const idx = new Uint8Array(level.indices.length * lod.indexBytes);
@@ -255,6 +256,7 @@ export function orderPack(file: Uint8Array): Uint8Array {
       if (level.surface) lod.surfaceOffset = out.append(level.surface);
       if (level.skin) lod.skinOffset = out.append(level.skin);
     }
+    if (mesh.faces) mesh.faces.offset = out.append(meshFaces(pack, mesh)!);
   }
   for (const c of header.clips) {
     c.rotOffset = out.append(blob.subarray(c.rotOffset, c.rotOffset + c.frames * clipRotBytes(c.bones)));
