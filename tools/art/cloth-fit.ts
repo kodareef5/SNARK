@@ -5,10 +5,14 @@
 //     no longer has the piece over it and has it under it instead, by how far under. Skin at an opening, under no part of
 //     the piece at rest, is not counted;
 //   - cloth in skin: a vertex of the piece that is under the skin, by how deep.
-// Skin counts as drawn with a piece where it is of another slot than the piece's, or under an open head piece; the
-// piece stands in for its own slot's skin otherwise, which is then counted as hidden.
+// Skin counts as drawn with a piece where it is of another slot than the piece's, or under an open head piece, and of a
+// zone the piece's covers do not hide; the piece stands in for its own slot's skin otherwise, which is then counted as
+// hidden. Worn as a set (--worn set), the set's other pieces stand in for their slots too and their covers hide as well.
+// Each piece also reports, for every zone of skin it leaves drawn and lies over somewhere, the most of that zone found
+// with the piece neither over nor under it in any pose: a zone it may hide is one with none, since hidden skin that came
+// through shows the piece behind it.
 //
-//   bun tools/art/cloth-fit.ts [--level N] [--set cloth,hide,meridian] [--quick] [--pack FILE]
+//   bun tools/art/cloth-fit.ts [--level N] [--set cloth,hide,meridian] [--quick] [--pack FILE] [--worn piece|set|bare]
 
 import { readFileSync } from "node:fs";
 import { writeBones } from "../../client/core/render/characters.ts";
@@ -21,7 +25,7 @@ import { createMountMotion, mountPose } from "../../shared/anim/mount.ts";
 import { createOccupantSeat, occupantSeat, poseSeated, type OccupantSeat } from "../../shared/anim/occupant.ts";
 import { AnimState, HumanAnim, humanPose } from "../../shared/anim/pose.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
-import { SKIN_ZONE_NAMES } from "../../shared/anim/skin-zones.ts";
+import { SKIN_ZONE_COUNT, SKIN_ZONE_NAMES, SKIN_ZONE_SLOT } from "../../shared/anim/skin-zones.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { STANCE_CROUCH } from "../../shared/sim/character.ts";
@@ -190,20 +194,42 @@ export interface PieceFit {
   inSkin: Worst;
   throughHidden: Worst;
   inSkinHidden: Worst;
+  /**
+   * Drawn skin through it split by whether the piece is over or under that skin in every pose (closed: a finer zone could
+   * hide it with no hole) or not (open: hiding it would show a hole).
+   */
+  throughClosed: Worst;
+  throughOpen: Worst;
   /** Points of skin found covered at rest, and of those how many ever came through by more than 2 mm. */
   covered: number;
   over2mm: number;
+  /** The zones its covers hide, one bit each, as it is measured worn. */
+  hides: number;
+  /** Each drawn zone it lies over at rest: of its points, the most with the piece neither over nor under them in one pose, and that pose. */
+  zones: ZoneCover[];
+}
+
+export interface ZoneCover {
+  zone: number;
+  points: number;
+  out: number;
+  pose: string;
 }
 
 const none = (): Worst => ({ depth: 0, pose: "", zone: "", at: [] });
 
-/** The body's skin at a level: its slot meshes together, the triangles of its first material, each vertex's slot and zone. */
-function bodyAt(meshes: readonly SourceMesh[], id: string, level: number): { lod: SourceLod; slot: Uint8Array; zone: Uint8Array; skinTris: Uint32Array } {
+/**
+ * The body's skin at a level: its slot meshes together, the triangles of its skin material, each vertex's slot and zone,
+ * and the zones of the skin triangles it is a corner of, a bit each.
+ */
+function bodyAt(meshes: readonly SourceMesh[], id: string, level: number): { lod: SourceLod; slot: Uint8Array; zone: Uint8Array; zones: Uint32Array; skinTris: Uint32Array } {
   const parts = SLOT_NAMES.map((name, slot) => ({ slot, mesh: meshes.find((m) => m.id === `${id}/${name}`) })).filter((p) => p.mesh);
-  const positions: number[] = [], joints: number[] = [], weights: number[] = [], bones: number[] = [], indices: number[] = [], slot: number[] = [], zone: number[] = [];
+  const positions: number[] = [], joints: number[] = [], weights: number[] = [], bones: number[] = [], indices: number[] = [], slot: number[] = [], zone: number[] = [], zones: number[] = [];
   let skinned = true;
   for (const { slot: s, mesh } of parts) {
     const lod = mesh!.lods[Math.min(level, mesh!.lods.length - 1)]!;
+    // The head's skin comes after its brows and eyes.
+    const skinAt = Math.max(0, mesh!.materials?.findIndex((x) => x.id.includes("/skin")) ?? 0);
     const base = positions.length / 3;
     positions.push(...lod.positions);
     bones.push(...lod.bones!);
@@ -215,14 +241,17 @@ function bodyAt(meshes: readonly SourceMesh[], id: string, level: number): { lod
       joints.push(b, b, b, b);
       weights.push(1, 0, 0, 0);
     } else skinned = false;
-    const vz = new Uint8Array(lod.positions.length / 3);
+    const vz = new Uint8Array(lod.positions.length / 3), vm = new Uint32Array(lod.positions.length / 3);
     for (let t = 0; t < lod.indices.length / 3; t++) {
       for (let k = 0; k < 3; k++) vz[lod.indices[t * 3 + k]!] = lod.zones?.[t] ?? 0;
-      if ((lod.sections?.[t] ?? 0) === 0) indices.push(base + lod.indices[t * 3]!, base + lod.indices[t * 3 + 1]!, base + lod.indices[t * 3 + 2]!);
+      if ((lod.sections?.[t] ?? 0) !== skinAt) continue;
+      indices.push(base + lod.indices[t * 3]!, base + lod.indices[t * 3 + 1]!, base + lod.indices[t * 3 + 2]!);
+      for (let k = 0; k < 3; k++) vm[lod.indices[t * 3 + k]!]! |= 1 << (lod.zones?.[t] ?? 0);
     }
     for (let v = 0; v < lod.positions.length / 3; v++) {
       slot.push(s);
       zone.push(vz[v]!);
+      zones.push(vm[v]!);
     }
   }
   const lod: SourceLod = { positions: Float32Array.from(positions), colors: new Uint8Array(0), indices: Uint32Array.from(indices), bones: Uint8Array.from(bones) };
@@ -230,7 +259,7 @@ function bodyAt(meshes: readonly SourceMesh[], id: string, level: number): { lod
     lod.joints = Uint8Array.from(joints);
     lod.weights = Float32Array.from(weights);
   }
-  return { lod, slot: Uint8Array.from(slot), zone: Uint8Array.from(zone), skinTris: lod.indices };
+  return { lod, slot: Uint8Array.from(slot), zone: Uint8Array.from(zone), zones: Uint32Array.from(zones), skinTris: lod.indices };
 }
 
 export interface FitOptions {
@@ -242,6 +271,11 @@ export interface FitOptions {
   /** "rest" for the rest pose alone. */
   only?: string;
   pack?: Uint8Array;
+  /**
+   * How the piece is worn: alone with its covers ("piece", the default), with the rest of its set ("set"), or alone with
+   * no covers, as before they hid anything ("bare").
+   */
+  worn?: "piece" | "set" | "bare";
 }
 
 /** Every worn piece's fit over its body through the motion set. */
@@ -254,6 +288,14 @@ export function auditClothFit(o: FitOptions = {}): PieceFit[] {
   const m = new Float32Array(HUMAN_BONES * BONE_FLOATS);
   const hit: Nearest = { triangle: -1, x: 0, y: 0, z: 0, u: 0, v: 0, w: 0, d2: 0 };
   const rh = { t: 0, tri: -1 };
+  const worn = o.worn ?? "piece";
+  const reg = compileContent(CORE_CONTENT).registry!;
+  /** The zones a set's piece in a slot covers: the first item's of that set and slot. */
+  const coversOf = (set: string, slot: string): number => {
+    if (worn === "bare") return 0;
+    const i = reg.defs.findIndex((d) => d?.type === "item" && d.wear?.set === set && d.wear.slot === slot);
+    return i < 0 ? 0 : reg.wearZones[i]!;
+  };
   for (const sex of o.sexes ?? ["m", "f"]) {
     const id = `core:human_${sex}`;
     const rig = pack.header.rigs.find((r) => r.id === `human_${sex}`)!;
@@ -262,10 +304,13 @@ export function auditClothFit(o: FitOptions = {}): PieceFit[] {
     const body = bodyAt(meshes, id, level);
     const bw = welded({ positions: body.lod.positions, indices: body.skinTris });
     const nb = bw.positions.length / 3;
-    // A welded point's slot and zone: its first vertex's.
-    const bslot = new Uint8Array(nb), bzone = new Uint8Array(nb), first = new Int32Array(nb).fill(-1);
-    for (let v = body.lod.positions.length / 3 - 1; v >= 0; v--) first[bw.of[v]!] = v;
-    for (let i = 0; i < nb; i++) [bslot[i], bzone[i]] = [body.slot[first[i]!]!, body.zone[first[i]!]!];
+    // A welded point's zone: its first vertex's.
+    const bzone = new Uint8Array(nb), bzones = new Uint32Array(nb), first = new Int32Array(nb).fill(-1);
+    for (let v = body.lod.positions.length / 3 - 1; v >= 0; v--) {
+      first[bw.of[v]!] = v;
+      bzones[bw.of[v]!]! |= body.zones[v]!;
+    }
+    for (let i = 0; i < nb; i++) bzone[i] = body.zone[first[i]!]!;
     const posedBody = new Float64Array(body.lod.positions.length);
     const bp = new Float64Array(nb * 3), bn = new Float64Array(nb * 3);
     const pieces = meshes.filter((p) => {
@@ -333,18 +378,47 @@ export function auditClothFit(o: FitOptions = {}): PieceFit[] {
     }
     const fits = new Map<string, PieceFit>();
     const ever = new Map<string, Uint8Array>();
+    /** Per piece: the zones of skin drawn while it is worn, a bit each. */
+    const drawnZones = new Map<string, number>();
+    const all = (1 << SKIN_ZONE_COUNT) - 1;
+    const partOf = (id: string): [set: string, slot: number] => {
+      const [, set, slot] = /\/armor\/([^/]+)\/([^/]+)$/.exec(id)!;
+      return [set!, SLOT_NAMES.indexOf(slot!)];
+    };
     for (const piece of pieces) {
-      fits.set(piece.id, { piece: piece.id, level, through: none(), inSkin: none(), throughHidden: none(), inSkinHidden: none(), covered: covers.get(piece.id)!.length, over2mm: 0 });
+      const [set] = partOf(piece.id);
+      // The pieces worn with it, as slot and whether that slot's skin still draws under it.
+      const withIt = worn === "set" ? meshes.filter((p) => p.id.startsWith(`${id}/armor/${set}/`) && SLOT_NAMES.includes(p.id.split("/").at(-1)!)).map((p) => p.id) : [piece.id];
+      // The zones the worn pieces stand in for, and those their covers hide.
+      let replaced = 0, hides = 0;
+      for (const w of withIt) {
+        const s = partOf(w)[1];
+        hides |= coversOf(set, SLOT_NAMES[s]!);
+        const open = s === SLOT_HEAD && set !== "meridian";
+        if (!open) for (let z = 0; z < SKIN_ZONE_COUNT; z++) if (SKIN_ZONE_SLOT[z] === s) replaced |= 1 << z;
+      }
+      drawnZones.set(piece.id, all & ~replaced & ~hides);
+      let near = 0;
+      for (const i of covers.get(piece.id)!) near |= bzones[i]!;
+      // A zone it may hide: one no worn piece stands in for, under it somewhere at rest.
+      const list: number[] = [];
+      for (let z = 0; z < SKIN_ZONE_COUNT; z++) if ((near >> z) & 1 && !((replaced >> z) & 1)) list.push(z);
+      fits.set(piece.id, { piece: piece.id, level, through: none(), inSkin: none(), throughHidden: none(), inSkinHidden: none(), throughClosed: none(), throughOpen: none(), covered: covers.get(piece.id)!.length, over2mm: 0, hides, zones: list.map((zone) => ({ zone, points: 0, out: 0, pose: "" })) });
       ever.set(piece.id, new Uint8Array(nb));
     }
-    for (const pose of poses) {
+    // The points of each zone.
+    const zonePoints: number[][] = Array.from({ length: SKIN_ZONE_COUNT }, () => []);
+    for (let i = 0; i < nb; i++) for (let z = 0; z < SKIN_ZONE_COUNT; z++) if ((bzones[i]! >> z) & 1) zonePoints[z]!.push(i);
+    for (const piece of pieces) for (const zc of fits.get(piece.id)!.zones) zc.points = zonePoints[zc.zone]!.length;
+    /** Per piece and point of drawn skin it covers: the deepest it came through, in which pose, and whether it was ever open. */
+    const track = new Map(pieces.map((piece) => [piece.id, { depth: new Float64Array(nb), pose: new Int32Array(nb), open: new Uint8Array(nb) }]));
+    for (const [p, pose] of poses.entries()) {
       writeBones(m, 0, pose.solved, rest, null, 0, 0, 0, 0);
       poseBody();
       const bodyGrid = new TriangleGrid(bp, bw.indices, 0.02);
       for (const piece of pieces) {
-        const slot = SLOT_NAMES.indexOf(piece.id.split("/").at(-1)!);
-        const sealed = piece.id.includes("/meridian/");
-        const drawn = (s: number): boolean => s !== slot || (slot === SLOT_HEAD && !sealed);
+        const shown = drawnZones.get(piece.id)!;
+        const drawn = (i: number): boolean => (bzones[i]! & shown) !== 0;
         const lod = piece.lods[Math.min(level, piece.lods.length - 1)]!;
         const posed = posedPiece(lod);
         const fit = fits.get(piece.id)!;
@@ -355,11 +429,14 @@ export function auditClothFit(o: FitOptions = {}): PieceFit[] {
           w.zone = SKIN_ZONE_NAMES[bzone[i]!]!;
           w.at = [0, 1, 2].map((a) => Math.round(bw.positions[i * 3 + a]! * 1000) / 1000);
         };
+        const t = track.get(piece.id)!;
         for (const i of covers.get(piece.id)!) {
           const d = through(i, posed, lod.indices, pieceCentres.get(piece.id)!);
+          if (Number.isNaN(d)) t.open[i] = 1;
           if (!(d > 0)) continue;
-          note(drawn(bslot[i]!) ? fit.through : fit.throughHidden, d, i);
+          note(drawn(i) ? fit.through : fit.throughHidden, d, i);
           if (d > 0.002) ever.get(piece.id)![i] = 1;
+          if (drawn(i) && d > t.depth[i]!) [t.depth[i], t.pose[i]] = [d, p];
         }
         for (let v = 0; v < posed.positions.length / 3; v++) {
           const [x, y, z] = [posed.positions[v * 3]!, posed.positions[v * 3 + 1]!, posed.positions[v * 3 + 2]!];
@@ -371,13 +448,26 @@ export function auditClothFit(o: FitOptions = {}): PieceFit[] {
           if (out >= 0) continue;
           // The skin point nearest the vertex names where.
           const i = c[share.indexOf(Math.max(...share))]!;
-          note(drawn(bslot[i]!) ? fit.inSkin : fit.inSkinHidden, -out / (Math.hypot(nn[0]!, nn[1]!, nn[2]!) || 1), i);
+          note(drawn(i) ? fit.inSkin : fit.inSkinHidden, -out / (Math.hypot(nn[0]!, nn[1]!, nn[2]!) || 1), i);
+        }
+        for (const zc of fit.zones) {
+          let out = 0;
+          // Skin come through still has the piece behind it, so only skin with the piece neither over nor under it shows a hole.
+          for (const i of zonePoints[zc.zone]!) if (Number.isNaN(through(i, posed, lod.indices, pieceCentres.get(piece.id)!))) out++;
+          if (out > zc.out || zc.pose === "") [zc.out, zc.pose] = [out, pose.name];
         }
       }
     }
     for (const piece of pieces) {
       const fit = fits.get(piece.id)!;
       fit.over2mm = ever.get(piece.id)!.reduce((s, v) => s + v, 0);
+      const t = track.get(piece.id)!;
+      for (const i of covers.get(piece.id)!) {
+        const w = t.open[i] ? fit.throughOpen : fit.throughClosed;
+        if (t.depth[i]! <= w.depth) continue;
+        [w.depth, w.pose, w.zone] = [t.depth[i]!, poses[t.pose[i]!]!.name, SKIN_ZONE_NAMES[bzone[i]!]!];
+        w.at = [0, 1, 2].map((a) => Math.round(bw.positions[i * 3 + a]! * 1000) / 1000);
+      }
       out.push(fit);
     }
   }
@@ -388,12 +478,16 @@ if (import.meta.main) {
   const args = process.argv.slice(2);
   const arg = (name: string): string | undefined => (args.includes(`--${name}`) ? args[args.indexOf(`--${name}`) + 1] : undefined);
   const t0 = performance.now();
-  const fits = auditClothFit({ level: Number(arg("level") ?? 0), sets: arg("set")?.split(","), sexes: arg("sex")?.split(","), quick: args.includes("--quick"), only: arg("only"), pack: arg("pack") ? new Uint8Array(readFileSync(arg("pack")!)) : undefined });
+  const fits = auditClothFit({ level: Number(arg("level") ?? 0), sets: arg("set")?.split(","), sexes: arg("sex")?.split(","), quick: args.includes("--quick"), only: arg("only"), pack: arg("pack") ? new Uint8Array(readFileSync(arg("pack")!)) : undefined, worn: arg("worn") as FitOptions["worn"] });
   const mm = (w: Worst): string => (w.depth > 0 ? `${(w.depth * 1000).toFixed(1)} mm (${w.zone}, ${w.pose}, at ${w.at.join(",")})` : "0");
   for (const f of fits) {
     console.log(`${f.piece} level ${f.level}: covers ${f.covered} points of skin, ${f.over2mm} ever through by more than 2 mm`);
     console.log(`  drawn skin through it ${mm(f.through)}; it in drawn skin ${mm(f.inSkin)}`);
     console.log(`  hidden skin through it ${mm(f.throughHidden)}; it in hidden skin ${mm(f.inSkinHidden)}`);
+    console.log(`  of the drawn skin through it, where it is over or under that skin in every pose ${mm(f.throughClosed)}; elsewhere ${mm(f.throughOpen)}`);
+    const hid = SKIN_ZONE_NAMES.filter((_, z) => (f.hides >> z) & 1);
+    console.log(`  hides ${hid.length ? hid.join("; ") : "nothing"}`);
+    for (const z of f.zones) console.log(`  zone ${SKIN_ZONE_NAMES[z.zone]}: at most ${z.out} of ${z.points} points open, the piece neither over nor under them (${z.pose})`);
   }
   console.log(`${((performance.now() - t0) / 1000).toFixed(1)} s`);
 }
