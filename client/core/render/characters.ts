@@ -295,7 +295,7 @@ const CASTS = 2;
 const NONE = 3;
 /** Cascade masks an instance may have: a bit each for up to four, and one for the street lamp's map (lamp.ts LAMP_BIT). */
 const MASKS = 32;
-/** The most bodies of the dead out of view kept a frame to be posed for their shadows. */
+/** The most bodies of the dead out of view kept a frame to be posed for their shadows: the first found, not the nearest. */
 const UNSEEN_DEAD = 256;
 
 /**
