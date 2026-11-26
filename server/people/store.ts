@@ -61,6 +61,12 @@ export const MANIFEST_KEEP_MS = 60 * 60 * 1000;
 /** How often a world looks for another world's change, and sweeps. */
 export const PEOPLE_CHECK_MS = 5000;
 const SWEEP_MS = 60_000;
+/** How long an uploaded print no edition names is kept for its page to publish it. Chosen. */
+export const PRINT_KEEP_MS = 24 * 60 * 60 * 1000;
+/** How long a write waits for another world's: a few ticks of the thread it shares at most, then the page tries again. */
+const WRITE_WAIT_MS = 20;
+/** How long opening a new file waits for another world making it. Only a store's first open, at a world's start, waits. */
+const OPEN_WAIT_MS = 2500;
 
 const STALE = "The editions changed in another page. Reload to see them.";
 const sha16 = (text: string): string => new Bun.CryptoHasher("sha256").update(text).digest("hex").slice(0, 16);
@@ -75,6 +81,13 @@ interface RecordRow {
   at: number;
 }
 
+/** Part files are numbered across every store of the process and carry random letters, so neither another store nor
+ * another process with the same id (two containers are both pid 1) on one folder takes the same name. */
+let partsMade = 0;
+const partName = (): string => `${process.pid}-${++partsMade}-${crypto.randomUUID().slice(0, 8)}`;
+const TMP_PARTS = [/^print-[0-9a-f-]+\.part$/, /^people\.[0-9a-f]{16}\.[0-9a-f-]+\.json$/];
+const PRINT_FILE = /^print\.([0-9a-f]{16})\.png$/;
+
 const EMPTY: PeopleView = { revision: -1, editions: [], byId: new Map(), made: new Map(), retired: new Set(), manifestId: "" };
 
 export class PeopleStore {
@@ -85,12 +98,16 @@ export class PeopleStore {
   private temp = "";
   private db: Database | null = null;
   private cached: PeopleView = EMPTY;
-  /** Each edition's line of the manifest, in id order. */
+  /** Each edition's line of the manifest, in id order: one for each edition in `cached`, added with it. */
   private readonly lines: string[] = [];
+  /** The editions' manifest has not been written since its last change: the next look tries again. */
+  private manifestOwed = false;
+  /** The part files this store's checks wrote, which alone it puts in place. */
+  private readonly ours = new Set<string>();
   private readonly thread = new PrintThread();
   private checked = -Infinity;
   private swept = -Infinity;
-  private parts = 0;
+  private readonly said = new Set<string>();
 
   constructor(opts: PeopleOptions) {
     this.path = opts.db;
@@ -117,13 +134,28 @@ export class PeopleStore {
     return this.cached.manifestId;
   }
 
+  /** Says a fault once for each kind of it, not every look. */
+  private sayOnce(what: string, line: string): void {
+    if (this.said.has(what)) return;
+    this.said.add(what);
+    console.log(`people: ${line}`);
+  }
+
+  /** The media and part folders, made again where something removed them. */
+  private folders(): void {
+    for (const dir of [this.media, this.tmp]) mkdirSync(dir, { recursive: true });
+  }
+
   private open(): Database {
     if (this.db) return this.db;
-    for (const dir of [this.media, this.tmp]) mkdirSync(dir, { recursive: true });
+    this.folders();
     const db = new Database(this.path, { create: true });
     try {
-      // A reader never waits for another world's write in WAL, which a restyle in the tick may be.
-      db.exec("PRAGMA busy_timeout=2500; PRAGMA journal_mode=WAL;");
+      db.exec(`PRAGMA busy_timeout=${OPEN_WAIT_MS};`);
+      // A reader never waits for another world's write in WAL, which a restyle in the tick may be. A file that cannot
+      // take it (a disk without shared memory) keeps the default journal: reads may then wait for a write's commit.
+      const mode = (db.query("PRAGMA journal_mode=WAL").get() as { journal_mode: string } | null)?.journal_mode;
+      if (mode !== "wal" && this.path !== ":memory:") this.sayOnce("wal", `${this.path} keeps the ${mode ?? "default"} journal, not WAL: a world's reads may wait on another's writes`);
       db.exec(
         "CREATE TABLE IF NOT EXISTS store (id INTEGER PRIMARY KEY CHECK (id = 1), revision INTEGER NOT NULL, doc TEXT NOT NULL);" +
           "CREATE TABLE IF NOT EXISTS records (kind TEXT NOT NULL, id INTEGER NOT NULL, rev INTEGER NOT NULL, body TEXT NOT NULL, by TEXT NOT NULL, by_id TEXT NOT NULL, at INTEGER NOT NULL, store INTEGER NOT NULL, PRIMARY KEY (kind, id, rev)) WITHOUT ROWID;" +
@@ -134,6 +166,7 @@ export class PeopleStore {
       db.query("INSERT OR IGNORE INTO store (id, revision, doc) VALUES (1, 0, ?)").run(JSON.stringify({ schema: SCHEMA, retired: {} } satisfies StoreDoc));
       const doc = JSON.parse((db.query("SELECT doc FROM store WHERE id=1").get() as { doc: string }).doc) as StoreDoc;
       if (doc.schema !== SCHEMA) throw new Error(`${this.path} is a people store of layout ${doc.schema}, and this build reads ${SCHEMA} only`);
+      db.exec(`PRAGMA busy_timeout=${WRITE_WAIT_MS};`);
     } catch (err) {
       db.close();
       throw err;
@@ -145,7 +178,7 @@ export class PeopleStore {
   view(): PeopleView {
     const db = this.open();
     const head = db.query("SELECT revision FROM store WHERE id=1").get() as { revision: number };
-    if (head.revision === this.cached.revision) return this.cached;
+    if (head.revision === this.cached.revision) return this.manifestOwed ? this.writeOwed() : this.cached;
     // One snapshot, so the row and the records appended under it agree whatever another world writes meanwhile.
     const { revision, doc, rows } = db.transaction(() => {
       const row = db.query("SELECT revision, doc FROM store WHERE id=1").get() as { revision: number; doc: string };
@@ -159,15 +192,28 @@ export class PeopleStore {
       const edition: Edition = { id: r.id, garment: body.garment, colours: body.colours, print: body.print, name: body.name };
       added.push(edition);
       made.set(r.id, { by: r.by, byId: r.by_id, at: r.at });
-      this.lines.push(JSON.stringify(edition));
     }
     const editions = added.length > 0 ? [...was.editions, ...added] : was.editions;
+    // The records are held first, each with its manifest line, so a manifest that fails to be written loses none of them.
+    for (const e of added) this.lines.push(JSON.stringify(e));
     this.cached = {
       revision, editions, made,
       byId: added.length > 0 ? new Map(editions.map((e) => [e.id, e])) : was.byId,
       retired: new Set(doc.retired.edition ?? []),
-      manifestId: added.length > 0 || was.manifestId === "" ? this.writeManifest() : was.manifestId,
+      manifestId: was.manifestId,
     };
+    if (added.length > 0) this.manifestOwed = true;
+    return this.manifestOwed ? this.writeOwed() : this.cached;
+  }
+
+  /** Writes the manifest that is owed, and holds its id; where it cannot be written, the clients keep the last one. */
+  private writeOwed(): PeopleView {
+    try {
+      this.cached = { ...this.cached, manifestId: this.writeManifest() };
+      this.manifestOwed = false;
+    } catch (err) {
+      this.sayOnce("manifest", `the editions' manifest could not be written, and is tried again at each look: ${err instanceof Error ? err.message : String(err)}`);
+    }
     return this.cached;
   }
 
@@ -177,9 +223,14 @@ export class PeopleStore {
     const json = `{"editions":[${this.lines.join(",")}]}`;
     const id = sha16(json), file = join(this.media, `people.${id}.json`);
     if (!existsSync(file)) {
-      const part = join(this.tmp, `people.${id}.${process.pid}.json`);
-      writeFileSync(part, json);
-      renameSync(part, file);
+      this.folders();
+      const part = join(this.tmp, `people.${id}.${partName()}.json`);
+      try {
+        writeFileSync(part, json);
+        renameSync(part, file);
+      } finally {
+        rmSync(part, { force: true });
+      }
     }
     return id;
   }
@@ -239,6 +290,12 @@ export class PeopleStore {
     if (print) {
       const size = this.printSize(print.hash);
       if (!size) return { status: 400, error: "Upload the print before publishing an edition of it." };
+      // Named now, so a sweep of prints no edition names leaves it be while this is published.
+      try {
+        utimesSync(join(this.media, printName(print.hash)), new Date(), new Date());
+      } catch {
+        // Swept between the two looks: the next look finds no size.
+      }
       print = { ...print, ...size };
     }
     const body: EditionDraft = { garment: draft.garment, colours: [...draft.colours] as [number, number, number], print, name: draft.name };
@@ -288,22 +345,39 @@ export class PeopleStore {
   /** Checks an upload's bytes on the print's thread, which writes them to a part file of their own. The buffer is given over. */
   async check(bytes: ArrayBuffer): Promise<{ info: PrintInfo; part: string } | { error: string } | { fault: string }> {
     this.open();
-    const part = join(this.tmp, `print-${process.pid}-${++this.parts}.part`);
+    this.folders();
+    const part = join(this.tmp, `print-${partName()}.part`);
     const got = await this.thread.check(bytes, part);
-    if ("info" in got) return { info: got.info, part };
+    if ("info" in got) {
+      this.ours.add(part);
+      return { info: got.info, part };
+    }
     rmSync(part, { force: true });
     return got;
   }
 
-  /** Puts a checked part file in place under its hash. False where that print was there already, and the part goes. */
+  /**
+   * Puts a part file this store's check wrote in place under its hash. False where that print was there already, and the
+   * part goes. A part it did not write is refused.
+   */
   place(part: string, hash: string): boolean {
+    if (!this.ours.delete(part)) throw new Error(`${part} is not a print this store checked`);
     const file = join(this.media, printName(hash));
     if (existsSync(file)) {
       rmSync(part, { force: true });
+      // Uploaded again: it is kept another day for its page to publish.
+      utimesSync(file, new Date(), new Date());
       return false;
     }
+    this.folders();
     renameSync(part, file);
     return true;
+  }
+
+  /** Lets go of a checked part file that is not to be placed. */
+  drop(part: string): void {
+    this.ours.delete(part);
+    rmSync(part, { force: true });
   }
 
   /** Looks for another world's change at most every PEOPLE_CHECK_MS, and sweeps once a minute. Never throws. */
@@ -321,22 +395,38 @@ export class PeopleStore {
     }
   }
 
-  /** Removes manifests no world has sent for an hour, and part files a crash left. Each world touches its own manifest. */
+  /**
+   * Removes manifests no world has sent for an hour, part files a crash left, and uploaded prints no edition names after a
+   * day. Each world touches its own manifest.
+   */
   sweep(): void {
-    const now = this.now(), current = `people.${this.view().manifestId}.json`;
-    const stale = (file: string): boolean => now - statSync(file).mtimeMs >= MANIFEST_KEEP_MS;
-    for (const [dir, pattern] of [[this.media, /^people\.[0-9a-f]{16}\.json$/], [this.tmp, /^print-\d+-\d+\.part$/]] as const) {
+    const view = this.view(), now = this.now(), current = `people.${view.manifestId}.json`;
+    this.folders();
+    const age = (file: string): number => now - statSync(file).mtimeMs;
+    const named = new Set(view.editions.flatMap((e) => (e.print ? [e.print.hash] : [])));
+    const each = (dir: string, fn: (name: string, file: string) => void): void => {
       for (const name of readdirSync(dir)) {
-        if (!pattern.test(name)) continue;
-        const file = join(dir, name);
         try {
-          if (name === current) utimesSync(file, now / 1000, now / 1000);
-          else if (stale(file)) rmSync(file, { force: true });
+          fn(name, join(dir, name));
         } catch {
           // Another world swept it first.
         }
       }
-    }
+    };
+    each(this.tmp, (name, file) => {
+      if (TMP_PARTS.some((p) => p.test(name)) && !this.ours.has(file) && age(file) >= MANIFEST_KEEP_MS) rmSync(file, { force: true });
+    });
+    const unnamed: string[] = [];
+    each(this.media, (name, file) => {
+      if (name === current) utimesSync(file, now / 1000, now / 1000);
+      else if (/^people\.[0-9a-f]{16}\.json$/.test(name) && age(file) >= MANIFEST_KEEP_MS) rmSync(file, { force: true });
+      const print = PRINT_FILE.exec(name)?.[1];
+      if (print && !named.has(print) && age(file) >= PRINT_KEEP_MS) unnamed.push(name);
+    });
+    if (unnamed.length === 0) return;
+    // Looked at again just before: an edition another world published meanwhile keeps its print.
+    const still = new Set(this.view().editions.flatMap((e) => (e.print ? [e.print.hash] : [])));
+    for (const name of unnamed) if (!still.has(PRINT_FILE.exec(name)![1]!)) rmSync(join(this.media, name), { force: true });
   }
 
   close(): void {

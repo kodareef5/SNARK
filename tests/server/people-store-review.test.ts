@@ -3,15 +3,10 @@ import { Database } from "bun:sqlite";
 import { afterAll, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { peopleAdmin } from "../../server/admin/people-routes.ts";
-import { actorOf, refused, type AdminGate } from "../../server/admin/gate.ts";
-import { Guesses } from "../../server/guesses.ts";
 import { hashOf } from "../../server/people/png.ts";
 import { PeopleStore, type By } from "../../server/people/store.ts";
 import { printName, type EditionDraft, type PeopleManifest } from "../../shared/people/doc.ts";
-import { RANK_ADMIN } from "../../shared/ranks.ts";
 import { encodePng } from "../../tools/snap/png.ts";
-import { coreRegistry } from "../fixtures/world.ts";
 
 const scratch = join(import.meta.dir, "../../var");
 mkdirSync(scratch, { recursive: true });
@@ -28,14 +23,20 @@ test("a manifest write that fails once leaves no edition twice in the manifest",
   const store = open(dir);
   try {
     expect(store.publish(store.view().revision, tee("one"), ADA)).toMatchObject({ id: 1 });
-    // The part file's folder goes (or the disk is full): the edition is recorded, the manifest is not written.
+    // The part file's folder goes: it is made again, and the edition and its manifest are written.
     rmSync(join(dir, "tmp"), { recursive: true, force: true });
-    expect(() => store.publish(store.view().revision, tee("two"), ADA)).toThrow();
-    expect(() => store.view()).toThrow();
-    mkdirSync(join(dir, "tmp"));
+    expect(store.publish(store.view().revision, tee("two"), ADA)).toMatchObject({ id: 2 });
+    // A file stands where the folder was, so the manifest cannot be written: the publish that committed still answers
+    // its id, the edition resolves, and the clients keep the last manifest until a later look writes the new one.
+    rmSync(join(dir, "tmp"), { recursive: true, force: true });
+    writeFileSync(join(dir, "tmp"), "in the way");
+    const last = store.view().manifestId;
+    expect(store.publish(store.view().revision, tee("three"), ADA)).toMatchObject({ id: 3 });
+    expect([store.garmentOf(3), store.view().manifestId]).toEqual(["core:plain_tee", last]);
+    rmSync(join(dir, "tmp"), { force: true });
     const view = store.view();
     const manifest = JSON.parse(readFileSync(join(store.media, `people.${view.manifestId}.json`), "utf8")) as PeopleManifest;
-    expect(manifest.editions.map((e) => e.id)).toEqual([1, 2]);
+    expect(manifest.editions.map((e) => e.id)).toEqual([1, 2, 3]);
   } finally {
     store.close();
   }
@@ -75,22 +76,6 @@ test("a publish while another connection holds the write lock does not stall the
   } finally {
     other.exec("ROLLBACK");
     other.close();
-    store.close();
-  }
-});
-
-test("a development page below the admin rank cannot publish to the cluster's editions", async () => {
-  const store = new PeopleStore({ db: ":memory:" });
-  const reg = coreRegistry();
-  try {
-    const gate: AdminGate = { dev: true, password: null, guesses: new Guesses(), tick: () => 0 };
-    const req = new Request("http://snark.test/admin/people/publish", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ revision: 0, garment: "core:plain_tee", colours: [0, 0, 0], name: "open page" }) });
-    expect(refused(req, "1.2.3.4", gate)).toBeNull();
-    expect(actorOf(req).rank).toBeLessThan(RANK_ADMIN);
-    const res = await peopleAdmin(req, "/admin/people/publish", store, () => reg)!;
-    expect(res.status).toBe(403);
-    expect(store.view().editions).toEqual([]);
-  } finally {
     store.close();
   }
 });

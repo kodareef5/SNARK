@@ -216,3 +216,33 @@ test("a store of another layout is refused by name", () => {
     store.close();
   }
 });
+
+test("a store's file is in WAL, so a world's read never waits on another's write", () => {
+  const dir = folder();
+  open(dir).view();
+  const db = new Database(join(dir, "people.sqlite"));
+  try {
+    expect((db.query("PRAGMA journal_mode").get() as { journal_mode: string }).journal_mode).toBe("wal");
+  } finally {
+    db.close();
+  }
+});
+
+test("an uploaded print no edition names goes after a day, and one an edition names stays", () => {
+  let now = Date.now();
+  const store = open(folder(), () => now);
+  try {
+    store.view();
+    const kept = encodePng(16, 16, new Uint8Array(16 * 16 * 4).fill(9)), loose = encodePng(16, 16, new Uint8Array(16 * 16 * 4).fill(99));
+    for (const p of [kept, loose]) writeFileSync(join(store.media, printName(hashOf(p))), p);
+    publish(store, { ...tee("printed"), print: { hash: hashOf(kept), width: 0, height: 0, place: { u: 0, v: 0, w: 1, h: 1, scale: 1, turn: 0 } } });
+    now += 23 * 60 * 60 * 1000;
+    store.sweep();
+    expect([existsSync(join(store.media, printName(hashOf(loose)))), existsSync(join(store.media, printName(hashOf(kept))))]).toEqual([true, true]);
+    now += 2 * 60 * 60 * 1000;
+    store.sweep();
+    expect([existsSync(join(store.media, printName(hashOf(loose)))), existsSync(join(store.media, printName(hashOf(kept))))]).toEqual([false, true]);
+  } finally {
+    store.close();
+  }
+});

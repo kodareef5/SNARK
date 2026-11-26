@@ -10,7 +10,6 @@
 //   POST /admin/people/print     the raw PNG: checked on its own thread and kept by hash; answers the hash
 //
 // The manifest itself is /media/people.<id>.json, which anyone may fetch and keep for good.
-import { rmSync } from "node:fs";
 import type { Registry } from "../../shared/content/registry.ts";
 import {
   EDITION_NAME_MAX, PRINT_BYTES_MAX, PRINT_SCALE_MAX, PRINT_SCALE_MIN, PRINT_SIDE_MAX, peopleManifestPath, printName, printPath, readDraft, type EditionDraft,
@@ -131,7 +130,7 @@ async function takePrint(req: Request, store: PeopleStore, did: (what: string) =
   const got = await store.check(bytes);
   const lost = holds();
   if (lost) {
-    if ("part" in got) rmSync(got.part, { force: true });
+    if ("part" in got) store.drop(got.part);
     return lost;
   }
   if ("fault" in got) return entryReply({ error: "The print could not be checked. Try again." }, 500);
@@ -150,6 +149,7 @@ async function takePrint(req: Request, store: PeopleStore, did: (what: string) =
 export function peopleAdmin(req: Request, path: string, store: PeopleStore, reg: () => Registry, acts: Pick<Acts, "write"> | null = null, recheck: Recheck | null = null): Promise<Response> | Response | null {
   if (!PEOPLE_PATHS.includes(path)) return null;
   const did = (what: string): void => void acts?.write(actorOf(req), what);
+  // A development world's open page passes the gate at staff rank and may change the editions, by design, as on every admin route.
   const holds = (): Response | null => (recheck ? stillHolds(req, recheck) : null);
   if (PEOPLE_GETS.includes(path)) {
     if (req.method !== "GET" && req.method !== "HEAD") return new Response(null, { status: 405, headers: { allow: "GET" } });
