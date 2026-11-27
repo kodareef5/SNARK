@@ -4,7 +4,9 @@
 // held-out Score in its weights file's `about`.
 //
 //   bun tools/decide/score.ts [--point <name>] [--layouts 40] [--fresh 0] [--workers 8] [--reading 1s|5s|end] [--note <text>]...
-//     [--root .cache/decide] [--held-families a,b --held-first 900001]
+//     [--root .cache/decide] [--held-families a,b --held-first 900001] [--held-data <root>]
+//
+// `--held-data` reads single decisions on another dataset's root, all of it held out, so two datasets are judged alike.
 //   bun tools/decide/score.ts --headroom <point>     how far the best candidate beats the rule, before any training
 //
 // One answer is timed in a child pinned to a fast core and to a slow one (taskset -c 2 and -c 20 on this machine).
@@ -154,13 +156,17 @@ async function play(point: string, policies: readonly Policy[], scenes: readonly
  * One point's scores, one entry for each profile of its tables; whole episodes are played on `workers` processes, the
  * held-out scenes its decisions came from and `fresh` new scenes of every family.
  */
-export async function scorePoint(point: string, o: { layouts: number; workers: number; reading?: number; fresh?: number; held?: { families: Family[]; first: number } }): Promise<PointScores[]> {
+export async function scorePoint(point: string, o: { layouts: number; workers: number; reading?: number; fresh?: number; held?: { families: Family[]; first: number }; heldData?: string }): Promise<PointScores[]> {
   const cat = catalog(point);
   const { manifest, decisions } = readData(dataDir(point, join(ROOT, "data")), cat.profiles);
   const agreed = agreement(point, manifest, decisions, cat);
   if (agreed.checked > 0) console.log(`${point}: ${agreed.agreed} of ${agreed.checked} stored decisions made again with combine give the stored pick (${agreed.ruleAgreed} of ${agreed.ruleChecked} under the rule)`);
   if (agreed.ruleAgreed < agreed.ruleChecked) throw new Error(`${point}: ${agreed.ruleChecked - agreed.ruleAgreed} decisions under the rule do not come out as the server made them: no regret or calibration of them can be trusted`);
   const profiles = manifest.profiles.map((n) => cat.profiles.find((q) => q.name === n.name)!);
+  // Single decisions are read on another dataset where one is named, every decision of it held out.
+  const other = o.heldData ? readData(dataDir(point, join(o.heldData, "data")), cat.profiles) : null;
+  const heldDecisions = other ? other.decisions : decisions;
+  const heldCat: Catalog = other ? { ...cat, split: { held: [...new Set(other.decisions.map((d) => d.family))], heldMaps: [...new Set(other.decisions.map((d) => d.map))], validation: [] } } : cat;
   const found = new Map(profiles.map((p) => [p.name, modelsOf(point, p)]));
   const policies: Policy[] = [
     { name: "today", policy: "off", models: [] }, { name: "rule", policy: "rule", models: [] },
@@ -179,7 +185,7 @@ export async function scorePoint(point: string, o: { layouts: number; workers: n
       return { name: f.name, kind: f.kind, model: f.model, bytes: f.bytes, microsFast: fast.p99, microsSlow: slow.p99, medianFast: fast.median, medianSlow: slow.median };
     });
     const names = new Set(["today", "rule", ...mine.map((f) => f.name)]);
-    const scores = ratePoint({ point, profile: p, cat, decisions, reading: o.reading ?? READINGS.length - 1, trained, episodes: episodes.filter((e) => names.has(e.name)) });
+    const scores = ratePoint({ point, profile: p, cat: heldCat, decisions: heldDecisions, reading: o.reading ?? READINGS.length - 1, trained, episodes: episodes.filter((e) => names.has(e.name)) });
     scores.fresh = fresh.filter((e) => names.has(e.name));
     if (agreed.checked > 0) scores.agreement = agreed;
     // The rule is timed as the trained are, from a file of its own outside the models.
@@ -234,7 +240,7 @@ if (import.meta.main && process.argv.includes("--time")) {
     status({ step: "score", point, done: 0, of: 1 });
     const reading = READINGS.indexOf((arg("--reading") ?? "end") as (typeof READINGS)[number]);
     const held = arg("--held-families") ? { families: arg("--held-families")!.split(",") as Family[], first: Number(arg("--held-first") ?? 1) } : undefined;
-    board.points.push(...(await scorePoint(point, { layouts: Number(arg("--layouts") ?? 40), workers: Number(arg("--workers") ?? 8), reading: reading < 0 ? undefined : reading, fresh: Number(arg("--fresh") ?? 0), held })));
+    board.points.push(...(await scorePoint(point, { layouts: Number(arg("--layouts") ?? 40), workers: Number(arg("--workers") ?? 8), reading: reading < 0 ? undefined : reading, fresh: Number(arg("--fresh") ?? 0), held, heldData: arg("--held-data") })));
   }
   writeFileSync(join(ROOT, "scoreboard.json"), JSON.stringify(board, null, 1));
   writeFileSync(join(ROOT, "scoreboard.html"), boardHtml(board));

@@ -175,14 +175,17 @@ export function episodeWhy(mine: EpisodeScore, rule: EpisodeScore, seed = 1): st
 export function gateOf(s: Score, o: { hasState: boolean; calibrated?: boolean; mine?: EpisodeScore; rule?: EpisodeScore; today?: EpisodeScore; seed?: number }): { pass: boolean; why: string[] } {
   const why: string[] = [];
   const f = (v: number, d = 3) => (Number.isFinite(v) ? v.toFixed(d) : String(v));
-  if (s.decisions < GATE.decisions || s.scenes < GATE.scenes) {
-    why.push(`not measurable: ${s.decisions} decisions from ${s.scenes} scenes held out, and ${GATE.decisions} from ${GATE.scenes} are needed`);
+  if (s.decisions === 0) why.push("single decisions: none are held out, so none of their marks can be read");
+  else {
+    if (s.decisions < GATE.decisions || s.scenes < GATE.scenes) {
+      why.push(`not measurable: ${s.decisions} decisions from ${s.scenes} scenes held out, and ${GATE.decisions} from ${GATE.scenes} are needed`);
+    }
+    if (!(s.regretRatio <= GATE.regretRatio)) why.push(`regret is ${f(s.regretRatio)} of the rule's, above ${GATE.regretRatio}`);
+    if (!(s.interval[1] < GATE.intervalTop)) why.push(`the interval's top is ${f(s.interval[1])}, not under ${GATE.intervalTop}`);
+    if (!(s.worstFamily <= GATE.worstFamily)) why.push(`its worst held-out family is ${f(s.worstFamily)} of the rule's, above ${GATE.worstFamily}`);
+    if (o.calibrated !== false && !(s.ece <= GATE.ece)) why.push(`ECE is ${f(s.ece)}, above ${GATE.ece}`);
+    if (o.hasState && !(s.blind.state >= GATE.blindState)) why.push(`hiding the state costs only ${f(s.blind.state)} of its gain over uniform, under ${GATE.blindState}: it does not read the state`);
   }
-  if (!(s.regretRatio <= GATE.regretRatio)) why.push(`regret is ${f(s.regretRatio)} of the rule's, above ${GATE.regretRatio}`);
-  if (!(s.interval[1] < GATE.intervalTop)) why.push(`the interval's top is ${f(s.interval[1])}, not under ${GATE.intervalTop}`);
-  if (!(s.worstFamily <= GATE.worstFamily)) why.push(`its worst held-out family is ${f(s.worstFamily)} of the rule's, above ${GATE.worstFamily}`);
-  if (o.calibrated !== false && !(s.ece <= GATE.ece)) why.push(`ECE is ${f(s.ece)}, above ${GATE.ece}`);
-  if (o.hasState && !(s.blind.state >= GATE.blindState)) why.push(`hiding the state costs only ${f(s.blind.state)} of its gain over uniform, under ${GATE.blindState}: it does not read the state`);
   if (Number.isFinite(s.microsFast) && s.microsFast > GATE.micros) why.push(`one answer takes ${f(s.microsFast, 1)} µs at the 99th percentile, above ${GATE.micros}`);
   if (s.bytes > GATE.bytes) why.push(`its weights are ${s.bytes} bytes, above ${GATE.bytes}`);
   if (o.mine && o.rule) {

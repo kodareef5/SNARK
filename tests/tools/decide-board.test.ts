@@ -71,6 +71,11 @@ test("the gate passes a scorer that meets every mark and names each one missed",
   expect(gateOf({ ...good(), blind: { state: NaN, columns: 0.5, shuffled: NaN } }, { hasState: false, mine: ep("m", 40, 700), rule: ep("rule", 38, 720) }).pass).toBe(true);
 });
 
+test("with no decisions held out the gate says so once and still reads whole episodes", () => {
+  const none = { ...good(), decisions: 0, scenes: 0, regretRatio: NaN, interval: [NaN, NaN] as [number, number], worstFamily: NaN, ece: NaN, blind: { state: NaN, columns: NaN, shuffled: NaN } };
+  expect(gateOf(none, { hasState: true, mine: ep("m", 37, 700), rule: ep("rule", 38, 720) }).why.map((w) => w.split(":")[0])).toEqual(["single decisions", "whole episodes", "whole episodes", "whole episodes"]);
+});
+
 test("ECE is a bar only where the point's probability is read", () => {
   const off = { ...good(), ece: 0.2 };
   expect(gateOf(off, { hasState: true, calibrated: false, mine: ep("m", 40, 700), rule: ep("rule", 38, 720) }).pass).toBe(true);
