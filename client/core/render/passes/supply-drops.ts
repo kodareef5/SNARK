@@ -1,23 +1,17 @@
-// The supply drops, drawn from the list the server tells (client/core/supply.ts): a shaft of light where each will land or
-// has, and near enough the capsule itself, in pieces. Its bones and its lights' effect are in ../supply.ts and
-// ../supply-light.ts; the streak it leaves in the sky is the frame block's (../supply-sky.ts).
-
+// The supply pass draws each beacon and animates capsules that have a model.
 import type { Registry } from "../../../../shared/content/registry.ts";
 import type { Assets } from "../../assets/assets.ts";
 import type { Details } from "../../details/details.ts";
 import type { Frame, Pass } from "../pass.ts";
 import { TICK_RATE } from "../../../../shared/coords.ts";
 import type { SupplyView } from "../../supply.ts";
-import { JET_REACH, WASH_EVERY, WASH_HEIGHT, bellAt, jetLength, squash, TRAIL_MOST, TRAIL_REACH, alongBone, CAPSULE, CAPSULE_REACH, shaftFlat, FIGURE_FAR_SIZE, FIGURE_NEAR, FIGURE_UNDER_HEAD, FOOT_REACH, HALOS, HOOP_RATE, PIECE, PIECES as CAPSULE_PIECES, SHAFTS_MOST, SHAFT_HEIGHT, SHEATH_WIDER, SLAT_REACH, collarBone, fixedBone, haloAt, hatchBone, hoopBone, legBone, markBone, shaftKeeps, shaftRadius, slatBone, uprightBone, type CapsuleStance } from "../supply.ts";
+import { JET_REACH, WASH_EVERY, WASH_HEIGHT, bellAt, jetLength, squash, TRAIL_MOST, TRAIL_REACH, alongBone, CAPSULE, CAPSULE_REACH, HOOP_RATE, PIECE, PIECES as CAPSULE_PIECES, SHAFTS_MOST, SLAT_REACH, collarBone, fixedBone, hatchBone, hoopBone, legBone, markBone, slatBone, uprightBone, type CapsuleStance } from "../supply.ts";
 import { packEffect } from "../supply-light.ts";
 import { TRAIL_SECONDS } from "../supply-sky.ts";
 import { MARKS, POSE_COMING, POSE_FLYING, POSE_GONE, POSE_LANDED, newPose, supplyPose } from "../../../../shared/sim/supply.ts";
 import { nearestColour } from "../../../../shared/pack/palette.ts";
-import type { Camera } from "../camera.ts";
+import { SupplyBeacons } from "../supply-beacon.ts";
 import { BONE_FLOATS, DRAW_EMISSIVE, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_DRAWS, TRANSIENT_BUFFER } from "../packet.ts";
-
-/** Whether a shaft of light `wide` in radius and `tall` high, its foot camera-relative, is in the view. */
-const shaftSeen = (cam: Camera, x: number, y: number, z: number, wide: number, tall: number): boolean => cam.boxVisible(x - wide, y, z - wide, x + wide, y + tall, z + wide);
 
 export class SupplyDrops implements Pass {
   /** The supply drops live on the map, drawn from the list the server tells (client/core/supply.ts). The app sets it (Scene.supply). */
@@ -29,7 +23,7 @@ export class SupplyDrops implements Pass {
   private readonly pose = newPose();
   private readonly rows = new Float32Array(BONE_FLOATS);
   private readonly tints = new Map<number, number>();
-  private readonly halo = { height: 0, strength: 0 };
+  readonly beacons = new SupplyBeacons();
   private readonly bell = new Float32Array(3);
   /** By drop: the tick its jets last raised dust, and the state it was last seen in, for the burst as it lands. */
   private readonly wash = new Map<number, number>();
@@ -61,15 +55,15 @@ export class SupplyDrops implements Pass {
    */
   draw(f: Frame): void {
     const view = this.view;
-    if (!view?.list || this.kind < 0) return;
+    if (!view) return;
+    view.capsules = view.shafts = 0;
+    view.modelled = this.kind >= 0;
+    if (!view.list) return;
     this.f = f;
-    const p = f.packet, cam = f.cam;
+    const cam = f.cam;
     const list = view.list;
     const pose = this.pose, s = this.stance, rows = this.rows;
-    view.modelled = true;
-    view.capsules = view.shafts = 0;
     const seconds = view.tick / TICK_RATE;
-    const halo = this.halo;
     // What is kept by drop is let go with its drop.
     if (this.state.size > list.rows.length + 8) {
       this.state.clear();
@@ -80,57 +74,12 @@ export class SupplyDrops implements Pass {
       if (pose.state === POSE_GONE) continue;
       const tier = list.tiers[row.tier];
       const rgb = tier?.rgb ?? 0xffffff;
-      // The shaft, where the drop will land or has: a tube of light sized by its bone, never thinner than two pixels,
-      // brought in to the edge of the view where it stands beyond it, and kept through the haze. Its pulses, its
-      // sheath and halos (a ringed drop's), its class's figure near its foot and under its head, the glow at its foot.
-      let sx = row.x - cam.x, sy = row.y - cam.y, sz = row.z - cam.z;
-      const reach = Math.hypot(sx, sz);
-      const fog = Math.max(0, Math.min(1, (reach - p.fogStart) / Math.max(1, p.fogEnd - p.fogStart)));
-      const power = pose.shaft * shaftKeeps(reach, fog);
-      if (power > 0.01 && view.shafts < SHAFTS_MOST) {
-        // Past nine tenths of the far plane it is drawn there, as wide and as tall as it then looks.
-        const near = reach > 0.9 * cam.far ? (0.9 * cam.far) / reach : 1;
-        sx *= near;
-        sy *= near;
-        sz *= near;
-        const wide = shaftRadius(reach, cam.fovY, f.viewHeight) * near;
-        f.put.effect[0] = (view.tick - row.land) / TICK_RATE;
-        f.put.effect[1] = rgb;
-        f.put.effect[2] = power;
-        // The tubes are lit flat where they are a few pixels wide; the figures and halos are not tubes.
-        f.put.effect[3] = packEffect(tier?.count ?? 1, row.ringed, row.look, shaftFlat(reach, cam.fovY, f.viewHeight));
-        uprightBone(rows, 0, sx, sy, sz, wide, near);
-        // The tube is as wide as its bone makes it, whatever the reach of the mesh it is sized from.
-        if (shaftSeen(cam, sx, sy, sz, wide, SHAFT_HEIGHT * near) && this.piece(PIECE.shaft, true, Math.max(wide, 1), SHAFT_HEIGHT * near)) view.shafts++;
-        const mark = list.classes[row.cls]?.mark ?? 0;
-        const figure = PIECE.figure + (mark < MARKS.length ? mark : 0);
-        if (reach < 700) {
-          uprightBone(rows, 0, sx, sy + FIGURE_NEAR, sz, 1, 1);
-          this.piece(figure, true, 1, 3);
-        }
-        uprightBone(rows, 0, sx, sy + (SHAFT_HEIGHT - FIGURE_UNDER_HEAD) * near, sz, FIGURE_FAR_SIZE * near, FIGURE_FAR_SIZE * near);
-        this.piece(figure, true, FIGURE_FAR_SIZE * near, 30 * near);
-        if (row.ringed) {
-          const sheath = shaftRadius(reach, cam.fovY, f.viewHeight, SHEATH_WIDER) * near;
-          uprightBone(rows, 0, sx, sy, sz, sheath, near);
-          this.piece(PIECE.sheath, true, Math.max(sheath, 1), SHAFT_HEIGHT * near);
-          // Low poly draws light as flat colour that hides what is behind it: a halo would be a slab, so it has none.
-          for (let k = 0; k < HALOS && reach < 500 && p.lit; k++) {
-            haloAt(seconds + row.look, k, halo);
-            f.put.effect[2] = power * halo.strength;
-            uprightBone(rows, 0, sx, sy + halo.height, sz, sheath * 1.2, 1);
-            this.piece(PIECE.halo, true, sheath * 1.2, 0.4);
-          }
-        }
-        // Nor the glow on the ground at its foot, which would be a disc of paint.
-        if (pose.state !== POSE_COMING && reach < 400 && p.lit) {
-          f.put.effect[2] = power * (0.4 + 0.6 * pose.standing);
-          uprightBone(rows, 0, sx, sy, sz, FOOT_REACH, 1);
-          this.piece(PIECE.foot, true, FOOT_REACH, 0.1);
-        }
-        f.put.effect.fill(0);
+      if (pose.shaft > 0 && view.shafts < SHAFTS_MOST) {
+        const lamp = view.modelled ? CAPSULE.mast.lamp : 2.2;
+        const sink = view.modelled && pose.state === POSE_LANDED ? squash(pose.since) : 0;
+        if (this.beacons.add(f, row.x - cam.x, row.y + lamp - sink - cam.y, row.z - cam.z, pose.shaftHeight, pose.shaft, rgb, row.ringed)) view.shafts++;
       }
-      if (pose.state === POSE_COMING) continue;
+      if (!view.modelled || pose.state === POSE_COMING) continue;
       s.x = pose.x - cam.x;
       s.y = pose.y - cam.y;
       s.z = pose.z - cam.z;

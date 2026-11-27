@@ -1,11 +1,4 @@
-// The supply drops as a client draws them (planning/workstreams/supply.md), from the list the server tells every
-// session (S_SUPPLY) and the pose every party works out from a drop's ticks (shared/sim/supply.ts): a shaft where each
-// will land or has landed, in its tier's colour and seen from any distance, and its capsule while it flies, brakes and
-// leaves. A landed capsule within sight is the server's own prop, which the scene draws as it draws any.
-//
-// This is the flat path: a column and a box. The capsule's model and the shaft's light take its place where the
-// renderer can draw them.
-
+// A pack without the capsule model draws a simple box. The supply pass draws its beacon.
 import { TICK_RATE } from "../../shared/coords.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
@@ -16,11 +9,6 @@ import type { Camera } from "./render/camera.ts";
 import type { Characters } from "./render/characters.ts";
 import type { FramePacket } from "./render/packet.ts";
 
-/** Metres the shaft stands, and its width at hand. */
-export const SHAFT_HEIGHT = 600;
-export const SHAFT_WIDTH = 0.7;
-/** The width it is never thinner than, as a share of its distance: about two pixels of a screen 1,080 high. */
-const SHAFT_FLOOR = 0.002;
 /** Metres from the eye past which the capsule in flight is drawn as large as it must be to be a few pixels. */
 const BOX_FLOOR = 0.004;
 /** Metres within which a landed capsule is the server's prop, which the scene draws: the bodies a session is sent. */
@@ -33,10 +21,9 @@ export class SupplyView {
   /** How many shafts and capsules the last frame drew. */
   shafts = 0;
   capsules = 0;
-  /** The scene draws the capsules from their model (render/passes/supply-drops.ts), and this the shafts alone. */
+  /** Whether the supply pass draws the packed capsule model. */
   modelled = false;
   private readonly box: number;
-  private readonly beam: number;
   private readonly palette = defaultPalette();
   private readonly tints = new Map<number, number>();
   private readonly pose = newPose();
@@ -44,7 +31,6 @@ export class SupplyView {
   constructor(reg: Registry, pack: Pack) {
     const { table } = new Assets(reg, pack);
     this.box = table.find("core:supply_box");
-    this.beam = table.find("core:supply_beam");
   }
 
   /** The palette colour nearest a tier's. */
@@ -62,9 +48,9 @@ export class SupplyView {
   draw(ch: Characters, p: FramePacket, cam: Camera): void {
     // Where the pack has the capsule's model the scene draws it all, shafts too (render/passes/supply-drops.ts).
     if (this.modelled) return;
-    this.shafts = this.capsules = 0;
+    this.capsules = 0;
     const list = this.list;
-    if (!list || this.beam < 0) return;
+    if (!list || this.box < 0) return;
     const pose = this.pose;
     for (const row of list.rows) {
       supplyPose(row, this.tick, TICK_RATE, pose);
@@ -73,17 +59,8 @@ export class SupplyView {
       const x = row.x - cam.x;
       const y = row.y - cam.y;
       const z = row.z - cam.z;
-      const far = Math.hypot(x, z);
-      // The shaft: thinner as it comes up and as it goes, and never under two pixels wide.
-      if (pose.shaft > 0.02) {
-        const wide = Math.max(SHAFT_WIDTH, far * SHAFT_FLOOR) * pose.shaft;
-        if (cam.boxVisible(x - wide, y, z - wide, x + wide, y + SHAFT_HEIGHT, z + wide)) {
-          if (!ch.loose(p, this.beam, x, y, z, 0, 1, 0, SHAFT_HEIGHT, wide, tint)) return;
-          this.shafts++;
-        }
-      }
       // The capsule: in the air, and on the ground where the server's prop is not in sight to be drawn.
-      if (this.box < 0 || pose.state === POSE_COMING) continue;
+      if (pose.state === POSE_COMING) continue;
       if (pose.state === POSE_LANDED && Math.hypot(x, y, z) < PROP_RANGE) continue;
       const cx = pose.x - cam.x;
       const cy = pose.y - cam.y;

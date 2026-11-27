@@ -12,9 +12,9 @@ import { MARKS } from "../../../shared/sim/supply.ts";
 
 export const CAPSULE = profile;
 /** The pieces by the name of their mesh, `core:supply_capsule/<name>`. */
-export const PIECES = ["hull", "leg", "shutter", "hatch", "collar", "hoop", "lights", ...MARKS.map((m) => `mark_${m}`), "shaft", "sheath", "halo", "jet", "foot", ...MARKS.map((m) => `figure_${m}`)] as const;
+export const PIECES = ["hull", "leg", "shutter", "hatch", "collar", "hoop", "lights", ...MARKS.map((m) => `mark_${m}`), "jet"] as const;
 /** Where each kind of piece is in PIECES. */
-export const PIECE = { hull: 0, leg: 1, shutter: 2, hatch: 3, collar: 4, hoop: 5, lights: 6, mark: 7, shaft: 7 + MARKS.length, sheath: 8 + MARKS.length, halo: 9 + MARKS.length, jet: 10 + MARKS.length, foot: 11 + MARKS.length, figure: 12 + MARKS.length } as const;
+export const PIECE = { hull: 0, leg: 1, shutter: 2, hatch: 3, collar: 4, hoop: 5, lights: 6, mark: 7, jet: 7 + MARKS.length } as const;
 /** Slats in the whole lantern, a bay to each pair of legs. */
 export const SLATS = profile.legs * profile.lantern.slats;
 /** Metres past which a capsule is not drawn: its shaft carries it. */
@@ -24,15 +24,10 @@ export const SLAT_REACH = 70;
 /** Radians a second the hoop of a ringed drop turns. */
 export const HOOP_RATE = 0.45;
 
-// The shaft, which is modelled a metre in radius and SHAFT_HEIGHT tall and sized by its bone.
-export const SHAFT_HEIGHT = 600;
-/** Its radius at hand, in metres, and how many times wider a ringed drop's sheath is. */
+/** Beam radius beside the capsule, in metres. */
 export const SHAFT_RADIUS = 0.42;
-export const SHEATH_WIDER = 2.7;
 /** The fewest pixels wide it is drawn, however far off. */
 export const SHAFT_PIXELS = 3;
-/** How many times a far shaft's width its sheath is: a ringed drop is a wider column from across the map. */
-export const SHEATH_FAR = 3;
 /** The most shafts a frame draws, the nearest first as the server lists them. */
 export const SHAFTS_MOST = 16;
 /** Metres from the eye over which the farthest shafts fade out. */
@@ -40,43 +35,16 @@ export const SHAFT_FADE_FROM = 6000;
 export const SHAFT_FADE_TO = 8000;
 /** How much of a shaft the haze may take: it is a signal, and is never lost in it. */
 export const SHAFT_HAZE = 0.56;
-/** Metres up the shaft its class's figure of light stands, three metres tall; and how far under its head the same stands thirty metres tall. */
-export const FIGURE_NEAR = 12;
-export const FIGURE_UNDER_HEAD = 70;
-export const FIGURE_FAR_SIZE = 10;
-/** A ringed drop's halos: how many climb its shaft at once, metres a second, and the metres each climbs before it is gone. */
-export const HALOS = 3;
-export const HALO_RATE = 3.2;
-export const HALO_CLIMB = 54;
-/** Metres the glow at its foot reaches. */
-export const FOOT_REACH = 6;
-
 /** How wide a shaft is drawn `far` metres off, as a radius in metres: its own, or what SHAFT_PIXELS pixels are there. */
-export function shaftRadius(far: number, fovY: number, pixelsTall: number, wider = 1): number {
+export function shaftRadius(far: number, fovY: number, pixelsTall: number): number {
   const floor = (far * fovY * SHAFT_PIXELS) / (2 * Math.max(1, pixelsTall));
-  return Math.max(SHAFT_RADIUS * wider, floor * (wider > 1 ? SHEATH_FAR : 1));
-}
-
-/**
- * How flat a shaft `far` metres off is lit, 0 to 1 (supply-light.ts packEffect): not at all while it is its own width,
- * and wholly by where it is drawn twice as wide as it is to hold its pixels.
- */
-export function shaftFlat(far: number, fovY: number, pixelsTall: number): number {
-  const floor = (far * fovY * SHAFT_PIXELS) / (2 * Math.max(1, pixelsTall));
-  return Math.max(0, Math.min(1, floor / SHAFT_RADIUS - 1));
+  return Math.max(SHAFT_RADIUS, floor);
 }
 
 /** How much of its light a shaft keeps `far` metres off, through haze that takes `fog` (0 to 1) of what is there. */
 export function shaftKeeps(far: number, fog: number): number {
   const lost = Math.min(SHAFT_HAZE, fog * fog);
   return (1 - lost) * (1 - smooth((far - SHAFT_FADE_FROM) / (SHAFT_FADE_TO - SHAFT_FADE_FROM)));
-}
-
-/** How high halo `k` of a ringed drop is over its foot at `seconds`, and how strongly it shows: it comes up out of the foot and is gone before it would turn back. */
-export function haloAt(seconds: number, k: number, out: { height: number; strength: number }): void {
-  const t = (seconds * HALO_RATE + (k * HALO_CLIMB) / HALOS) % HALO_CLIMB;
-  out.height = 2.5 + t;
-  out.strength = smooth(t / 5) * (1 - smooth((t - HALO_CLIMB + 14) / 12));
 }
 
 // The jets: a plume under each bell, modelled a metre long.

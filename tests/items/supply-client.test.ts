@@ -17,9 +17,9 @@ import { Harness } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
 
 /** Ada's whole client on level ground a kilometre a side, with cheats, at (x, z). */
-function client(x = 600, z = 600) {
+function client(x = 600, z = 600, pack = corePack()) {
   const h = new Harness({}, 1, 60, { dev: true, map: writeMap(flatMap(16)), log: () => {} });
-  const app = new App(h.join("ada", {}, { manual: true }), h.reg, corePack());
+  const app = new App(h.join("ada", {}, { manual: true }), h.reg, pack);
   const run = (ms: number): void => h.run(ms, (now) => void app.frame(now, 1280, 720));
   run(600);
   const s = app.session;
@@ -49,7 +49,7 @@ function client(x = 600, z = 600) {
   return { h, app, s, run, stand, tap, edit, me: h.host.records.byPid.get(h.client(s)!.pid)! };
 }
 
-artTest("the whole client: a drop's shaft from near and from far, its capsule in the air, the prompt that says its level, a bag that only takes, and its going", () => {
+artTest("the beacon appears after landing and fades as the emptied capsule leaves", () => {
   const { h, app, s, run, stand, tap, me } = client();
   const { supply } = h.host;
   const [X, Z] = [640, 660];
@@ -58,25 +58,23 @@ artTest("the whole client: a drop's shaft from near and from far, its capsule in
   run(2600);
   const d = supply.drops[0]!;
   const row = () => s.supply.rows[0]!;
-  // Its shaft stands, and nothing of a capsule yet.
-  expect([s.supply.rows.length, app.supply.stateOf(row()), app.supply.shafts, app.supply.capsules]).toEqual([1, POSE_COMING, 1, 0]);
-  // From 500 m, and with her back to it, when nothing of it is in the view.
+  expect([s.supply.rows.length, app.supply.stateOf(row()), app.supply.shafts, app.supply.capsules]).toEqual([1, POSE_COMING, 0, 0]);
   stand(280, 320, X, Z, 0.1);
-  expect(app.supply.shafts).toBe(1);
-  stand(280, 320, 0, 0, 0);
   expect(app.supply.shafts).toBe(0);
   // Brought down: the capsule is drawn in the air as it brakes, and not once it stands near her as the server's prop.
   stand(X - 60, Z - 40, X, Z, 0.5);
   s.text(`supply land ${d.id} 10`);
   run(300);
   h.run(((d.land - d.brake - h.world.tick) / TICK_RATE) * 1000 + 2000, (now) => void app.frame(now, 1280, 720));
-  expect([app.supply.stateOf(row()), app.supply.shafts, app.supply.capsules]).toEqual([POSE_BRAKING, 1, 1]);
+  expect([app.supply.stateOf(row()), app.supply.shafts, app.supply.capsules]).toEqual([POSE_BRAKING, 0, 1]);
   h.run(((d.land - h.world.tick) / TICK_RATE) * 1000 + 1000, (now) => void app.frame(now, 1280, 720));
   // Landed near her: the capsule is its model where the pack has one, and where it has none the server's prop, which this does not draw.
   expect([d.landed, app.supply.stateOf(row()), app.supply.shafts, app.supply.capsules]).toEqual([true, POSE_LANDED, 1, app.supply.modelled ? 1 : 0]);
   // From far off there is no prop in her view, and the capsule is drawn in its place.
   stand(X - 300, Z, X, Z, 0);
   expect([app.supply.shafts, app.supply.capsules]).toEqual([1, 1]);
+  stand(X - 300, Z, 0, Z, 0);
+  expect(app.supply.shafts).toBe(0);
   // At hand, below its level: the prompt says the level and E opens nothing.
   stand(X, Z - 3.2, X, Z, -0.3);
   expect(app.hud.prompt).toBe("Purple Works drop  opens at level 35");
@@ -124,6 +122,23 @@ artTest("the whole client: a drop's shaft from near and from far, its capsule in
   run(LEAVE_SECONDS * 1000);
   expect([s.supply.rows, app.supply.shafts, app.supply.capsules, h.host.items.audit(), me.dead]).toEqual([[], 0, 0, [], false]);
   h.host.shutdown();
+});
+
+artTest("a stand-in capsule shows the beacon only after landing", () => {
+  const pack = corePack();
+  const meshes = pack.header.meshes.filter((mesh) => !mesh.id.startsWith("core:supply_capsule/"));
+  const meshIndex = new Map(meshes.map((mesh, index) => [mesh.id, index]));
+  const { h, app, s, run } = client(600, 600, { ...pack, header: { ...pack.header, meshes }, meshIndex });
+  try {
+    s.text("supply call 600 625 blue arms plain 60");
+    run(2500);
+    expect(app.supply.shafts).toBe(0);
+    s.text("supply land all");
+    run(1100);
+    expect([app.supply.modelled, app.supply.shafts]).toEqual([false, 1]);
+  } finally {
+    h.host.shutdown();
+  }
 });
 
 artTest("take all takes all: twenty stacks and more leave a capsule at one press, though the server runs a session's commands a few at a time", () => {

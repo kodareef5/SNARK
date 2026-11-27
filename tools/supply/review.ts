@@ -3,7 +3,7 @@
 // from far off and from near, watched down, opened at its level and emptied, pictured at each moment and checked as it
 // goes.
 //
-//   bun tools/supply/review.ts [--out var/supply/review] [--size 960x600] [--tier high]
+//   bun tools/supply/review.ts [--out var/supply/review] [--size 960x600] [--tier high] [--source assets/source]
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { App } from "../../client/core/app.ts";
@@ -41,8 +41,9 @@ if (import.meta.main) {
   const [width, height] = (value("--size") ?? "960x600").split("x").map(Number) as [number, number];
   const tier = (value("--tier") ?? "high") as "high";
   mkdirSync(out, { recursive: true });
-  const bytes = corePack(SOURCE), pack = parsePack(bytes);
-  const named = await namedTextures(SOURCE);
+  const source = resolve(value("--source") ?? SOURCE);
+  const bytes = corePack(source), pack = parsePack(bytes);
+  const named = await namedTextures(source);
   const files = splitWithTextures(bytes, (t) => {
     const texture = named.get(t.id);
     if (!texture) throw new Error(`no texture ${t.id}`);
@@ -78,10 +79,10 @@ if (import.meta.main) {
   };
   const { supply } = h.host;
   const state = (): string => (session.supply.rows[0] ? POSE_NAMES[app.supply.stateOf(session.supply.rows[0])]! : "none");
-  const shoot = (name: string, note: string) => {
+  const shoot = (name: string, note: string, withUi = false) => {
     if (!packet || !raster) throw new Error(`${name}: the App made no frame`);
     raster.render(packet);
-    drawUi(raster.color, width, height, app.ui.frame);
+    if (withUi) drawUi(raster.color, width, height, app.ui.frame);
     writeFileSync(resolve(out, `${String(shots.length + 1).padStart(2, "0")}-${name}.png`), encodePng(width, height, raster.color.slice()));
     const shot = { name, note, prompt: app.hud.prompt, state: state(), shafts: app.supply.shafts, capsules: app.supply.capsules, props: drawn("core:supply_capsule") + drawn("box") };
     shots.push(shot);
@@ -99,6 +100,7 @@ if (import.meta.main) {
   try {
     frame(0);
     run(600);
+    if (app.view.thirdPerson) tap("KeyV");
     session.text("enablecheats");
     run(250);
     const me = h.host.records.byPid.get(h.client(session)!.pid)!;
@@ -110,25 +112,31 @@ if (import.meta.main) {
     must("the console called a blue Arms drop", d !== undefined && d.tierKey === "blue" && d.clsKey === "arms" && d.sender === 0);
     must("her client was told of it", session.supply.rows.length === 1 && session.supply.rows[0]!.id === d.id && session.supply.tiers[0]!.level === 25);
     run(2200);
-    shoot("called", "forty metres from where it will land, two seconds after the call: its shaft stands, and nothing lies there yet");
-    must("the shaft is drawn", last().shafts === 1 && last().capsules === 0 && last().state === "coming");
+    shoot("called", "The landing site is dark two seconds after the call.");
+    must("the landing site is dark", last().shafts === 0 && last().capsules === 0 && last().state === "coming");
 
     // From half a kilometre off, across the map.
     stand(260, 300, X, Z, 0.12);
-    shoot("far", "from 520 m: the shaft is still there to be found by looking");
-    must("the shaft is drawn from far off", last().shafts === 1);
+    shoot("far", "The distant site is dark before touchdown.");
+    must("the distant site is dark", last().shafts === 0);
 
     // Brought down in twelve seconds: the cast is under way, the capsule seen arriving.
-    stand(X - 60, Z - 40, X, Z, 0.5);
+    stand(X - 290, Z - 240, X, Z, 0.47);
     session.text(`supply land ${d.id} 12`);
     run(300);
     must("it is on its way down", ["flying", "braking"].includes(supply.state(d)));
     h.run(Math.max(0, ((d.land - d.brake - h.world.tick) / TICK_RATE) * 1000 + 2500), frame);
     if (process.env.PROBE) console.log("probe", { serverTick: h.world.tick, clientTick: app.supply.tick, sessionTick: session.serverTick, server: [d.called, d.release, d.land, d.brake, d.left], row: session.supply.rows.map((r) => [r.called, r.release, r.land, r.brake, r.left]), version: session.supplyVersion, serverState: supply.state(d) });
-    shoot("braking", "seventy metres off, as it brakes down its shaft: the capsule in the air over its place");
-    must("the capsule is drawn in the air", last().state === "braking" && last().capsules === 1 && last().shafts === 1);
-    h.run(Math.max(0, ((d.land - h.world.tick) / TICK_RATE) * 1000 + 1500), frame);
+    shoot("braking", "The capsule brakes above the dark landing site.");
+    must("the capsule is drawn in the air", last().state === "braking" && last().capsules === 1 && last().shafts === 0);
+    h.run(Math.max(0, ((d.land - h.world.tick) / TICK_RATE) * 1000 + 1000), frame);
     must("it has landed as a capsule", d.landed && h.host.records.byPid.has(d.pid) && session.supply.rows[0]!.landed);
+
+    shoot("rising", "The tip is halfway up one second after touchdown.");
+    must("the beacon is rising", last().shafts === 1);
+    run(1500);
+    shoot("full", "The beacon reaches full height from the same viewpoint.");
+    must("the beacon stands", last().shafts === 1);
 
     // Stood back from, to see the whole of it; and from the other side.
     stand(X + 4.2, Z - 4.2, X, Z, -0.12);
@@ -137,12 +145,12 @@ if (import.meta.main) {
     stand(X - 3.2, Z + 3.6, X, Z, -0.1);
     shoot("around", "from its other side");
     stand(X - 3, Z - 3, X, Z, 1.1);
-    shoot("under", "from under its shaft, looking up it: its pulses climbing, its class's figure twelve metres up");
+    shoot("under", "The beacon rises from the capsule’s mast.");
     stand(X - 110, Z - 100, X, Z, 0.35);
-    shoot("shaft", "from 150 m: the whole of the shaft's lower half, and the capsule at its foot");
+    shoot("shaft", "The lower shaft and capsule are visible from 150 m.");
     // Walked up to, below its level: the prompt says the level, and E does nothing.
     stand(X, Z - 3.2, X, Z, -0.3);
-    shoot("landed", "three metres from it, at level 1: the prompt names it and the level it opens at");
+    shoot("landed", "three metres from it, at level 1: the prompt names it and the level it opens at", true);
     must(`the prompt says its level ("${last().prompt}")`, last().prompt === "Blue Arms drop  opens at level 25");
     tap("KeyE");
     run(300);
@@ -158,7 +166,7 @@ if (import.meta.main) {
     if (!app.ui.screen<InventoryScreen>("inventory").open) tap("KeyI");
     run(300);
     const held = session.open!.inventory.used();
-    shoot("open", `the capsule open beside her bag, holding ${held} stacks, with Take all at its head`);
+    shoot("open", `the capsule open beside her bag, holding ${held} stacks, with Take all at its head`, true);
     must("Take all is offered", app.ui.frame.nodes.some((n) => n.key === KEY_OPEN_TAKE_ALL && n.text === "Take all"));
     const before = { mine: session.inventory!.used(), corrections: session.stats.corrections };
     app.ui.screen<InventoryScreen>("inventory").press(0, KEY_OPEN_TAKE_ALL, 0, session);
@@ -178,7 +186,7 @@ if (import.meta.main) {
     must("nothing is drawn of it", last().shafts === 0 && last().capsules === 0 && last().state === "none");
     must("nothing was made or lost", h.host.items.audit().length === 0);
 
-    // A ringed drop of the highest tier, for its sheath, its halos and its hoop: by day, and at night.
+    // The higher tier carries a wider glow by day and at night.
     session.text(`supply call ${X} ${Z} meridian voyage ringed 90`);
     run(400);
     const ringed = supply.drops[0]!;
@@ -187,11 +195,11 @@ if (import.meta.main) {
     run(300);
     stand(X - 14, Z - 12, X, Z, 0.75);
     h.run(Math.max(0, ((ringed.land - ringed.brake - h.world.tick) / TICK_RATE) * 1000 + 4200), frame);
-    shoot("ringed-braking", "eighteen metres off as a ringed drop brakes: legs coming out, the sheath round its shaft");
-    must("it is braking", last().state === "braking" && last().capsules === 1);
+    shoot("ringed-braking", "The ringed capsule extends its legs above the dark landing site.");
+    must("it is braking", last().state === "braking" && last().capsules === 1 && last().shafts === 0);
     h.run(Math.max(0, ((ringed.land - h.world.tick) / TICK_RATE) * 1000 + 7000), frame);
     stand(X + 5, Z - 5.5, X, Z, -0.02);
-    shoot("ringed", "a ringed Meridian drop standing: seven collars, the hoop turning, halos climbing its shaft");
+    shoot("ringed", "The ringed Meridian capsule carries seven collars, a hoop and a wider glow.");
     must("it stands, ringed", last().state === "landed" && session.supply.rows[0]!.ringed);
     session.text("settime 22");
     run(600);
@@ -206,8 +214,6 @@ if (import.meta.main) {
     session.text("settime 19");
     run(400);
     stand(X - 60, Z - 40, X, Z, 0.4);
-    // From her own eye, so that her body is not between it and the sky.
-    if (app.view.thirdPerson) tap("KeyV");
     run(300);
     must("the view is from her eye", !app.view.thirdPerson);
     session.text(`supply call ${X} ${Z} green works plain 45`);
@@ -237,7 +243,7 @@ if (import.meta.main) {
     must("a streak is written for the dome", packet!.frame[DROPS_AT + 3]! > 0.9 && last().state === "flying");
     h.run(Math.max(0, ((cast.land - cast.brake - h.world.tick) / TICK_RATE) * 1000 - 3500), frame);
     capsule();
-    shoot("streak-late", "three seconds before its jets light: coming down toward the head of its shaft");
+    shoot("streak-late", "The drop descends toward the site three seconds before its jets light.");
     writeFileSync(resolve(out, "report.json"), JSON.stringify({ generated: new Date().toISOString(), pipeline: "Harness server, App with its own keys, streamed pack, Rasterizer", tier, size: [width, height], stacks: held, shots }, null, 2));
     console.log(`${out}: ${shots.length} pictures of one drop from its call to its going`);
   } finally {

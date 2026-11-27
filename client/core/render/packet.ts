@@ -111,6 +111,8 @@ export const DETAIL_PUFF = 16;
 export const DETAIL_ROTOR = 32;
 /** Analytic emissive strip and halo of an active vehicle lens. */
 export const DETAIL_LAMP = 64;
+/** A soft column of tier-coloured light rising from a supply capsule. */
+export const DETAIL_BEACON = DETAIL_LAMP | 2;
 /** Analytic soft disc of a working street lamp's light: its pool on the ground, or its glow round the lens (street-lamps.ts). */
 export const DETAIL_POOL = 128;
 /** A length of wire hung between two poles (street-wires.ts): the pool's flag over shape 1, as a pool has no shape of its own. */
