@@ -3,13 +3,14 @@
 // headline) and a label's replay (label.ts): the replay forces a candidate at one answer of the point, reseeds the
 // mover's luck there when the movement code allows it, and reads the cost one second on, five, and at the end.
 
-import { GOAL_WALK, SEARCH_CELLS } from "../../server/behavior.ts";
+import { GOAL_WALK, MIND_FLEE, SEARCH_CELLS } from "../../server/behavior.ts";
 import { LEAVE, SPARE, type Point } from "../../server/decide/decide.ts";
+import { PROGRESS } from "../../server/decide/nav.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { SNAG_SECONDS } from "../../shared/decide/profiles.ts";
 import { Rng } from "../../shared/rng.ts";
 import type { Model } from "../../shared/decide/forward.ts";
-import { endDepth, headDepth, type MoveParams } from "../../shared/sim/character.ts";
+import { endDepth, headDepth, swimDepth, type MoveParams } from "../../shared/sim/character.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { combine } from "../../shared/decide/combine.ts";
 import { answer } from "../../shared/decide/forward.ts";
@@ -24,7 +25,7 @@ import { flatMap } from "../../tests/fixtures/map.ts";
 import { GAME_CATALOG, NAV_POINTS } from "./catalog.ts";
 import { READINGS, type Final } from "./dataset.ts";
 import { ALONE, type Answer, type Replay, type Replayer } from "./label.ts";
-import { MIAMI_SIDE, bodyOf, type Scene } from "./random.ts";
+import { HORIZON_LINES, MIAMI_SIDE, bodyOf, type Pair, type Scene } from "./random.ts";
 import type { EpisodeResult } from "./rate.ts";
 import { STANDIN, StandIn } from "./standin.ts";
 import { lab, stateHash, type Lab } from "./world.ts";
@@ -59,10 +60,10 @@ export function mapFor(s: Scene): MapData {
   }
   if (s.water) {
     const w = s.water;
-    return cached(`water/${s.seed}`, () => {
+    return cached(`water/${s.family}/${s.seed}`, () => {
       const dims = { chunksX: 4, chunksZ: 4 }, cell = 2, side = (4 * 64) / cell;
       const grid = new Uint16Array(side * side);
-      for (let j = Math.floor(w.z0 / cell); j < Math.ceil(w.z1 / cell); j++) for (let i = Math.floor(w.x0 / cell); i < Math.ceil(w.x1 / cell); i++) if (i >= 0 && j >= 0 && i < side && j < side) grid[j * side + i] = 1;
+      for (const r of [w, ...(w.more ?? [])]) for (let j = Math.floor(r.z0 / cell); j < Math.ceil(r.z1 / cell); j++) for (let i = Math.floor(r.x0 / cell); i < Math.ceil(r.x1 / cell); i++) if (i >= 0 && j >= 0 && i < side && j < side) grid[j * side + i] = 1;
       return flatMap(4, { water: MapWater.fromGrid(dims, -32, 1 / 256, cell, [{ name: "Strip", level: Math.round((w.depth + 32) * 256) }], grid) });
     });
   }
@@ -79,8 +80,14 @@ export interface Built {
   arrive: number;
   /** Metres of the oracle's way from start to goal; NaN where it found none, and the scene is not played. */
   way: number;
+  /** The oracle at real pace, where the scene was placed. */
+  oracle?: Oracle;
   /** Bodies that stand, and when each is let go. */
   standers: { e: number; until: number; then?: { x: number; z: number } }[];
+  /** In a chase, the prey's entity (else -1); in an escape, where the threat is now, and whether it has caught the mover. */
+  prey: number;
+  threat: { x: number; z: number } | null;
+  caught: boolean;
 }
 
 /** The nearest place to (x, z), out to 24 m, where a body of `r` and `h` stands free, and `also` holds where it is given. */
@@ -123,8 +130,69 @@ export function clearYaw(b: Lab, p: MoveParams, x: number, z: number, yaw: numbe
   return -1;
 }
 
+/** Whether a scene's horizon is HORIZON_LINES times the oracle's way at real pace where that is longer than the horizon drawn (from the straight line at walking pace). */
+const HORIZON_BY_ORACLE = true;
+
 /** Cells the oracle's search may expand: the whole of its grid. */
 const ORACLE_CELLS = (2 * PATH_REACH + 1) ** 2;
+
+/** Of a body's height, the water over which it swims (SWIM_ENTER in shared/sim/character.ts). */
+const SWIMS = 0.7;
+
+/** A way the oracle found: its metres, the metres of it swum, and its seconds with each leg at the pace it takes. */
+export interface Leg {
+  metres: number;
+  swum: number;
+  seconds: number;
+  /** Its points. */
+  x: number[];
+  z: number[];
+}
+
+/** What the oracle knows of a scene's way: the best dry way and the best that may swim, each priced at its real pace, and which is faster. */
+export interface Oracle {
+  dry: Leg | null;
+  wet: Leg | null;
+  /** "cross" where the fastest way swims, "round" where it keeps dry; in a pair, "round" where it leaves by the U's mouth. */
+  choice: "cross" | "round";
+  seconds: number;
+  /** In a pair: the seconds of the fastest way found that leaves by the mouth, and of the fastest that does not; NaN for none. */
+  round?: number;
+  cross?: number;
+}
+
+/** Whether a way passes half a metre over a pair's mouth line, out of the U. */
+export function outOf(mouth: Pair["mouth"], x: readonly number[], z: readonly number[]): boolean {
+  for (let i = 0; i < x.length; i++) if ((x[i]! - mouth.x) * mouth.nx + (z[i]! - mouth.z) * mouth.nz > 0.5) return true;
+  return false;
+}
+
+/** The finder's last way as legs, for a body of `p`: swum where the water is deeper than SWIMS of its height. */
+function legsOf(w: Lab, p: MoveParams, f: PathFinder): Leg {
+  const hf = w.world.hf, deep = swimDepth(p, SWIMS);
+  let metres = 0, swum = 0;
+  for (let i = 1; i < f.count; i++) {
+    const ax = f.x[i - 1]!, az = f.z[i - 1]!, dx = f.x[i]! - ax, dz = f.z[i]! - az, d = Math.hypot(dx, dz), n = Math.max(1, Math.ceil(d / 0.5));
+    metres += d;
+    for (let j = 0; j < n; j++) {
+      const x = ax + (dx * (j + 0.5)) / n, z = az + (dz * (j + 0.5)) / n;
+      if (hf.waterAt(x, z) - hf.heightAt(x, z) > deep) swum += d / n;
+    }
+  }
+  return { metres, swum, seconds: (metres - swum) / p.walkSpeed + swum / p.swimSpeed, x: f.x.slice(0, f.count), z: f.z.slice(0, f.count) };
+}
+
+/** One search of the oracle's: the way as legs, or null where none reaches within `arrive` of the goal. */
+function search(w: Lab, body: MoveParams, swim: number, wades: boolean, x0: number, z0: number, x1: number, z1: number, arrive: number, cells: number): Leg | null {
+  const reg = w.world.reg;
+  const f = new PathFinder(w.world, wades ? { ...body, swimDepth: 1e6 } : body);
+  f.budget = cells;
+  f.doorways = reg.doorway;
+  f.swim = swim;
+  if (f.find(x0, z0, x1, z1) !== PATH_FOUND || f.count === 0) return null;
+  if (Math.hypot(f.x[f.count - 1]! - x1, f.z[f.count - 1]! - z1) > arrive) return null;
+  return legsOf(w, body, f);
+}
 
 /**
  * Whether a body of `kind` can walk from (x0, z0) to within `arrive` of (x1, z1), by a search over the whole of the path
@@ -133,14 +201,30 @@ const ORACLE_CELLS = (2 * PATH_REACH + 1) ** 2;
 export function reach(w: Lab, kind: string, x0: number, z0: number, x1: number, z1: number, arrive: number, cells = ORACLE_CELLS): number {
   const reg = w.world.reg, body = reg.move[reg.index.get(kind)!]!;
   // Water does not stop it: a mover may swim where today's search will not take it.
-  const f = new PathFinder(w.world, { ...body, swimDepth: 1e6 });
-  f.budget = cells;
-  f.doorways = reg.doorway;
-  if (f.find(x0, z0, x1, z1) !== PATH_FOUND || f.count === 0) return NaN;
-  if (Math.hypot(f.x[f.count - 1]! - x1, f.z[f.count - 1]! - z1) > arrive) return NaN;
-  let metres = 0;
-  for (let i = 1; i < f.count; i++) metres += Math.hypot(f.x[i]! - f.x[i - 1]!, f.z[i]! - f.z[i - 1]!);
-  return metres;
+  return search(w, body, 0, true, x0, z0, x1, z1, arrive, cells)?.metres ?? NaN;
+}
+
+/**
+ * The oracle priced at real pace: the best way that keeps dry, and the best of the shortest way that may swim and one
+ * searched with swimming priced at the body's walk over its swim, each in seconds with every leg at the pace it takes.
+ */
+export function oracle(w: Lab, kind: string, x0: number, z0: number, x1: number, z1: number, arrive: number, cells = ORACLE_CELLS, mouth?: Pair["mouth"]): Oracle {
+  const reg = w.world.reg, body = reg.move[reg.index.get(kind)!]!;
+  const dry = search(w, body, 0, false, x0, z0, x1, z1, arrive, cells);
+  const shortest = search(w, body, 0, true, x0, z0, x1, z1, arrive, cells);
+  const priced = search(w, body, body.walkSpeed / body.swimSpeed, false, x0, z0, x1, z1, arrive, cells);
+  let wet = shortest && priced ? (priced.seconds < shortest.seconds ? priced : shortest) : (shortest ?? priced);
+  if (wet && wet.swum <= 0) wet = null;
+  const crosses = wet !== null && (dry === null || wet.seconds < dry.seconds);
+  const best = crosses ? wet! : dry;
+  if (!mouth) return { dry, wet, choice: crosses ? "cross" : "round", seconds: best?.seconds ?? NaN };
+  let round = NaN, cross = NaN;
+  for (const leg of [dry, shortest, priced]) {
+    if (!leg) continue;
+    if (outOf(mouth, leg.x, leg.z)) round = Number.isNaN(round) ? leg.seconds : Math.min(round, leg.seconds);
+    else cross = Number.isNaN(cross) ? leg.seconds : Math.min(cross, leg.seconds);
+  }
+  return { dry, wet, choice: Number.isNaN(cross) || round < cross ? "round" : "cross", seconds: Number.isNaN(cross) ? round : Number.isNaN(round) ? cross : Math.min(round, cross), round, cross };
 }
 
 /**
@@ -156,6 +240,8 @@ export interface Placed {
   start: { x: number; z: number };
   goal: { x: number; z: number };
   way: number;
+  /** The oracle at real pace, for the start and goal kept. */
+  oracle?: Oracle;
 }
 
 /**
@@ -167,7 +253,8 @@ function place(w: Lab, s: Scene, body: { radius: number; height: number; pace: n
   const key = `${s.map}/${s.family}/${s.seed}`;
   const kept = placed.get(key);
   if (kept !== undefined) return kept;
-  const rng = new Rng((s.seed * 7919 + 17) >>> 0), line = Math.hypot(s.goal.x - s.start.x, s.goal.z - s.start.z);
+  // Both sides of a pair try the same places.
+  const rng = new Rng(((s.pair ? s.pair.id : s.seed) * 7919 + 17) >>> 0), line = Math.hypot(s.goal.x - s.start.x, s.goal.z - s.start.z);
   const move = w.world.reg.move[w.world.reg.index.get(s.kind)!]!;
   let out: Placed | null = null, easy: Placed | null = null;
   const city = s.map === "miami";
@@ -185,23 +272,26 @@ function place(w: Lab, s: Scene, body: { radius: number; height: number; pace: n
     }
     const start = freeNear(w, sx, sz, body.radius, body.height, (x, z) => clearYaw(w, move, x, z, s.start.yaw) >= 0), goal = freeNear(w, gx, gz, body.radius, body.height);
     const way = reach(w, s.kind, start.x, start.z, goal.x, goal.z, arrive);
-    if (!((way / body.pace) * TICK_RATE <= WAY_SHARE * s.horizon)) continue;
+    // An escape's goal is only a place far enough off, for the oracle: any way there will do.
+    if (!((way / body.pace) * TICK_RATE <= WAY_SHARE * s.horizon) && !(s.intent?.kind === "escape" && Number.isFinite(way))) continue;
     if (city && !Number.isNaN(reach(w, s.kind, start.x, start.z, goal.x, goal.z, arrive, SEARCH_CELLS))) easy ??= { start, goal, way };
     else out = { start, goal, way };
   }
   out ??= easy;
+  if (out) out.oracle = oracle(w, s.kind, out.start.x, out.start.z, out.goal.x, out.goal.z, arrive, ORACLE_CELLS, s.pair?.mouth);
   if (placed.size > 4096) placed.clear();
   placed.set(key, out);
   return out;
 }
 
 /** A scene on its own lab world, its mover making for its goal; `at` puts it down there in place of where `place` would. */
-export function build(s: Scene, at0?: Placed | null): Built {
-  const w = lab(mapFor(s), s.seed);
+export function build(s0: Scene, at0?: Placed | null): Built {
+  const w = lab(mapFor(s0), s0.seed);
   const reg = w.world.reg, wall = reg.index.get("core:wall_stone")!;
-  for (const p of s.pieces) for (let y = 0; y < p.storeys; y++) w.world.structs.add(wall, p.x, w.world.hf.heightAt(p.x, p.z) + 1.5 + 3 * y, p.z, p.quarter * 16384, 0, 10000);
-  const body = bodyOf(s.kind), mind = w.host.creatures.mind, arrive = Math.max(1.5, body.radius + 0.5);
-  const at = at0 !== undefined ? at0 : place(w, s, body, arrive);
+  for (const p of s0.pieces) for (let y = 0; y < p.storeys; y++) w.world.structs.add(wall, p.x, w.world.hf.heightAt(p.x, p.z) + 1.5 + 3 * y, p.z, p.quarter * 16384, 0, 10000);
+  const body = bodyOf(s0.kind), mind = w.host.creatures.mind, arrive = Math.max(1.5, body.radius + 0.5);
+  const at = at0 !== undefined ? at0 : place(w, s0, body, arrive);
+  const s = HORIZON_BY_ORACLE && at?.oracle && Number.isFinite(at.oracle.seconds) ? { ...s0, horizon: Math.max(s0.horizon, Math.ceil(HORIZON_LINES * at.oracle.seconds) * TICK_RATE) } : s0;
   const move = reg.move[reg.index.get(s.kind)!]!;
   const start = at?.start ?? freeNear(w, s.start.x, s.start.z, body.radius, body.height, (x, z) => clearYaw(w, move, x, z, s.start.yaw) >= 0), goal = at?.goal ?? s.goal;
   const standers: Built["standers"] = [];
@@ -211,14 +301,25 @@ export function build(s: Scene, at0?: Placed | null): Built {
     mind.stay(e, st.until + s.horizon * 4);
     standers.push({ e, until: st.until, then: st.then });
   }
+  const intent = s.intent?.kind ?? "walk";
+  let prey = -1;
+  if (intent === "chase") {
+    const pb = bodyOf(s.intent!.prey!), p = freeNear(w, goal.x, goal.z, pb.radius, pb.height);
+    prey = w.host.spawnCreature(s.intent!.prey!, p.x, p.z, 1);
+    if (prey >= 0) mind.stay(prey, s.horizon * 4);
+  }
   const mover = w.host.spawnCreature(s.kind, start.x, start.z, 1);
+  const threat = intent === "escape" ? { x: s.intent!.threat!.x, z: s.intent!.threat!.z } : null;
+  const built: Built = { scene: s, lab: w, mover, goal, body, arrive, standers, way: at?.way ?? NaN, prey, threat, caught: false, ...(at?.oracle ? { oracle: at.oracle } : {}) };
   // Where the body cannot be put down after all, the scene is not played, as one with no way.
-  if (mover < 0) return { scene: s, lab: w, mover, goal, body, arrive, standers, way: NaN };
+  if (mover < 0 || (intent === "chase" && prey < 0)) return { ...built, way: NaN };
   const facing = clearYaw(w, move, start.x, start.z, s.start.yaw);
   w.world.ents.yaw[mover] = mind.look[mover] = facing >= 0 ? facing : s.start.yaw;
   mind.stay(mover, s.horizon * 4);
-  mind.goTo(mover, goal.x, goal.z, GOAL_WALK);
-  return { scene: s, lab: w, mover, goal, body, arrive, standers, way: at?.way ?? NaN };
+  if (intent === "chase") mind.attack(mover, prey);
+  else if (intent === "escape") w.host.creatures.provoke(mover, threat!.x, threat!.z, -1);
+  else mind.goTo(mover, goal.x, goal.z, GOAL_WALK);
+  return built;
 }
 
 export interface Hooks {
@@ -243,10 +344,12 @@ export interface Trace {
   stuckTicks: number;
   decideMicros: number[];
   answers: number;
+  /** In a pair: whether the mover went out over the U's mouth. */
+  round: boolean;
 }
 
-function healthShare(b: Built): number {
-  const w = b.lab, rec = w.host.records.byPid.get(w.world.ents.pid[b.mover]!);
+function healthShare(b: Built, e = b.mover): number {
+  const w = b.lab, rec = w.host.records.byPid.get(w.world.ents.pid[e]!);
   const v = rec?.vitals;
   if (!v) return 1;
   const max = v.max[V_HEALTH]!;
@@ -277,6 +380,36 @@ export function policyText(point: string, policy: Hooks["policy"]): string {
   return NAV_POINTS.includes(point) ? NAV_POINTS.map((p) => `${p}=${policy}`).join(",") : `${point}=${policy}`;
 }
 
+/**
+ * How far the mover has yet to go, in metres, and whether it has arrived: to its goal on a walk; to its prey in a chase,
+ * arriving at its first bite; in an escape, to `safe` metres from the threat, and never once caught.
+ */
+export function progress(b: Built): { left: number; arrived: boolean } {
+  const ents = b.lab.world.ents, x = ents.x[b.mover]!, z = ents.z[b.mover]!, intent = b.scene.intent;
+  if (intent?.kind === "escape") {
+    const d = Math.hypot(x - b.threat!.x, z - b.threat!.z), safe = intent.threat!.safe;
+    return { left: b.caught ? safe : Math.max(0, safe - d), arrived: !b.caught && d >= safe };
+  }
+  if (intent?.kind === "chase") return { left: Math.hypot(ents.x[b.prey]! - x, ents.z[b.prey]! - z), arrived: healthShare(b, b.prey) < 1 };
+  const left = Math.hypot(b.goal.x - x, b.goal.z - z);
+  return { left, arrived: left <= b.arrive };
+}
+
+/** Seconds between the times an escaping mover is hurt from the threat again, while it is not running from it. */
+const SCARE_TICKS = TICK_RATE;
+
+/** The threat of an escape comes a tick nearer the mover, catches it within `caught`, and scares it again where it has stopped running. */
+function chase(b: Built, t: number): void {
+  const th = b.scene.intent!.threat!, ents = b.lab.world.ents, mind = b.lab.host.creatures.mind;
+  const dx = ents.x[b.mover]! - b.threat!.x, dz = ents.z[b.mover]! - b.threat!.z, d = Math.hypot(dx, dz), step = th.speed / TICK_RATE;
+  if (d > step) {
+    b.threat!.x += (dx / d) * step;
+    b.threat!.z += (dz / d) * step;
+  }
+  if (d - step <= th.caught) b.caught = true;
+  else if (d < th.safe && t % SCARE_TICKS === 0 && mind.mind[b.mover] !== MIND_FLEE) b.lab.host.creatures.provoke(b.mover, b.threat!.x, b.threat!.z, -1);
+}
+
 /** Plays a built scene under `hooks` until it arrives, the hooks stop it, or `limit` ticks pass. */
 export function play(b: Built, hooks: Hooks, limit = b.scene.horizon): Trace {
   const w = b.lab, d = w.host.decide, mind = w.host.creatures.mind, ents = w.world.ents;
@@ -284,7 +417,8 @@ export function play(b: Built, hooks: Hooks, limit = b.scene.horizon): Trace {
   for (const m of hooks.models ?? []) d.trained.set(m.profile, m);
   const point = install(b, hooks.point, hooks.extra);
   d.set(policyText(hooks.point, hooks.policy));
-  const trace: Trace = { arrivedAt: -1, acted: 0, ticks: 0, stuckTicks: 0, decideMicros: [], answers: 0 };
+  const trace: Trace = { arrivedAt: -1, acted: 0, ticks: 0, stuckTicks: 0, decideMicros: [], answers: 0, round: false };
+  const mouth = b.scene.pair?.mouth;
   if (Number.isNaN(b.way)) return trace;
   d.force = (p, e, pick) => {
     if (p !== point.id || e !== b.mover || !hooks.answered) return LEAVE;
@@ -304,11 +438,16 @@ export function play(b: Built, hooks: Hooks, limit = b.scene.horizon): Trace {
     step(tick);
     spent = (performance.now() - from) * 1000;
   };
+  const escape = b.scene.intent?.kind === "escape";
   for (let t = 0; t < limit; t++) {
     const tick = w.world.tick;
-    if (Math.hypot(b.goal.x - ents.x[b.mover]!, b.goal.z - ents.z[b.mover]!) <= b.arrive) {
+    if (progress(b).arrived) {
       trace.arrivedAt = t;
       break;
+    }
+    if (escape) {
+      chase(b, t);
+      if (b.caught) break;
     }
     if (hooks.stop?.(tick)) break;
     for (const s of b.standers) if (s.then && tick === s.until) mind.goTo(s.e, s.then.x, s.then.z, GOAL_WALK);
@@ -317,15 +456,15 @@ export function play(b: Built, hooks: Hooks, limit = b.scene.horizon): Trace {
     trace.ticks++;
     trace.decideMicros.push(spent);
     if (mind.stuck[b.mover]! > 0 || mind.pinned[b.mover]! > 0) trace.stuckTicks++;
+    if (mouth && !trace.round && outOf(mouth, [ents.x[b.mover]!], [ents.z[b.mover]!])) trace.round = true;
   }
   return trace;
 }
 
 /** The cost of where a mover is: ticks since `from`, the straight way left at its pace, and the prices of health and search. */
 function costNow(b: Built, from: number, health0: number, cells0: number, end: boolean): number {
-  const w = b.lab, ents = w.world.ents, mind = w.host.creatures.mind;
-  const left = Math.hypot(b.goal.x - ents.x[b.mover]!, b.goal.z - ents.z[b.mover]!);
-  const arrived = left <= b.arrive;
+  const w = b.lab, mind = w.host.creatures.mind;
+  const { left, arrived } = progress(b);
   const elapsed = w.world.tick - from, rest = arrived ? 0 : (left / b.body.pace) * TICK_RATE;
   const prices = PRICES.health * Math.max(0, health0 - healthShare(b)) + PRICES.cell * (mind.searched - cells0);
   return (end && !arrived ? PRICES.stuck * b.scene.horizon : elapsed) + rest + prices;
@@ -339,7 +478,7 @@ export function episode(s: Scene, point: string, policy: Hooks["policy"], models
   const t = play(b, { point, policy, models, extra });
   const result: EpisodeResult = {
     family: s.map === "miami" ? "miami" : s.family, seed: s.seed, skipped: Number.isNaN(b.way), route: b.way, acted: t.acted, arrived: t.arrivedAt >= 0, ticks: t.ticks, healthLost: Math.max(0, health0 - healthShare(b)), stuckTicks: t.stuckTicks,
-    searches: mind.searches - searches0, cells: mind.searched - cells0, end: { x: b.lab.world.ents.x[b.mover]!, z: b.lab.world.ents.z[b.mover]! }, cost: costNow(b, tick0, health0, cells0, true), decideMicros: t.decideMicros,
+    ...(s.intent?.kind === "escape" ? { caught: b.caught } : {}), searches: mind.searches - searches0, cells: mind.searched - cells0, end: { x: b.lab.world.ents.x[b.mover]!, z: b.lab.world.ents.z[b.mover]! }, cost: costNow(b, tick0, health0, cells0, true), decideMicros: t.decideMicros,
   };
   b.lab.host.shutdown();
   return result;
@@ -398,13 +537,11 @@ interface Observer {
   read(b: Built, from: number): number;
 }
 
-/** The share of its pace toward its goal that is real progress, as the ladder judges it (nav.ts, which does not export it). */
-export const SNAG_PROGRESS = 0.35;
 const left = (b: Built): number => Math.hypot(b.goal.x - b.lab.world.ents.x[b.mover]!, b.goal.z - b.lab.world.ents.z[b.mover]!);
 
 /** nav.snag: 1 where the mover gained less than real progress toward its goal over the SNAG_SECONDS after the question. */
 export const OBSERVERS: Readonly<Record<string, Observer>> = {
-  "nav.snag": { ticks: SNAG_SECONDS * TICK_RATE, start: left, read: (b, from) => (from - left(b) < SNAG_PROGRESS * b.body.pace * SNAG_SECONDS ? 1 : 0) },
+  "nav.snag": { ticks: SNAG_SECONDS * TICK_RATE, start: left, read: (b, from) => (from - left(b) < PROGRESS * b.body.pace * SNAG_SECONDS ? 1 : 0) },
 };
 
 /** The game's scenes for label.ts. */
@@ -457,9 +594,9 @@ export function gameReplayer(point: string, under: Under): Replayer<Scene> {
           return force;
         },
         stop: (tick) => {
-          if (from < 0) return tick >= s.horizon;
+          if (from < 0) return tick >= b.scene.horizon;
           while (costs.length < READ_AT.length && tick - from >= READ_AT[costs.length]!) costs.push(costNow(b, from, health0, cells0, false));
-          return tick - from >= s.horizon;
+          return tick - from >= b.scene.horizon;
         },
       }, Infinity);
       if (from < 0) {

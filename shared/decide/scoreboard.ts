@@ -28,7 +28,7 @@ export interface Score {
   /** Expected calibration error, and the bands it was read from. */
   ece: number;
   reliability: Reliability[];
-  /** The share by which it does worse with the state hidden, the candidates' columns hidden, and the state shuffled. */
+  /** The share of its gain in log loss over uniform that it loses with the state hidden, the candidates' columns hidden, and the state shuffled. */
   blind: { state: number; columns: number; shuffled: number };
   /** Microseconds for one answer, 99th percentile, on a fast core and a slow one; and its weights' size in bytes. */
   microsFast: number;
@@ -63,7 +63,7 @@ export interface EpisodeScore {
    * Each layout, those with no way to their goal too (not played, so not in the counts above): the metres of the way
    * (NaN for none), whether it arrived, its ticks and health lost, and how many of the decider's answers were acted on.
    */
-  layouts?: { family: string; seed: number; route: number; arrived: boolean; ticks: number; healthLost: number; acted: number }[];
+  layouts?: { family: string; seed: number; route: number; arrived: boolean; ticks: number; healthLost: number; acted: number; cost?: number }[];
 }
 
 export interface PointScores {

@@ -17,25 +17,43 @@ scorer is a line of weights or one hidden layer. The engine and most of the lab 
 3. **Write a setup**: a family of seeded scenes in `random.ts`, each with a mover, a goal and a horizon, every measure
    drawn from its seed. `setups.ts` builds a scene on the lab world (`world.ts`) and plays it. Before a scene is
    played, an oracle (a search over the whole path grid that swims) must find a way short enough for its horizon, from
-   the start and goal drawn or from others drawn from its seed; a scene with none is not played. `audit.ts` says, by
-   family, how many have no way, how many today's code solves without the ladder ever asking, and who arrives.
-4. **Generate and label.** Each scene is played with the chooser, one of its answers is drawn, and the scene is replayed
+   the start and goal drawn or from others drawn from its seed; a scene with none is not played. The oracle also prices
+   the way at real pace: the best dry way, and the best that swims, each leg walked or swum at the body's own pace. A
+   scene's horizon is three times that, or as drawn where that is longer. `audit.ts` says, by family, how many have no
+   way, how many today's code solves without the ladder ever asking, and who arrives; `--against` an earlier audit lists
+   each scene gained and lost, by family and creature, which every change to scenes, columns, rules or movement is
+   measured by.
+4. **Make situations** that teach, beside the families (`SITUATIONS` in `catalog.ts`), which leave what the families
+   draw as it was:
+   - Pairs: one layout played twice with one fact changed, so the right way flips. `ford` is a U with a flooded gap in
+     its closed end and a dry way out of its mouth; the fact is the body (one that swims faster than it walks against
+     one slower), the depth (a wade against a swim), or the dry way's length. `gap` is a gap a raptor fits through and a
+     rex does not. Seeds 2n - 1 and 2n are pair n. The oracle says which way wins on each side, and the audit keeps only
+     pairs whose sides differ by a tenth at least, then counts those where the rule takes the oracle's way on both.
+   - Intents: `intentU` and `intentTrees` put a U or a wood in front of a walk, a chase (of a dodo standing at the
+     goal, arriving at the first bite) and an escape (from a threat that comes after the mover; arriving once clear,
+     ending if caught), with the same body. Seeds 3n - 2, 3n - 1 and 3n are layout n. Costs follow the intent.
+5. **Generate and label.** Each scene is played with the chooser, one of its answers is drawn, and the scene is replayed
    from its start once for each open candidate and each of three seeds, that candidate forced there, the mover's luck
    reseeded (`Behavior.reseed`). Today's code is the same replay with the answer spared (`SPARE`): nothing is done for
    it. A candidate's target is how often it was best. A replay whose world differs at the decision is thrown away. A
    "yes" point costs no replay: its label is what was observed after its answer (the point's `outcome`, or the lab's own
    observer in `setups.ts` where the point reads none), and `--yeses` takes several answers of each scene.
-5. **Look at the headroom**: how far the best candidate beats the rule at one decision, as a share of the median cost.
+6. **Look at the headroom**: how far the best candidate beats the rule at one decision, as a share of the median cost.
    It is information, never a reason not to train: gains compound over an episode. The toy's was 0.036 while training
    took its arrivals from 36 to 150 of 150.
-6. **Fit** a line and a hidden layer for each profile of the point, and **score** them against uniform, today's code and
+7. **Fit** a line and a hidden layer for each profile of the point, and **score** them against uniform, today's code and
    the rule. A pass is scored with the others added as the point adds them, by their rule.
-7. **Pass the gate**, then copy the weights to `server/decide/weights/<profile>.json` and commit them.
+8. **Pass the gate**, then copy the weights to `server/decide/weights/<profile>.json` and commit them.
 
 ## Commands
 
 ```
 bun tools/decide/audit.ts --scenes 30                   each family: no way, trivial, who arrives
+bun tools/decide/audit.ts --scenes 40 --first 500001 --out <new.json> --against <old.json>
+                                                       what a change gained and lost, scene by scene
+bun tools/decide/audit.ts --families ford,gap,intentU,intentTrees --scenes 120
+                                                       the pairs and the intents
 bun tools/decide/generate.ts --point nav.ring --families water --scenes 600 --workers 9
 bun tools/decide/generate.ts --point nav.snag --scenes 150 --yeses 30
 bun tools/decide/generate.ts --point nav.ring --first 100001 --under <weights.json>[,<more.json>]
@@ -45,9 +63,16 @@ bun tools/decide/fit.ts --point nav.ring --profile ring.mid --kind linear [--rea
 bun tools/decide/fit.ts --point nav.ring --profile ring.mid --kind hidden --hidden 16
 bun tools/decide/score.ts [--layouts 75] [--fresh 20] [--workers 8]
                                                        the board
+bun tools/decide/score.ts --root .cache/decide/versus/volume --held-families trees,...,intentTrees --held-first 900001 --layouts 24
+                                                       a second dataset's board, on layouts named before anything was played
 bun tools/decide/toy.ts                                the whole loop on the toy world, in seconds
 bun tools/decide/world.ts --cost                       what a lab world and a tick cost
 ```
+
+`generate.ts`, `fit.ts` and `score.ts` take `--root` for a dataset kept apart from the main one, and `score.ts --held-data
+<root>` reads single decisions from another root, all of it held out, so two datasets are judged on the same decisions.
+Twelve scorers judged on the same layouts will clear the whole-episode marks by luck now and then: name the one that
+did before playing it again on layouts nobody has looked at (a new seed range), and refit it from other seeds.
 
 Wrap long runs in `systemd-run --user --scope -q -p MemoryMax=22G -p MemorySwapMax=0`. Workers are separate
 processes, at most 20, each kept for 300 scenes or until it holds 2 GB. Each holds about 1.7 GB once the content is
@@ -89,12 +114,15 @@ finish, and each layout is listed: its way, whether it arrived, its time and hea
 headings were acted on. `--fresh` adds new scenes of every family, trained-on ones too, as a look at the scenes, not the
 gate. A trained scorer passes only if, held out:
 
+- in whole episodes it arrives at least as often as the rule overall and in every family, and as today's code; it
+  loses no more of the rule's arrivals than it gains, layout by layout; and its mean cost is under the rule's, the
+  interval of its cost less the rule's (by bootstrap over layouts) wholly under 0;
 - its regret is at most 0.75 of the rule's, and the interval's top under 0.9;
 - no held-out family is worse than 1.1 of the rule's;
-- its ECE is at most 0.05;
-- hiding the state costs it at least 10% more log loss;
+- its ECE is at most 0.05, for a point whose probability is read (`nav.snag`, `nav.sure`, `nav.reach`); a ring pass is
+  never read as a probability, so it has no ECE bar;
+- hiding the state costs it at least a tenth of its gain in log loss over uniform;
 - one answer's 99th percentile is at most 25 µs on a fast core, and its file at most 64 KB;
-- in whole episodes it arrives at least as often as the rule and as today's code, at no higher mean cost than the rule;
 - and there are at least 2,000 decisions from 200 scenes, or it is not measurable.
 
 Every number about a point of passes is of the answer as the server made it: the trainer and the board add the passes

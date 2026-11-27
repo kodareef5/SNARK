@@ -4,6 +4,9 @@
 // held-out Score in its weights file's `about`.
 //
 //   bun tools/decide/score.ts [--point <name>] [--layouts 40] [--fresh 0] [--workers 8] [--reading 1s|5s|end] [--note <text>]...
+//     [--root .cache/decide] [--held-families a,b --held-first 900001] [--held-data <root>]
+//
+// `--held-data` reads single decisions on another dataset's root, all of it held out, so two datasets are judged alike.
 //   bun tools/decide/score.ts --headroom <point>     how far the best candidate beats the rule, before any training
 //
 // One answer is timed in a child pinned to a fast core and to a slow one (taskset -c 2 and -c 20 on this machine).
@@ -17,7 +20,7 @@ import type { EpisodeScore, PointScores, Scoreboard } from "../../shared/decide/
 import { Table } from "../../shared/decide/table.ts";
 import { readModel, writeModel } from "../../shared/decide/weights.ts";
 import { boardHtml } from "./board.ts";
-import { FAMILIES, catalog } from "./catalog.ts";
+import { FAMILIES, SITUATIONS, catalog } from "./catalog.ts";
 import { READINGS, dataDir, readData, revision, type Decision, type Manifest } from "./dataset.ts";
 import { examples, type Catalog } from "./fit.ts";
 import { Workers, loadModels, status, type Job } from "./generate.ts";
@@ -26,7 +29,8 @@ import { episodeScore, headroom, ratePoint, type Trained } from "./rate.ts";
 
 /** Cores this machine calls fast and slow (16 to 31 are its slow ones). */
 export const CORES = { fast: 2, slow: 20 } as const;
-const ROOT = ".cache/decide";
+/** Where the data, models and board are; `--root` names another, as for a second dataset to set beside the first. */
+const ROOT = arg("--root") ?? ".cache/decide";
 
 /** Median and 99th percentile, in microseconds, of one answer of `m` over the tables of `ds`. */
 export function timeAnswers(m: Model, p: Profile, ds: readonly Decision[], answers = 20000): { median: number; p99: number } {
@@ -54,7 +58,7 @@ export function timeAnswers(m: Model, p: Profile, ds: readonly Decision[], answe
 
 /** Times a weights file in a child pinned to `core`; unpinned where taskset is missing. */
 function timed(file: string, point: string, core: number): { median: number; p99: number; pinned: boolean } {
-  const args = [process.execPath, join(import.meta.dir, "score.ts"), "--time", file, "--point", point];
+  const args = [process.execPath, join(import.meta.dir, "score.ts"), "--time", file, "--point", point, "--root", ROOT];
   const has = Bun.spawnSync(["which", "taskset"], { stdout: "pipe" }).exitCode === 0;
   const r = Bun.spawnSync(has ? ["taskset", "-c", String(core), ...args] : args, { stdout: "pipe", stderr: "pipe" });
   if (r.exitCode !== 0) return { median: NaN, p99: NaN, pinned: has };
@@ -152,21 +156,27 @@ async function play(point: string, policies: readonly Policy[], scenes: readonly
  * One point's scores, one entry for each profile of its tables; whole episodes are played on `workers` processes, the
  * held-out scenes its decisions came from and `fresh` new scenes of every family.
  */
-export async function scorePoint(point: string, o: { layouts: number; workers: number; reading?: number; fresh?: number }): Promise<PointScores[]> {
+export async function scorePoint(point: string, o: { layouts: number; workers: number; reading?: number; fresh?: number; held?: { families: Family[]; first: number }; heldData?: string }): Promise<PointScores[]> {
   const cat = catalog(point);
   const { manifest, decisions } = readData(dataDir(point, join(ROOT, "data")), cat.profiles);
   const agreed = agreement(point, manifest, decisions, cat);
   if (agreed.checked > 0) console.log(`${point}: ${agreed.agreed} of ${agreed.checked} stored decisions made again with combine give the stored pick (${agreed.ruleAgreed} of ${agreed.ruleChecked} under the rule)`);
   if (agreed.ruleAgreed < agreed.ruleChecked) throw new Error(`${point}: ${agreed.ruleChecked - agreed.ruleAgreed} decisions under the rule do not come out as the server made them: no regret or calibration of them can be trusted`);
   const profiles = manifest.profiles.map((n) => cat.profiles.find((q) => q.name === n.name)!);
+  // Single decisions are read on another dataset where one is named, every decision of it held out.
+  const other = o.heldData ? readData(dataDir(point, join(o.heldData, "data")), cat.profiles) : null;
+  const heldDecisions = other ? other.decisions : decisions;
+  const heldCat: Catalog = other ? { ...cat, split: { held: [...new Set(other.decisions.map((d) => d.family))], heldMaps: [...new Set(other.decisions.map((d) => d.map))], validation: [] } } : cat;
   const found = new Map(profiles.map((p) => [p.name, modelsOf(point, p)]));
   const policies: Policy[] = [
     { name: "today", policy: "off", models: [] }, { name: "rule", policy: "rule", models: [] },
     ...[...found.values()].flat().map((f) => ({ name: f.name, policy: "model" as const, models: [f.file] })),
   ];
   const game = !point.startsWith("toy.");
-  const episodes = game ? await play(point, policies, layouts(cat, o.layouts), o.workers) : [];
-  const fresh = game && o.fresh ? await play(point, policies, scenes([...FAMILIES, "miami"], o.fresh, FRESH_FIRST), o.workers) : [];
+  // The held-out layouts: seeds 1 to `layouts` of the split's held families, or that many of the families named from `first`.
+  const fixed = o.held ? scenes(o.held.families, o.layouts, o.held.first) : layouts(cat, o.layouts);
+  const episodes = game ? await play(point, policies, fixed, o.workers) : [];
+  const fresh = game && o.fresh ? await play(point, policies, scenes([...FAMILIES, "miami", ...SITUATIONS], o.fresh, FRESH_FIRST), o.workers) : [];
   const out: PointScores[] = [];
   for (const p of profiles) {
     const mine = found.get(p.name)!;
@@ -175,7 +185,7 @@ export async function scorePoint(point: string, o: { layouts: number; workers: n
       return { name: f.name, kind: f.kind, model: f.model, bytes: f.bytes, microsFast: fast.p99, microsSlow: slow.p99, medianFast: fast.median, medianSlow: slow.median };
     });
     const names = new Set(["today", "rule", ...mine.map((f) => f.name)]);
-    const scores = ratePoint({ point, profile: p, cat, decisions, reading: o.reading ?? READINGS.length - 1, trained, episodes: episodes.filter((e) => names.has(e.name)) });
+    const scores = ratePoint({ point, profile: p, cat: heldCat, decisions: heldDecisions, reading: o.reading ?? READINGS.length - 1, trained, episodes: episodes.filter((e) => names.has(e.name)) });
     scores.fresh = fresh.filter((e) => names.has(e.name));
     if (agreed.checked > 0) scores.agreement = agreed;
     // The rule is timed as the trained are, from a file of its own outside the models.
@@ -229,7 +239,8 @@ if (import.meta.main && process.argv.includes("--time")) {
   for (const point of points) {
     status({ step: "score", point, done: 0, of: 1 });
     const reading = READINGS.indexOf((arg("--reading") ?? "end") as (typeof READINGS)[number]);
-    board.points.push(...(await scorePoint(point, { layouts: Number(arg("--layouts") ?? 40), workers: Number(arg("--workers") ?? 8), reading: reading < 0 ? undefined : reading, fresh: Number(arg("--fresh") ?? 0) })));
+    const held = arg("--held-families") ? { families: arg("--held-families")!.split(",") as Family[], first: Number(arg("--held-first") ?? 1) } : undefined;
+    board.points.push(...(await scorePoint(point, { layouts: Number(arg("--layouts") ?? 40), workers: Number(arg("--workers") ?? 8), reading: reading < 0 ? undefined : reading, fresh: Number(arg("--fresh") ?? 0), held, heldData: arg("--held-data") })));
   }
   writeFileSync(join(ROOT, "scoreboard.json"), JSON.stringify(board, null, 1));
   writeFileSync(join(ROOT, "scoreboard.html"), boardHtml(board));

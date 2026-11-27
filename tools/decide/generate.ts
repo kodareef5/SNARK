@@ -3,7 +3,7 @@
 // written in the order of the scenes, so one command gives the same bytes on any number of workers.
 //
 //   bun tools/decide/generate.ts --point lab.ring [--scenes 40] [--first 1] [--families trees,deadEnd,...]
-//     [--workers 8] [--seeds 3] [--yeses 1] [--under <weights.json>[,<more.json>]] [--fresh]
+//     [--workers 8] [--seeds 3] [--yeses 1] [--under <weights.json>[,<more.json>]] [--fresh] [--root .cache/decide]
 //
 // `--scenes` is per family, and the held-out family and the Miami slice are generated too, for the scoreboard. `--under`
 // plays every other answer by trained scorers, so the decisions are from states they get into themselves. A "yes" point's
@@ -229,7 +229,7 @@ if (import.meta.main && process.argv.includes("--worker")) {
   for (const f of families) draw(f, 1);
   const under = arg("--under")?.split(",") ?? [];
   for (const f of under) if (!existsSync(f)) throw new Error(`no weights file ${f}`);
-  const r = await generate({ point, families, scenes: Number(arg("--scenes") ?? 40), first: Number(arg("--first") ?? 1), workers: Number(arg("--workers") ?? 8), seeds: Number(arg("--seeds") ?? 3), yeses: Number(arg("--yeses") ?? 1), under, fresh: process.argv.includes("--fresh") });
+  const r = await generate({ point, families, scenes: Number(arg("--scenes") ?? 40), first: Number(arg("--first") ?? 1), workers: Number(arg("--workers") ?? 8), seeds: Number(arg("--seeds") ?? 3), yeses: Number(arg("--yeses") ?? 1), under, fresh: process.argv.includes("--fresh"), root: arg("--root") });
   console.log(`${point}: ${r.decisions} decisions from ${r.runs} plays in ${r.seconds.toFixed(1)} s; ${r.none} scenes gave no answer, ${r.thrown} replays thrown away, ${r.noReseed} run with no reseed; a play took ${((1000 * r.busy) / Math.max(1, r.runs)).toFixed(0)} ms of a worker's time`);
   for (const e of r.errors.slice(0, 5)) console.error(e);
   if (r.checked > 0) console.log(`  ${r.agreed} of ${r.checked} answers made again from their passes came out as the server made them`);

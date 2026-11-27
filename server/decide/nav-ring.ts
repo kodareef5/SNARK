@@ -5,8 +5,8 @@
 // read back are the same numbers.
 
 import { MID_SECONDS, MID_SPANS, NEAR_SPANS, RING_FAR, RING_MID, RING_NEAR } from "../../shared/decide/profiles.ts";
-import { span, unit } from "../../shared/decide/units.ts";
-import type { MoveParams } from "../../shared/sim/character.ts";
+import { soon, span, unit } from "../../shared/decide/units.ts";
+import { swimDepth, type MoveParams } from "../../shared/sim/character.ts";
 import { GROUND_OFF, GROUND_SOLID, groundAt } from "../../shared/world/path.ts";
 import { WAY_ON, type Behavior } from "../behavior.ts";
 import type { BodyBlocking } from "../blocking.ts";
@@ -21,7 +21,7 @@ export const NEVER = -(2 ** 30);
 
 /** The columns a pass keeps; the rest (`held`, `tried`, `pressed`) are found each time. */
 const FAR_KEPT = ["goal", "way", "threat", "prey", "home", "trail", "pull"] as const;
-const MID_KEPT = ["run", "runHigh", "drop", "rise", "wet", "hurt", "crowd"] as const;
+const MID_KEPT = ["run", "runHigh", "drop", "rise", "wet", "swum", "hurt", "crowd"] as const;
 const FAR_AT = FAR_KEPT.map((n) => RING_FAR.c[n]);
 const MID_AT = MID_KEPT.map((n) => RING_MID.c[n]);
 const NEAR_OPEN = RING_NEAR.c.open, NEAR_BODY = RING_NEAR.c.body, NEAR_PRESSED = RING_NEAR.c.pressed;
@@ -38,12 +38,16 @@ const MID_MOST = 20;
 /** Points along a heading where the mid pass reads the ground and the water, and the depth that counts as wet. */
 const MID_SAMPLES = 8;
 const WET = 0.1;
+/** Of a body's height, the water over which it swims (SWIM_ENTER in shared/sim/character.ts). */
+const SWIMS = 0.7;
 /** Metres the near pass's capsule is tried ahead of the body, at least, and the share of its radius tried where it touches. */
 const CONTACT = 0.3;
 const CONTACT_RADIUS = 0.8;
 /** Points of the trail kept, one a think, and metres from where it stands that a point must be to be the way back. */
 const TRAIL = 8;
 const TRAIL_AWAY = 2;
+/** Seconds of its pace off at which what it flees counts a half. */
+const THREAT_HALF = 3;
 /** Seconds of the prey's run that a hunter leads it by, at most. */
 const LEAD_MOST = 2;
 
@@ -82,6 +86,8 @@ export class Rings {
   private z = 0;
   private pace = 0;
   private sp = 1;
+  /** Water deeper than this the mover swims. */
+  private swims = 0;
   private mode = 0;
   private deep = 0;
   /** The knee ray's free run along each heading, from the body's edge, while the mid pass filled this answer. */
@@ -163,6 +169,7 @@ export class Rings {
     this.z = ents.z[e]!;
     this.pace = pace;
     this.sp = span(p.radius, GRAIN, pace, REACT);
+    this.swims = swimDepth(p, SWIMS);
     this.mode = mode;
     this.deep = deep;
     this.kneeFresh = false;
@@ -210,6 +217,18 @@ export class Rings {
       tz = Math.cos(a);
       td = 1;
     }
+    // What it flees, nearer counting more: a half at THREAT_HALF seconds of its pace off.
+    let hx = 0, hz = 0, near = 0;
+    if (this.mode === 2) {
+      hx = this.mind.fleeX[this.e]! - x;
+      hz = this.mind.fleeZ[this.e]! - z;
+      const hd = Math.hypot(hx, hz);
+      near = hd > 0.1 ? 1 - soon(hd / this.pace, THREAT_HALF) : 0;
+      if (hd > 0.1) {
+        hx /= hd;
+        hz /= hd;
+      }
+    }
     if (gd > 0) {
       gx /= gd;
       gz /= gd;
@@ -218,7 +237,7 @@ export class Rings {
       const at = (s * k + i) * FK, dx = this.dx[i]!, dz = this.dz[i]!;
       this.farC[at] = gd > 0 ? q(gx * dx + gz * dz) : 0;
       this.farC[at + 1] = wd > 0.1 ? q((wx * dx + wz * dz) / wd) : 0;
-      this.farC[at + 2] = 0;
+      this.farC[at + 2] = near > 0 ? q((hx * dx + hz * dz) * near) : 0;
       this.farC[at + 3] = pd > 0.1 ? q((px * dx + pz * dz) / pd) : 0;
       this.farC[at + 4] = 0;
       this.farC[at + 5] = td > 0 ? q((tx * dx + tz * dz) / td) : 0;
@@ -247,12 +266,13 @@ export class Rings {
       const up = high ? fan.cast(ox, chest, oz, dx, dz, run) : low;
       // The ground and the water as far as its knee runs free, and a span at least.
       const look = r + (low > sp ? low : sp), step = look / MID_SAMPLES;
-      let drop = 0, rise = 0, wet = 0;
+      let drop = 0, rise = 0, wet = 0, swum = 0;
       for (let j = 1; j <= MID_SAMPLES; j++) {
-        const px = x + dx * step * j, pz = z + dz * step * j, g = hf.heightAt(px, pz);
+        const px = x + dx * step * j, pz = z + dz * step * j, g = hf.heightAt(px, pz), deep = hf.waterAt(px, pz) - g;
         if (ground - g > drop) drop = ground - g;
         if (g - ground > rise) rise = g - ground;
-        if (hf.waterAt(px, pz) - g > WET) wet += step;
+        if (deep > WET) wet += step;
+        if (deep > this.swims) swum += step;
       }
       let crowd = 0;
       for (let b = 0; bodies !== null && b < bodies.count; b++) {
@@ -266,9 +286,10 @@ export class Rings {
       this.midC[at + 2] = q(unit(drop, spans));
       this.midC[at + 3] = q(unit(rise, spans));
       this.midC[at + 4] = q(unit(wet, spans));
+      this.midC[at + 5] = q(unit(swum, spans));
       // No ground in the game harms a walker yet.
-      this.midC[at + 5] = 0;
-      this.midC[at + 6] = q(unit(crowd, 4));
+      this.midC[at + 6] = 0;
+      this.midC[at + 7] = q(unit(crowd, 4));
     }
     this.midAt[s] = tick;
     this.kneeFresh = true;

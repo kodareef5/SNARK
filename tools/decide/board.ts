@@ -28,7 +28,7 @@ export const GATE = {
   intervalTop: 0.9,
   worstFamily: 1.1,
   ece: 0.05,
-  /** The state hidden must cost at least this share more log loss. */
+  /** The state hidden must cost at least this share of its gain in log loss over uniform. */
   blindState: 0.1,
   decisions: 2000,
   scenes: 200,
@@ -127,23 +127,69 @@ export function ruleGate(rule?: EpisodeScore, today?: EpisodeScore): { pass: boo
   return { pass: why.length === 0, why };
 }
 
-/** The gate's verdict on a trained scorer, with every reason it fails. */
-export function gateOf(s: Score, o: { hasState: boolean; mine?: EpisodeScore; rule?: EpisodeScore; today?: EpisodeScore }): { pass: boolean; why: string[] } {
+/** The 95% interval of the mean of `diff`, from `rounds` resamples. */
+export function meanInterval(diff: readonly number[], rounds = 1000, seed = 1): [number, number] {
+  if (diff.length === 0) return [NaN, NaN];
+  const rng = new Rng(seed), out: number[] = [];
+  for (let r = 0; r < rounds; r++) {
+    let a = 0;
+    for (let i = 0; i < diff.length; i++) a += diff[rng.int(diff.length)]!;
+    out.push(a / diff.length);
+  }
+  out.sort((x, y) => x - y);
+  return [out[Math.floor(rounds * 0.025)]!, out[Math.min(rounds - 1, Math.floor(rounds * 0.975))]!];
+}
+
+/** Layouts both played, by family and seed: the rule's arrivals the scorer lost and those it gained, and its cost less the rule's on each. */
+export function against(mine: EpisodeScore, rule: EpisodeScore): { lost: number; gained: number; diff: number[] } {
+  const by = new Map((rule.layouts ?? []).map((l) => [`${l.family}/${l.seed}`, l]));
+  let lost = 0, gained = 0;
+  const diff: number[] = [];
+  for (const l of mine.layouts ?? []) {
+    const r = by.get(`${l.family}/${l.seed}`);
+    if (!r || Number.isNaN(l.route) || l.route === null) continue;
+    if (r.arrived && !l.arrived) lost++;
+    if (l.arrived && !r.arrived) gained++;
+    if (l.cost !== undefined && r.cost !== undefined && Number.isFinite(l.cost) && Number.isFinite(r.cost)) diff.push(l.cost - r.cost);
+  }
+  return { lost, gained, diff };
+}
+
+/** Why whole episodes on the held-out layouts fail a scorer against the rule: fewer arrivals overall or in a family, more lost than gained, or no clear saving in cost. */
+export function episodeWhy(mine: EpisodeScore, rule: EpisodeScore, seed = 1): string[] {
+  const why: string[] = [], f = (v: number) => (Number.isFinite(v) ? v.toFixed(1) : String(v));
+  if (mine.arrived < rule.arrived) why.push(`whole episodes: it arrives in ${mine.arrived} of ${mine.scenes}, the rule in ${rule.arrived}`);
+  for (const [family, r] of Object.entries(rule.families ?? {})) {
+    const m = mine.families?.[family];
+    if (m && m.arrived < r.arrived) why.push(`whole episodes: in ${family} it arrives in ${m.arrived} of ${m.scenes}, the rule in ${r.arrived}`);
+  }
+  const { lost, gained, diff } = against(mine, rule);
+  if (lost > gained) why.push(`whole episodes: it loses ${lost} of the rule's arrivals and gains ${gained}`);
+  const [, top] = meanInterval(diff, 1000, seed);
+  if (!(mine.cost < rule.cost)) why.push(`whole episodes: its mean cost ${f(mine.cost)} is not under the rule's ${f(rule.cost)}`);
+  else if (!(top < 0)) why.push(`whole episodes: the interval of its cost less the rule's reaches ${f(top)}, not under 0`);
+  return why;
+}
+
+/** The gate's verdict on a trained scorer, with every reason it fails. ECE counts only where `calibrated`: a point whose probability is read. */
+export function gateOf(s: Score, o: { hasState: boolean; calibrated?: boolean; mine?: EpisodeScore; rule?: EpisodeScore; today?: EpisodeScore; seed?: number }): { pass: boolean; why: string[] } {
   const why: string[] = [];
   const f = (v: number, d = 3) => (Number.isFinite(v) ? v.toFixed(d) : String(v));
-  if (s.decisions < GATE.decisions || s.scenes < GATE.scenes) {
-    why.push(`not measurable: ${s.decisions} decisions from ${s.scenes} scenes held out, and ${GATE.decisions} from ${GATE.scenes} are needed`);
+  if (s.decisions === 0) why.push("single decisions: none are held out, so none of their marks can be read");
+  else {
+    if (s.decisions < GATE.decisions || s.scenes < GATE.scenes) {
+      why.push(`not measurable: ${s.decisions} decisions from ${s.scenes} scenes held out, and ${GATE.decisions} from ${GATE.scenes} are needed`);
+    }
+    if (!(s.regretRatio <= GATE.regretRatio)) why.push(`regret is ${f(s.regretRatio)} of the rule's, above ${GATE.regretRatio}`);
+    if (!(s.interval[1] < GATE.intervalTop)) why.push(`the interval's top is ${f(s.interval[1])}, not under ${GATE.intervalTop}`);
+    if (!(s.worstFamily <= GATE.worstFamily)) why.push(`its worst held-out family is ${f(s.worstFamily)} of the rule's, above ${GATE.worstFamily}`);
+    if (o.calibrated !== false && !(s.ece <= GATE.ece)) why.push(`ECE is ${f(s.ece)}, above ${GATE.ece}`);
+    if (o.hasState && !(s.blind.state >= GATE.blindState)) why.push(`hiding the state costs only ${f(s.blind.state)} of its gain over uniform, under ${GATE.blindState}: it does not read the state`);
   }
-  if (!(s.regretRatio <= GATE.regretRatio)) why.push(`regret is ${f(s.regretRatio)} of the rule's, above ${GATE.regretRatio}`);
-  if (!(s.interval[1] < GATE.intervalTop)) why.push(`the interval's top is ${f(s.interval[1])}, not under ${GATE.intervalTop}`);
-  if (!(s.worstFamily <= GATE.worstFamily)) why.push(`its worst held-out family is ${f(s.worstFamily)} of the rule's, above ${GATE.worstFamily}`);
-  if (!(s.ece <= GATE.ece)) why.push(`ECE is ${f(s.ece)}, above ${GATE.ece}`);
-  if (o.hasState && !(s.blind.state >= GATE.blindState)) why.push(`hiding the state costs only ${f(s.blind.state)} more log loss, under ${GATE.blindState}: it does not read the state`);
   if (Number.isFinite(s.microsFast) && s.microsFast > GATE.micros) why.push(`one answer takes ${f(s.microsFast, 1)} µs at the 99th percentile, above ${GATE.micros}`);
   if (s.bytes > GATE.bytes) why.push(`its weights are ${s.bytes} bytes, above ${GATE.bytes}`);
   if (o.mine && o.rule) {
-    if (o.mine.arrived < o.rule.arrived) why.push(`whole episodes: it arrives in ${o.mine.arrived} of ${o.mine.scenes}, the rule in ${o.rule.arrived}`);
-    if (o.mine.cost > o.rule.cost) why.push(`whole episodes: its mean cost ${f(o.mine.cost, 1)} is above the rule's ${f(o.rule.cost, 1)}`);
+    why.push(...episodeWhy(o.mine, o.rule, o.seed));
     if (o.today && o.mine.arrived < o.today.arrived) why.push(`whole episodes: it arrives in ${o.mine.arrived} of ${o.mine.scenes}, today's code in ${o.today.arrived}`);
   } else why.push("no whole episodes were played");
   return { pass: why.length === 0, why };

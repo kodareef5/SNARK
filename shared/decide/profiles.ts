@@ -24,14 +24,16 @@ export const RING_FAR = profile("ring.far", "choice", true,
 /**
  * The mid pass: what the next few seconds along the heading hold. `run` and `runHigh` are the free run at knee and at
  * chest height, as a share of what it covers in `MID_SECONDS`. `drop` and `rise` are how far the ground falls and
- * climbs along it, in spans, a share of `MID_SPANS`. `wet` is how much of the run lies under water it would wade, a
- * share of the run, not the water's depth. `hurt` is 1 where the run crosses ground that harms. `crowd` is other
- * bodies along it, a share of four.
+ * climbs along it, in spans, a share of `MID_SPANS`. `wet` is how far along it lies under any water, and `swum` how far
+ * under water deep enough that this body swims rather than wades, each in spans, a share of `MID_SPANS`, not the
+ * water's depth. `hurt` is 1 where the run crosses ground that harms. `crowd` is other bodies along it, a share of four.
+ * In the state, `swim` is how fast this body swims against its walk: a half where the two are alike, more for one that
+ * swims faster.
  */
 export const RING_MID = profile("ring.mid", "choice", true,
-  [...MODE, RUNG, "pace", "stuck"],
-  ["run", "runHigh", "drop", "rise", "wet", "hurt", "crowd", "held", "tried"],
-  [[RUNG, "run"], [RUNG, "drop"], [RUNG, "wet"], [RUNG, "hurt"], ["stuck", "tried"], ["flee", "run"], ["chase", "run"]]);
+  [...MODE, RUNG, "pace", "stuck", "swim"],
+  ["run", "runHigh", "drop", "rise", "wet", "swum", "hurt", "crowd", "held", "tried"],
+  [[RUNG, "run"], [RUNG, "drop"], [RUNG, "wet"], [RUNG, "swum"], ["swim", "swum"], [RUNG, "hurt"], ["stuck", "tried"], ["flee", "run"], ["chase", "run"]]);
 
 /**
  * The near pass: what is within `NEAR_SPANS` of the body. `open` is the free run along the heading, a share of that

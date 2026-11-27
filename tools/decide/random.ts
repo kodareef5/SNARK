@@ -5,9 +5,10 @@
 import { CHUNK_SIZE, TICK_RATE } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
 import { coreRegistry } from "../../tests/fixtures/world.ts";
-import { FAMILIES } from "./catalog.ts";
+import { swimDepth } from "../../shared/sim/character.ts";
+import { FAMILIES, SITUATIONS } from "./catalog.ts";
 
-export type Family = (typeof FAMILIES)[number] | "miami";
+export type Family = (typeof FAMILIES)[number] | (typeof SITUATIONS)[number] | "miami";
 
 /** Bodies that walk, and how often each is the mover. */
 export const MOVERS: readonly (readonly [string, number])[] = [["core:raptor", 3], ["core:dodo", 2], ["core:parasaur", 2], ["core:trike", 1], ["core:stego", 1], ["core:rex", 1]];
@@ -43,18 +44,49 @@ export interface Scene {
   standers: Stander[];
   /** Trees on the ground: how many a chunk, and the scatter's seed. */
   trees?: { perChunk: number; seed: number };
-  /** A strip of shallow water, its corners and depth. */
-  water?: { x0: number; z0: number; x1: number; z1: number; depth: number };
+  /** A strip of shallow water, its corners and depth; `more` are further strips of the same depth. */
+  water?: { x0: number; z0: number; x1: number; z1: number; depth: number; more?: { x0: number; z0: number; x1: number; z1: number }[] };
+  /** One side of a pair (`ford`, `gap`): see Pair. */
+  pair?: Pair;
+  /** One intent of a layout (`intentU`, `intentTrees`): see Intent. Without one, the mover walks to its goal. */
+  intent?: Intent;
+}
+
+/**
+ * What the mover is about. `walk`: it is sent to the goal. `chase`: it is ordered on a body of `prey` standing at the goal,
+ * and arrives at its first bite. `escape`: a threat starts at `threat` and comes after it at `speed` (m/s); the mover is
+ * hurt from it at the start and again each time its flight ends while the threat is within `safe` metres, and arrives once
+ * it is `safe` metres off; within `caught` metres it is caught, and the play ends. The scene's goal is then a place that
+ * far off, for the oracle.
+ */
+export interface Intent {
+  id: number;
+  kind: "walk" | "chase" | "escape";
+  prey?: string;
+  threat?: { x: number; z: number; speed: number; safe: number; caught: number };
+}
+
+/**
+ * One side of a pair: its number (seeds 2n - 1 and 2n are pair n), which side, and the fact that differs between the two.
+ * `mouth` is a point on the line across the U's open end and the way out over it: a way past that line went round.
+ */
+export interface Pair {
+  id: number;
+  side: 0 | 1;
+  fact: "body" | "depth" | "dry" | "fit";
+  mouth: { x: number; z: number; nx: number; nz: number };
 }
 
 /** Seconds each family is given. The owner may turn them: they are guesses, long enough that backing away to get round pays. */
-export const HORIZON_SECONDS: Record<Family, number> = { trees: 60, deadEnd: 90, pen: 90, water: 75, blocker: 75, crowd: 75, miami: 90 };
+export const HORIZON_SECONDS: Record<Family, number> = { trees: 60, deadEnd: 90, pen: 90, water: 75, blocker: 75, crowd: 75, miami: 90, ford: 90, gap: 90, intentU: 90, intentTrees: 60 };
+/** Seconds an escape is given, whatever its family. */
+export const ESCAPE_SECONDS = 30;
 
 const PIECE = 3;
 /** A wall piece's thickness. */
 const WALL = 0.2;
 /** A scene's horizon is at least this many times the straight way at the mover's pace. */
-const HORIZON_LINES = 3;
+export const HORIZON_LINES = 3;
 /** The map's side, in metres: the lab's flat ground is four chunks a side. */
 export const FLAT_SIDE = 4 * CHUNK_SIZE;
 /** The Miami slice's side. */
@@ -66,13 +98,16 @@ function weighted(rng: Rng, list: readonly (readonly [string, number])[]): strin
   return list[list.length - 1]![0];
 }
 
-/** A body's radius and walking pace (m/s), from the content. */
-export function bodyOf(kind: string): { radius: number; height: number; pace: number } {
+/** A body's radius and walking pace (m/s), from the content; its swimming pace, and the depth of water it swims in. */
+export function bodyOf(kind: string): { radius: number; height: number; pace: number; swim: number; swims: number } {
   const reg = coreRegistry(), k = reg.index.get(kind);
   const m = k === undefined ? undefined : reg.move[k];
   if (!m) throw new Error(`${kind} is not a body that moves`);
-  return { radius: m.radius, height: m.height, pace: m.walkSpeed };
+  return { radius: m.radius, height: m.height, pace: m.walkSpeed, swim: m.swimSpeed, swims: swimDepth(m, SWIMS) };
 }
+
+/** Of a body's height, the water over which it swims (SWIM_ENTER in shared/sim/character.ts). */
+const SWIMS = 0.7;
 
 /** Lays a scene out in its frame (u across, v toward the goal) and turns it into the world's. */
 class Frame {
@@ -108,6 +143,8 @@ class Frame {
 
 /** A scene of `family` from `seed`. */
 export function draw(family: Family, seed: number): Scene {
+  if (family === "intentU" || family === "intentTrees") return intended(family, seed);
+  if ((SITUATIONS as readonly string[]).includes(family)) return situation(family, seed);
   const rng = new Rng((seed * 2654435761 + FAMILIES.indexOf(family as (typeof FAMILIES)[number]) * 97 + 13) >>> 0);
   const kind = weighted(rng, MOVERS);
   const body = bodyOf(kind);
@@ -187,6 +224,146 @@ export function draw(family: Family, seed: number): Scene {
   // Fewer trees for a broad body, which no wood as thick as a raptor's would let through.
   if (family === "trees") scene.trees = { perChunk: Math.round((40 + rng.int(100)) * Math.min(1, 1.2 / (body.radius + 0.6))), seed: 1 + rng.int(1 << 20) };
   if (water) scene.water = water;
+  return scene;
+}
+
+/** Pieces each side by which a ford's long dry way is wider. */
+const WIDER = 7;
+/** Bodies that swim faster than they walk, and ones that swim slower. */
+const FAST_SWIMMERS: readonly (readonly [string, number])[] = [["core:dodo", 2], ["core:trike", 1], ["core:stego", 1]];
+const SLOW_SWIMMERS: readonly (readonly [string, number])[] = [["core:raptor", 2], ["core:parasaur", 1]];
+
+/** Where the frame's corners (u0, v0) and (u1, v1) fall in the world, as a box. */
+function boxOf(f: Frame, u0: number, v0: number, u1: number, v1: number): { x0: number; z0: number; x1: number; z1: number } {
+  const a = f.at(u0, v0), b = f.at(u1, v1);
+  return { x0: Math.min(a.x, b.x), z0: Math.min(a.z, b.z), x1: Math.max(a.x, b.x), z1: Math.max(a.z, b.z) };
+}
+
+/**
+ * A pair's side. Both sides draw the layout from the pair's number, so only the fact differs.
+ *
+ * `ford`: a U closed toward the goal, the mover inside it, with a gap in the closed end. Water fills the U's end and a strip
+ * past the gap wider than the U, so the gap is a swim (or a wade) and the dry way is out of the U's mouth and round the
+ * strip. The fact is the body (one that swims faster than it walks against one slower), the depth (a wade against a swim),
+ * or the U's depth, which is how long the dry way is.
+ *
+ * `gap`: a U closed toward the goal with a gap one piece wide in its closed end, which a raptor fits through and a rex does not.
+ */
+function situation(family: Family, seed: number): Scene {
+  const id = (seed + 1) >> 1, side = ((seed + 1) & 1) as 0 | 1;
+  const rng = new Rng((id * 2654435761 + (FAMILIES.length + SITUATIONS.indexOf(family as (typeof SITUATIONS)[number])) * 97 + 13) >>> 0);
+  const f = new Frame(FLAT_SIDE / 2 + rng.range(-20, 20), FLAT_SIDE / 2 + rng.range(-20, 20), rng.int(4));
+  const yaw0 = Math.round(rng.range(-0.25, 0.25) * 65536);
+  let kind: string, fact: Pair["fact"], depth = 0, water: Scene["water"];
+  let D: number, H: number, gapAt: number, gapN: number, startU: number, startV: number, goalU: number, goalV: number;
+  if (family === "ford") {
+    fact = (["body", "depth", "dry"] as const)[rng.int(3)]!;
+    // A body that swims faster than it walks crosses whatever the depth or the dry way, so only the body pair has one.
+    const slow = weighted(rng, SLOW_SWIMMERS), fast = weighted(rng, FAST_SWIMMERS);
+    const kinds = fact === "body" ? [slow, fast] : [slow, slow];
+    kind = kinds[side]!;
+    const bodies = kinds.map(bodyOf), widest = Math.max(...bodies.map((b) => b.radius));
+    // Gaps a body fits through: its width and a margin, in whole pieces.
+    gapN = Math.max(1, Math.ceil((2 * widest + 1.2) / PIECE));
+    H = ((gapN + 2 + rng.int(3)) * PIECE) / 2;
+    const short = rng.range(3.5, 6), long = rng.range(40, 66);
+    // The long dry way is a U deeper and wider, by WIDER pieces each side, so that today's search fills it.
+    const wide = fact === "dry" && side === 1;
+    D = wide ? long : short;
+    const swims = Math.max(...bodies.map((b) => b.swims)), wade = Math.min(...bodies.map((b) => b.swims));
+    const deep = swims * rng.range(1.15, 1.5), shallow = Math.max(0.2, wade * rng.range(0.3, 0.7));
+    depth = fact === "depth" ? [shallow, deep][side]! : deep;
+    const inside = rng.range(1, Math.max(1, Math.min(4, short - 2.5))), outside = rng.range(26, 42), past = [rng.range(1, 3), rng.range(1, 3)];
+    const n = Math.round((2 * H) / PIECE);
+    gapAt = rng.int(n - gapN + 1);
+    startV = -rng.range(1.5, Math.max(1.5, short - inside - 1.5));
+    startU = rng.range(-0.6, 0.6) * H;
+    goalV = 2 + outside + rng.range(3, 10);
+    goalU = rng.range(-H, H);
+    if (wide) {
+      H += WIDER * PIECE;
+      gapAt += WIDER;
+    }
+    water = { ...boxOf(f, -H, 2 - inside, H, 2), depth, more: [boxOf(f, -H - past[0]!, 2, H + past[1]!, 2 + outside)] };
+  } else {
+    fact = "fit";
+    kind = ["core:raptor", "core:rex"][side]!;
+    gapN = 1;
+    H = ((3 + rng.int(6)) * PIECE) / 2 + PIECE / 2;
+    D = rng.range(8, 40);
+    gapAt = rng.int(Math.round((2 * H) / PIECE));
+    startV = -rng.range(3, Math.max(3, D / 2));
+    startU = rng.range(-0.5, 0.5) * H;
+    goalV = 2 + rng.range(4, 15);
+    goalU = rng.range(-6, 6);
+  }
+  f.along(-H, -D, 2);
+  f.along(H, -D, 2);
+  f.across(-H, H, 2, 2, (i) => i >= gapAt && i < gapAt + gapN);
+  const body = bodyOf(kind);
+  const line = Math.hypot(goalU - startU, goalV - startV);
+  const ticks = HORIZON_SECONDS[family] * TICK_RATE;
+  const horizon = Math.max(ticks, Math.ceil((HORIZON_LINES * line) / body.pace) * TICK_RATE);
+  const start = f.at(startU, startV), goal = f.at(goalU, goalV), m = f.at(0, -D), out = f.at(0, -D - 1);
+  const scene: Scene = {
+    family, map: "flat", seed, kind, start: { ...start, yaw: (f.yaw() + yaw0) & 0xffff }, goal, horizon, pieces: f.pieces, standers: [],
+    pair: { id, side, fact, mouth: { x: m.x, z: m.z, nx: out.x - m.x, nz: out.z - m.z } },
+  };
+  if (water) scene.water = water;
+  return scene;
+}
+
+/** Bodies that chase and escape in the intent families: those that bite, how often each. */
+const HUNTERS: readonly (readonly [string, number])[] = [["core:raptor", 3], ["core:parasaur", 2], ["core:trike", 1], ["core:stego", 1], ["core:rex", 1]];
+/** Of the mover's walk, how fast a threat comes after it; metres it must put between them; and metres more than its radius at which it is caught. */
+const THREAT_PACE = 0.8;
+const SAFE_GAIN = 20;
+const CAUGHT = 1.5;
+
+/**
+ * One intent of a layout. `intentU`: a U open behind the mover and closed toward the goal, deep enough that today's search
+ * often fills it; a threat comes in at its mouth. `intentTrees`: a wood between the mover and the goal; a threat comes from
+ * behind, so the way from it is into the wood.
+ */
+function intended(family: Family, seed: number): Scene {
+  const id = Math.floor((seed + 2) / 3), which = (["walk", "chase", "escape"] as const)[(seed + 2) % 3]!;
+  const rng = new Rng((id * 2654435761 + (FAMILIES.length + SITUATIONS.indexOf(family as (typeof SITUATIONS)[number])) * 97 + 13) >>> 0);
+  const kind = weighted(rng, HUNTERS), body = bodyOf(kind);
+  const f = new Frame(FLAT_SIDE / 2 + rng.range(-20, 20), FLAT_SIDE / 2 + rng.range(-20, 20), rng.int(4));
+  const yaw0 = Math.round(rng.range(-0.25, 0.25) * 65536);
+  let startU = 0, startV = 0, goalU: number, goalV: number, behind: number, safeU: number, safeV: number;
+  let trees: Scene["trees"];
+  if (family === "intentU") {
+    const half = rng.range(15, 30), depth = rng.range(35, 66);
+    f.along(-half, -depth, 2);
+    f.along(half, -depth, 2);
+    f.across(-half, half, 2);
+    startV = -rng.range(2, 8);
+    startU = rng.range(-0.3, 0.3) * half;
+    goalV = 2 + rng.range(4, 15);
+    goalU = rng.range(-6, 6);
+    behind = rng.range(8, 12);
+    const out = rng.float() < 0.5 ? -1 : 1;
+    safeU = out * (half + 8);
+    safeV = -depth - 8;
+  } else {
+    goalV = rng.range(35, 80);
+    goalU = rng.range(-10, 10);
+    behind = rng.range(8, 12);
+    safeU = rng.range(-10, 10);
+    safeV = behind + SAFE_GAIN + 10;
+    trees = { perChunk: Math.round((40 + rng.int(100)) * Math.min(1, 1.2 / (body.radius + 0.6))), seed: 1 + rng.int(1 << 20) };
+  }
+  const line = Math.hypot(goalU - startU, goalV - startV);
+  const ticks = (which === "escape" ? ESCAPE_SECONDS : HORIZON_SECONDS[family]) * TICK_RATE;
+  const horizon = which === "escape" ? ticks : Math.max(ticks, Math.ceil((HORIZON_LINES * line) / body.pace) * TICK_RATE);
+  const start = f.at(startU, startV), threat = f.at(startU, startV - behind);
+  const goal = which === "escape" ? f.at(safeU, safeV) : f.at(goalU, goalV);
+  const intent: Intent = { id, kind: which };
+  if (which === "chase") intent.prey = "core:dodo";
+  if (which === "escape") intent.threat = { ...threat, speed: THREAT_PACE * body.pace, safe: behind + SAFE_GAIN, caught: body.radius + CAUGHT };
+  const scene: Scene = { family, map: "flat", seed, kind, start: { ...start, yaw: (f.yaw() + yaw0) & 0xffff }, goal, horizon, pieces: f.pieces, standers: [], intent };
+  if (trees) scene.trees = trees;
   return scene;
 }
 

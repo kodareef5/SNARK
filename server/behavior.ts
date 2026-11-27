@@ -442,6 +442,9 @@ export class Behavior {
   private targetGen = new Uint16Array(0);
   private homeX = new Float32Array(0);
   private homeZ = new Float32Array(0);
+  /** For a fleeing creature, the point it runs from. */
+  fleeX = new Float32Array(0);
+  fleeZ = new Float32Array(0);
   private until = new Uint32Array(0);
   private rested = new Uint32Array(0);
   /** The tick a startled creature stops standing and runs, 0 when it is not startled; and 1 for a hunt it was ordered on. */
@@ -520,6 +523,8 @@ export class Behavior {
     this.targetGen = wider(this.targetGen, cap);
     this.homeX = wider(this.homeX, cap);
     this.homeZ = wider(this.homeZ, cap);
+    this.fleeX = wider(this.fleeX, cap);
+    this.fleeZ = wider(this.fleeZ, cap);
     this.until = wider(this.until, cap);
     this.rested = wider(this.rested, cap);
     this.calm = wider(this.calm, cap);
@@ -936,10 +941,12 @@ export class Behavior {
     return true;
   }
 
-  /** The ladder let `e` go: it is calm, and a search under way for it is cut back to the budget of any other. */
+  /** The ladder let `e` go: it is calm, and a search under way for it is cut back to the budget of any other, and keeps dry. */
   letGo(e: number): void {
     this.rung[e] = 0;
     if (this.searching === e && this.finder.budget > SEARCH_CELLS) this.finder.budget = SEARCH_CELLS;
+    // Nor does the rest of its search swim.
+    if (this.searching === e) this.finder.swim = 0;
   }
 
   /** `e` is on the patient rung: it asks at once for a way, which is searched further (LONG_SEARCH). */
@@ -1143,6 +1150,8 @@ export class Behavior {
     const run = ((flyer ? p.flySpeed * p.flySprintMul : p.walkSpeed * p.sprintMul) * ticks) / TICK_RATE;
     this.homeX[e] = ents.x[e]! + Math.sin(a) * run;
     this.homeZ[e] = ents.z[e]! + Math.cos(a) * run;
+    this.fleeX[e] = x;
+    this.fleeZ[e] = z;
     if (!flyer && this.blocked(e, -1, tick)) this.ask(e, tick, ASK_NOW);
     if (clip) this.onStartle?.(e);
   }
@@ -2152,6 +2161,8 @@ export class Behavior {
     } else return -1;
     const f = this.finder;
     f.budget = this.rung[e]! >= 3 && this.game.lane.may() ? LONG_SEARCH : SEARCH_CELLS;
+    // On the patient rung the search crosses water it would swim, priced at its walk over its swim, never under dry ground's.
+    f.swim = this.rung[e]! >= 3 && p.swimSpeed > 0 ? Math.max(1, p.walkSpeed / p.swimSpeed) : 0;
     // The search freezes a slightly wider/taller footprint, capped at adult size. Its step capability and water
     // tolerance remain the young's actual ones: padding must not invent a climb or make deep water walkable.
     this.searchGrowing = ents.grown[e]! > this.world.tick;
