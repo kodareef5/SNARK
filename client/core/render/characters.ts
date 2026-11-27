@@ -2511,6 +2511,23 @@ export class Characters {
   loose(p: FramePacket, mesh: number, x: number, y: number, z: number, dx: number, dy: number, dz: number, length: number, wide = 1, region0 = 0, roll = 0): boolean {
     const first = this.room(p, 1, 1);
     if (first < 0) return false;
+    this.poseLoose(p, first, x, y, z, dx, dy, dz, length, wide, roll);
+    showMaterials(this.assets, mesh, Math.sqrt(x * x + y * y + z * z), wide);
+    const n = this.count++;
+    this.key[n] = mesh * this.levels;
+    this.firstBone[n] = first;
+    this.region0[n] = 0;
+    this.colors.fill(0, n * 6, n * 6 + 6);
+    this.colors[n * 6] = region0;
+    this.id[n] = 0;
+    this.near[n] = SEEN;
+    this.mask[n] = 0;
+    this.offset.fill(0, n * 3, n * 3 + 3);
+    return true;
+  }
+
+  /** Updates the transform of an already queued effect after its parent's bones are posed. */
+  poseLoose(p: FramePacket, first: number, x: number, y: number, z: number, dx: number, dy: number, dz: number, length: number, wide: number, roll = 0): void {
     // Right is level and square to the direction. Up is the direction crossed with right, so the basis keeps its handedness.
     let rx = dz;
     let ry = 0;
@@ -2546,18 +2563,6 @@ export class Characters {
     b[o + 9] = uz * wide;
     b[o + 10] = dz * length;
     b[o + 11] = z;
-    showMaterials(this.assets, mesh, Math.sqrt(x * x + y * y + z * z), wide);
-    const n = this.count++;
-    this.key[n] = mesh * this.levels;
-    this.firstBone[n] = first;
-    this.region0[n] = 0;
-    this.colors.fill(0, n * 6, n * 6 + 6);
-    this.colors[n * 6] = region0;
-    this.id[n] = 0;
-    this.near[n] = SEEN;
-    this.mask[n] = 0;
-    this.offset.fill(0, n * 3, n * 3 + 3);
-    return true;
   }
 
   /**

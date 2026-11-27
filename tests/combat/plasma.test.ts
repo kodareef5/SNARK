@@ -8,7 +8,7 @@ import type { Characters } from "../../client/core/render/characters.ts";
 import { RemoteSample, type ClientSession, type CombatEvent } from "../../client/core/session.ts";
 import { Shots } from "../../client/core/shots.ts";
 import "../../client/core/render/city-late.ts";
-import { DRAW_SKINNED, DRAW_TEXTURED, type FramePacket } from "../../client/core/render/packet.ts";
+import { BONE_FLOATS, DRAW_SKINNED, DRAW_TEXTURED, type FramePacket } from "../../client/core/render/packet.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -237,17 +237,30 @@ for (const latencyMs of [40, 150]) {
     let apart = -1;
     let flashed = false;
     let drawn = false;
+    const checked = new Set<object>();
     app.controls.mouseButton(0, true);
     run(400, () => {
       for (const viewer of [app, eve]) for (const f of viewer.shots.flashes) {
         const b = f.bore!;
-        expect(Math.abs(b.by - Math.sin(0.3))).toBeLessThan(0.05);
-        expect(b.bz).toBeGreaterThan(0.9);
+        expect(Math.abs(b.dy - Math.sin(0.3))).toBeLessThan(0.05);
+        expect(b.dz).toBeGreaterThan(0.9);
         if (b.posed) {
           const muzzle: number[] = [], axis: number[] = [];
           expect(viewer.scene!.characters.plasmaBore(b.x, b.y, b.z, b.ammo, b.mine, muzzle, axis, b.shooter)).toBe(true);
           expect([f.x, f.y, f.z]).toEqual(muzzle);
           expect([f.dx, f.dy, f.dz]).toEqual(axis);
+          const p = viewer.scene!.packet, origin = [p.camX, p.camY, p.camZ];
+          const bolt = b.row * BONE_FLOATS, flash = f.row * BONE_FLOATS;
+          for (let k = 0; k < 3; k++) {
+            const row = k * 4;
+            expect(p.bones[flash + row + 3]! + origin[k]!).toBeCloseTo(muzzle[k]!, 4);
+            if (!checked.has(b)) {
+              const shaft = p.bones[bolt + row + 2]!;
+              expect(shaft).toBeCloseTo(0.08 * axis[k]!, 5);
+              expect(p.bones[bolt + row + 3]! - shaft + origin[k]!).toBeCloseTo(muzzle[k]!, 4);
+            }
+          }
+          checked.add(b);
         }
       }
       if (eve.shots.flashes.length > 0) flashed = true;
@@ -263,6 +276,7 @@ for (const latencyMs of [40, 150]) {
     // The message took the link's time to come, and the server's bolt flew on meanwhile: no further than that and a tick.
     expect(apart).toBeLessThanOrEqual((latencyMs / TICK_MS + 2) * speed * TICK_DT);
     expect(flashed).toBe(true);
+    expect(checked.size).toBeGreaterThan(0);
     expect(drawn).toBe(true);
     expect(eve.session.events.some((ev) => ev.kind === EVENT_SHOT)).toBe(false);
     // Gone at its reach on every side, and nothing burst in the open air.
