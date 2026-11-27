@@ -13,7 +13,7 @@ import { resolveAdmin, sections } from "../../client/core/admin/navigation.ts";
 import { adminSite } from "../../server/admin/site.ts";
 import { Guesses } from "../../server/guesses.ts";
 import type { AnsweredJson, DecideJson } from "../../shared/admin-decide.ts";
-import type { Score } from "../../shared/decide/scoreboard.ts";
+import type { EpisodeScore, Score } from "../../shared/decide/scoreboard.ts";
 import { buildAdmin } from "../../tools/build-admin.ts";
 
 const root = mkdtempSync(join(tmpdir(), "snark-decide-page-"));
@@ -87,7 +87,7 @@ test("recent answers are drawn as rings for a ring and as a table for the rest",
 });
 
 const score = (o: Partial<Score> = {}): Score => ({
-  name: "mid-1", kind: "linear", decisions: 1200, scenes: 40, regret: 3.5, regretRatio: 0.62, worstFamily: 0.8, disagreeRatio: 0.5, logLoss: 0.4, brier: 0.1,
+  name: "mid-1", kind: "linear", decisions: 1200, scenes: 40, regret: 3.5, regretRatio: 0.62, interval: [0.5, 0.8], medianFast: 1, medianSlow: 4, worstFamily: 0.8, disagreeRatio: 0.5, logLoss: 0.4, brier: 0.1,
   ece: 0.0314, reliability: [{ said: 0.25, happened: 0.3, answers: 50 }], blind: { state: 0.1, columns: 0.5, shuffled: 0.2 }, microsFast: 3.24, microsSlow: 12.6, bytes: 2400,
   gate: { pass: true, why: [] }, ...o,
 });
@@ -110,13 +110,25 @@ test("scores read as shares of the rule's, and a failed gate says each reason", 
   expect(html).toContain("Refused: stale.json");
 });
 
-test("the lab's scoreboard shows each point's headroom and entries, and its status", () => {
+test("the lab's scoreboard leads with whole episodes, then each entry's decisions", () => {
   expect(labHtml(null)).toContain("no scoreboard");
-  const html = labHtml({ made: "2026-11-27", revision: "abc", points: [{ point: "nav.ring", profile: "ring.mid", headroom: 0.02, scores: [score()] }, { point: "pick", profile: "pick", headroom: 0.3, scores: [] }] });
-  expect(html).toContain("headroom under 5%: nothing is trained");
-  expect(html).toContain("headroom 30% of the median cost");
-  expect(html).toContain("3.50 ticks, 62% of the rule's");
-  expect(html).toContain('aria-label="Reliability"');
+  const run = (name: string, arrived: number): EpisodeScore => ({ name, scenes: 142, arrived, ticks: 900, healthLost: 0, stuckTicks: 72, searches: 3, cells: 4000, cost: 1822, decideMicros: 47 });
+  const html = labHtml({ made: "2026-11-27", revision: "abc", notes: ["Made on an older ladder."], points: [
+    { point: "nav.ring", profile: "ring.mid", headroom: 0.097, episodes: [run("today", 128), run("rule", 132)], agreement: { checked: 4398, agreed: 4398, ruleChecked: 4398, ruleAgreed: 4398 }, scores: [score()] },
+    { point: "pick", profile: "pick", headroom: 0.3, episodes: [], scores: [] },
+  ] });
+  expect(html).toContain("<li>Made on an older ladder.</li>");
+  expect(html).toContain("<td>rule</td><td>132 of 142</td><td>30.0 s</td>");
+  // The episodes come before the single decisions.
+  expect(html.indexOf("Whole episodes")).toBeLessThan(html.indexOf("Single decisions"));
+  expect(html).toContain("made again as the server makes them: 4,398 of 4,398");
+  expect(html).toContain("headroom at one decision 10% of the median cost");
+  expect(html).toContain("3.50 ticks, 62% of the rule's (50 to 80%)");
+  // A point with nothing scored shows no empty table.
+  expect(html.match(/<caption>Single decisions/g)!.length).toBe(1);
+});
+
+test("the lab's status reads as one line", () => {
   expect(statusText({ step: "fit", point: "nav.ring", done: 1200, of: 4000, at: "09:00" })).toBe("The lab is at fit for nav.ring: 1,200 of 4,000 (said at 09:00).");
   expect([statusText(null), statusText({ step: "idle", point: "", done: 0, of: 0, at: "09:00" })]).toEqual(["No lab run has said what it is doing.", "The lab is idle (said at 09:00)."]);
 });

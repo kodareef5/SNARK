@@ -2,7 +2,8 @@
 // the recent answers drawn as rings of headings, a map of where they were, and the lab's scoreboard, as HTML strings.
 
 import { POLICY_NAMES, STAR, policyText, readPolicy, withPolicy, type AnsweredJson, type DecideJson, type ProfileJson } from "../../../shared/admin-decide.ts";
-import type { LabStatus, Reliability, Score, Scoreboard } from "../../../shared/decide/scoreboard.ts";
+import { TICK_RATE } from "../../../shared/coords.ts";
+import type { EpisodeScore, LabStatus, Reliability, Score, Scoreboard } from "../../../shared/decide/scoreboard.ts";
 import { toPixel } from "../drops/place.ts";
 import { bytesText, esc, msText } from "./format.ts";
 
@@ -240,16 +241,31 @@ export function statusText(st: LabStatus | null): string {
   return `The lab is at ${st.step}${st.point ? ` for ${st.point}` : ""}: ${st.done.toLocaleString("en")} of ${st.of.toLocaleString("en")} (said at ${st.at}).`;
 }
 
-/** The lab's scoreboard: for each point its headroom, then each entry's results and gate. */
+/** Whole episodes as a table: each policy's arrivals, seconds, ticks stuck, cost and the decide part's time. */
+function episodesHtml(title: string, rows: readonly EpisodeScore[] | undefined): string {
+  if (!rows || rows.length === 0) return "";
+  const body = rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${r.arrived.toLocaleString("en")} of ${r.scenes.toLocaleString("en")}</td><td>${(r.ticks / TICK_RATE).toFixed(1)} s</td>` +
+    `<td>${Math.round(r.stuckTicks).toLocaleString("en")}</td><td>${Math.round(r.cost).toLocaleString("en")}</td><td>${r.decideMicros < 10 ? r.decideMicros.toFixed(1) : Math.round(r.decideMicros)} µs</td></tr>`).join("");
+  return `<div class="scroll"><table><caption>${esc(title)}</caption><thead><tr><th>Policy</th><th>Arrived</th><th>Mean time</th><th>Ticks stuck</th><th>Mean cost</th><th>Decide, 99th</th></tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+/**
+ * The lab's scoreboard: its notes, then for each point the whole episodes on layouts held out (the headline), how many
+ * stored answers `combine` made again, and each entry's single decisions and gate.
+ */
 export function labHtml(board: Scoreboard | null): string {
   if (!board) return '<p class="dim">This checkout has no scoreboard (.cache/decide/scoreboard.json): run the lab to make one.</p>';
   const head = ["Entry", "Decisions", "Regret", "Worst family", "Where the rule is wrong", "ECE", "Reliability", "Latency", "Size", "Gate"];
   const points = board.points.map((p) => {
     const rows = p.scores.map((sc) => `<tr><td>${esc(sc.name)} <span class="dim">${esc(sc.kind)}</span></td><td>${sc.decisions.toLocaleString("en")} in ${sc.scenes.toLocaleString("en")} scenes</td>` +
-      `<td>${sc.regret.toFixed(2)} ticks, ${regretText(sc.regretRatio)}</td><td>${regretText(sc.worstFamily)}</td><td>${regretText(sc.disagreeRatio)}</td><td>${eceText(sc.ece)}</td>` +
+      `<td>${sc.regret.toFixed(2)} ticks, ${regretText(sc.regretRatio)}${sc.interval ? ` (${Math.round(sc.interval[0] * 100)} to ${Math.round(sc.interval[1] * 100)}%)` : ""}</td><td>${regretText(sc.worstFamily)}</td><td>${regretText(sc.disagreeRatio)}</td><td>${eceText(sc.ece)}</td>` +
       `<td>${reliabilitySvg(sc.reliability)}</td><td>${microsText(sc.microsFast, sc.microsSlow)}</td><td>${bytesText(sc.bytes)}</td>${gateCell(sc.gate)}</tr>`).join("");
-    const room = p.headroom < 0.05 ? "under 5%: nothing is trained" : `${Math.round(p.headroom * 100)}% of the median cost`;
-    return `<h3>${esc(p.point)} <span class="dim">${esc(p.profile)}, headroom ${room}</span></h3><div class="scroll"><table><thead><tr>${head.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>`;
+    const a = p.agreement;
+    const again = a ? `<p class="dim">Stored answers made again as the server makes them: ${a.agreed.toLocaleString("en")} of ${a.checked.toLocaleString("en")}.</p>` : "";
+    const decisions = p.scores.length ? `<div class="scroll"><table><caption>Single decisions</caption><thead><tr>${head.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>` : "";
+    return `<h3>${esc(p.point)} <span class="dim">${esc(p.profile)}, headroom at one decision ${Math.round(p.headroom * 100)}% of the median cost</span></h3>` +
+      `${episodesHtml("Whole episodes on layouts held out", p.episodes)}${episodesHtml("Fresh scenes of every family", p.fresh)}${again}${decisions}`;
   }).join("");
-  return `<p class="dim">Made ${esc(board.made)} at ${esc(board.revision)}.</p>${points}`;
+  const notes = board.notes?.length ? `<ul class="dim">${board.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : "";
+  return `<p class="dim">Made ${esc(board.made)} at ${esc(board.revision)}.</p>${notes}${points}`;
 }

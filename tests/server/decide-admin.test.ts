@@ -188,7 +188,7 @@ test("weights written after the start are read again when asked, with their scor
 test("the lab's scoreboard and status are given where the checkout has them", async () => {
   const { h } = world();
   const lab = folder();
-  const board: Scoreboard = { made: "2026-11-27T09:00:00Z", revision: "abc123", points: [{ point: "test.ring", profile: "ring.mid", headroom: 0.2, scores: [] }] };
+  const board: Scoreboard = { made: "2026-11-27T09:00:00Z", revision: "abc123", points: [{ point: "test.ring", profile: "ring.mid", headroom: 0.2, episodes: [], scores: [] }] };
   const status: LabStatus = { step: "fit", point: "test.ring", done: 3, of: 10, at: "2026-11-27T09:01:00Z" };
   writeFileSync(join(lab, "scoreboard.json"), JSON.stringify(board));
   writeFileSync(join(lab, "status.json"), JSON.stringify(status));
