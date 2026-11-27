@@ -8,11 +8,11 @@ import { MID_SECONDS, MID_SPANS, NEAR_SPANS, RING_FAR, RING_MID, RING_NEAR } fro
 import { span, unit } from "../../shared/decide/units.ts";
 import type { MoveParams } from "../../shared/sim/character.ts";
 import { GROUND_OFF, GROUND_SOLID, groundAt } from "../../shared/world/path.ts";
-import { castWorld, rayHit } from "../../shared/world/ray.ts";
 import { WAY_ON, type Behavior } from "../behavior.ts";
 import type { BodyBlocking } from "../blocking.ts";
 import type { ServerWorld } from "../world.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
+import { Fan } from "./nav-fan.ts";
 
 export const FAR_W = RING_FAR.columns.length;
 export const MID_W = RING_MID.columns.length;
@@ -84,6 +84,7 @@ export class Rings {
   /** The knee ray's free run along each heading, from the body's edge, while the mid pass filled this answer. */
   private readonly knee: Float64Array;
   private kneeFresh = false;
+  private readonly fan: Fan;
 
   constructor(world: ServerWorld, mind: Behavior, blocking: BodyBlocking, n: number, k: number, dx: Float64Array, dz: Float64Array) {
     this.world = world;
@@ -107,6 +108,7 @@ export class Rings {
     this.trailAt = new Int32Array(n).fill(NEVER);
     this.trailN = new Uint8Array(n);
     this.knee = new Float64Array(k);
+    this.fan = new Fan(world);
   }
 
   /** Empties slot `s` for a mover standing at (x, z). */
@@ -208,19 +210,22 @@ export class Rings {
     this.farGZ[s] = want.z;
   }
 
-  /** The mid pass: the free run at knee and chest from the body's edge, the ground and water along it, and bodies in it. */
+  /**
+   * The mid pass: the free run at knee and chest from the body's edge, the ground and water along it, and bodies in it.
+   * Only a stuck mover casts at its chest, where trunks and overhangs matter most; a wary one's chest run is its knee's.
+   */
   fillMid(s: number, tick: number): void {
     const world = this.world, hf = world.hf, ents = world.ents, k = this.k, p = this.p!, e = this.e, x = this.x, z = this.z, sp = this.sp;
-    const r = p.radius, run = Math.min(this.pace * MID_SECONDS, MID_MOST);
+    const r = p.radius, run = Math.min(this.pace * MID_SECONDS, MID_MOST), fan = this.fan;
     const ground = hf.heightAt(x, z), knee = ground + KNEE * p.height, chest = ground + CHEST * p.height;
+    const high = this.deep >= 2;
     const spans = MID_SPANS * sp;
     const bodies = this.blocking.around(e, x, ents.y[e]!, z, run, ents.team[e]!, true, this.mind.targetOf(e));
+    fan.gather(x, z, r + run, knee, high ? chest : knee);
     for (let i = 0; i < k; i++) {
       const at = (s * k + i) * MK, dx = this.dx[i]!, dz = this.dz[i]!, ox = x + dx * r, oz = z + dz * r;
-      castWorld(world, ox, knee, oz, dx, 0, dz, run, true);
-      const low = (this.knee[i] = rayHit.t);
-      castWorld(world, ox, chest, oz, dx, 0, dz, run, true);
-      const high = rayHit.t;
+      const low = (this.knee[i] = fan.cast(ox, knee, oz, dx, dz, run));
+      const up = high ? fan.cast(ox, chest, oz, dx, dz, run) : low;
       // The ground and the water as far as its knee runs free, and a span at least.
       const look = r + (low > sp ? low : sp), step = look / MID_SAMPLES;
       let drop = 0, rise = 0, wet = 0;
@@ -238,7 +243,7 @@ export class Rings {
         if (along > 0 && along <= run + wide && (side < 0 ? -side : side) < wide) crowd++;
       }
       this.midC[at] = q(unit(low, run));
-      this.midC[at + 1] = q(unit(high, run));
+      this.midC[at + 1] = q(unit(up, run));
       this.midC[at + 2] = q(unit(drop, spans));
       this.midC[at + 3] = q(unit(rise, spans));
       this.midC[at + 4] = q(unit(wet, spans));
@@ -259,13 +264,13 @@ export class Rings {
     // Its whole body is tried ahead, unless it already touches something where it stands: then a little less of it.
     const tight = groundAt(world, p, x, z) === GROUND_SOLID ? r * CONTACT_RADIUS : r;
     let close = 0;
+    if (!this.kneeFresh) this.fan.gather(x, z, r + reach, knee, knee);
     for (let i = 0; i < k; i++) {
       const at = (s * k + i) * 2, dx = this.dx[i]!, dz = this.dz[i]!;
       const ground = groundAt(world, p, x + dx * contact, z + dz * contact, tight);
       const mask = ground === GROUND_SOLID || ground === GROUND_OFF ? 1 : 0;
       // The mid pass's knee ray, where it ran this answer, is this one from the body's edge.
-      if (!this.kneeFresh) castWorld(world, x + dx * r, knee, z + dz * r, dx, 0, dz, reach, true);
-      const open = unit(this.kneeFresh ? this.knee[i]! : rayHit.t, reach);
+      const open = unit(this.kneeFresh ? this.knee[i]! : this.fan.cast(x + dx * r, knee, z + dz * r, dx, dz, reach), reach);
       let body = 0;
       for (let b = 0; bodies !== null && b < bodies.count && body === 0; b++) {
         const bx = (bodies.ax[b]! + bodies.bx[b]!) / 2 - x, bz = (bodies.az[b]! + bodies.bz[b]!) / 2 - z;
