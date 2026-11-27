@@ -3,7 +3,7 @@
 // Scoreboard type) and a page with nothing outside it, .cache/decide/scoreboard.html, and puts each trained scorer's
 // held-out Score in its weights file's `about`.
 //
-//   bun tools/decide/score.ts [--point <name>] [--layouts 40] [--fresh 0] [--workers 8] [--reading 1s|5s|end]
+//   bun tools/decide/score.ts [--point <name>] [--layouts 40] [--fresh 0] [--workers 8] [--reading 1s|5s|end] [--note <text>]...
 //   bun tools/decide/score.ts --headroom <point>     how far the best candidate beats the rule, before any training
 //
 // One answer is timed in a child pinned to a fast core and to a slow one (taskset -c 2 and -c 20 on this machine).
@@ -224,7 +224,8 @@ if (import.meta.main && process.argv.includes("--time")) {
 } else if (import.meta.main) {
   const named = arg("--point");
   const points = named ? [named] : existsSync(join(ROOT, "data")) ? readdirSync(join(ROOT, "data")).filter((d) => existsSync(join(ROOT, "data", d, "manifest.json"))).sort() : [];
-  const board: Scoreboard = { made: new Date().toISOString(), revision: revision(), points: [] };
+  const notes = process.argv.flatMap((a, i) => (a === "--note" ? [process.argv[i + 1]!] : []));
+  const board: Scoreboard = { made: new Date().toISOString(), revision: revision(), ...(notes.length ? { notes } : {}), points: [] };
   for (const point of points) {
     status({ step: "score", point, done: 0, of: 1 });
     const reading = READINGS.indexOf((arg("--reading") ?? "end") as (typeof READINGS)[number]);

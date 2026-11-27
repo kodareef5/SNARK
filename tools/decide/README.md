@@ -43,7 +43,7 @@ bun tools/decide/generate.ts --point nav.ring --first 100001 --under <weights.js
 bun tools/decide/score.ts --headroom nav.ring          how far the best candidate beats the rule
 bun tools/decide/fit.ts --point nav.ring --profile ring.mid --kind linear [--reading 5s] [--seed 1]
 bun tools/decide/fit.ts --point nav.ring --profile ring.mid --kind hidden --hidden 16
-bun tools/decide/score.ts [--episodes 400] [--fresh 20] [--workers 8]
+bun tools/decide/score.ts [--layouts 75] [--fresh 20] [--workers 8]
                                                        the board
 bun tools/decide/toy.ts                                the whole loop on the toy world, in seconds
 bun tools/decide/world.ts --cost                       what a lab world and a tick cost
@@ -82,9 +82,11 @@ costs two horizons and the straight way left. The prices and horizons are guesse
 Splits are by family and by map, never by row. The `pen` family and the Miami slice are held out and read only by the
 board; `blocker` stops training and fits the temperature. Intervals are by bootstrap over scenes.
 
-The board's headline is whole episodes on the held-out layouts: each policy (every point off, the rule, each trained
-scorer loaded alone with the points set to `model`, the other passes by their rule) plays them from start to finish, with
-arrivals by family. `--fresh` adds new scenes of every family, trained-on ones too, as a look at the scenes, not the
+The board's headline is whole episodes on the held-out layouts, fixed before anything is played: seeds 1 to
+`--layouts` of each held-out family and map, whatever happens in them. Each policy (every point off, the rule, each
+trained scorer loaded alone with the points set to `model`, the other passes by their rule) plays every one from start to
+finish, and each layout is listed: its way, whether it arrived, its time and health lost, and how many of the ladder's
+headings were acted on. `--fresh` adds new scenes of every family, trained-on ones too, as a look at the scenes, not the
 gate. A trained scorer passes only if, held out:
 
 - its regret is at most 0.75 of the rule's, and the interval's top under 0.9;
@@ -94,6 +96,12 @@ gate. A trained scorer passes only if, held out:
 - one answer's 99th percentile is at most 25 µs on a fast core, and its file at most 64 KB;
 - in whole episodes it arrives at least as often as the rule and as today's code, at no higher mean cost than the rule;
 - and there are at least 2,000 decisions from 200 scenes, or it is not measurable.
+
+Every number about a point of passes is of the answer as the server made it: the trainer and the board add the passes
+with `combine` (shared/decide/combine.ts), each by its mix over its scorer's temperature, with the held heading's stick,
+and calibration is of the summed probabilities, not of one pass. A survey makes each answer again from its passes and
+counts those that come out as the server's; generation fails under the rule if any does not, and the board checks every
+stored decision again.
 
 For a "yes" point, regret is read as log loss. The rule itself is marked as failing where it arrives in fewer whole
 episodes than today's code: then turning the point on loses episodes, whatever a scorer does.

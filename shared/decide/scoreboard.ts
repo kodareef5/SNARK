@@ -84,6 +84,8 @@ export interface Scoreboard {
   /** When it was made (ISO), and the revision of the code. */
   made: string;
   revision: string;
+  /** What a reader must know of where the numbers came from. */
+  notes?: string[];
   points: PointScores[];
 }
 
