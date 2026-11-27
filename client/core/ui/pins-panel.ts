@@ -116,7 +116,7 @@ export function buildPins(f: UiFrame, session: ClientSession, p: PinChoice, x: n
     const ry = top + i * ROW_H;
     f.add(KEY_PIN_SWATCH + i, K_PANEL, x + PAD, ry + 5, 7, 7, S_MARK_SELF).tint = PIN_TINT[pin.kind] ?? -1;
     const who = pin.mine ? "you" : pin.author;
-    const words = [PIN_WORDS[pin.kind] ?? "?", pin.label, who, pinAge(now, pin.at)].filter((s) => s !== "").join("  ");
+    const words = (PIN_WORDS[pin.kind] ?? "?") + (pin.label ? "  " + pin.label : "") + (who ? "  " + who : "") + "  " + pinAge(now, pin.at);
     const removable = mayUnpin(pin, rank);
     const text = f.text(KEY_PIN_ROW + i, x + PAD + 12, ry, inner - 12 - (removable ? 22 : 0), S_KEY_SMALL, fitText(words, inner - 12 - (removable ? 22 : 0), S_KEY_SMALL));
     text.label = pin.shared ? "Shared with the tribe" : "Seen by you alone";
