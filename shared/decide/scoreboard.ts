@@ -18,6 +18,8 @@ export interface Score {
   /** Mean cost above the best candidate's, in ticks, and that as a share of the rule's. */
   regret: number;
   regretRatio: number;
+  /** The share's 95% interval, by bootstrap over scenes. */
+  interval: [number, number];
   /** The same share on the worst family of scenes, and where the best candidate and the rule's disagree. */
   worstFamily: number;
   disagreeRatio: number;
@@ -31,14 +33,36 @@ export interface Score {
   /** Microseconds for one answer, 99th percentile, on a fast core and a slow one; and its weights' size in bytes. */
   microsFast: number;
   microsSlow: number;
+  /** The same as medians. */
+  medianFast: number;
+  medianSlow: number;
   bytes: number;
   /** Whether it may decide in the game, and each reason it may not. */
   gate: { pass: boolean; why: string[] };
 }
 
+/** Whole episodes on held-out scenes, one policy deciding from start to finish. */
+export interface EpisodeScore {
+  /** "today", "rule", or a trained scorer's name. */
+  name: string;
+  scenes: number;
+  /** Episodes that reached the goal inside the horizon. */
+  arrived: number;
+  /** Means over the episodes: ticks (to arrival, or the horizon), the share of health lost, ticks stuck or pinned, path cells searched, and the cost (setups.ts). */
+  ticks: number;
+  healthLost: number;
+  stuckTicks: number;
+  cells: number;
+  cost: number;
+  /** The 99th percentile of the tick's `decide` part, in microseconds. */
+  decideMicros: number;
+}
+
 export interface PointScores {
   point: string;
   profile: string;
+  /** The headline: each policy over whole episodes on unseen layouts. A scorer that wins single decisions and loses these fails. */
+  episodes: EpisodeScore[];
   /** How far the best candidate beats the rule, as a share of the median cost: under 0.05 nothing is trained. */
   headroom: number;
   scores: Score[];
@@ -53,7 +77,7 @@ export interface Scoreboard {
 
 /** What a lab run is doing now, for a page that watches it (.cache/decide/status.json). */
 export interface LabStatus {
-  step: "generate" | "label" | "fit" | "score" | "idle";
+  step: "generate" | "label" | "fit" | "score" | "episodes" | "idle";
   point: string;
   done: number;
   of: number;
