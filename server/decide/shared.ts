@@ -4,7 +4,7 @@
 // settings are live, kept beside its save and in its admin log. The save keeps which copy it took, so a restart does not
 // take an old copy again over what was set by hand since. Its row in the tick follows the decider's own (server/host.ts).
 
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DECIDE_SETTINGS, type DecideSettingName } from "../../shared/admin-decide.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
@@ -12,6 +12,13 @@ import { OPERATOR, type Actor } from "../acts.ts";
 import type { Sidecar } from "../persist/persistence.ts";
 
 export const COPY_FILE = "decide.json";
+/** Held while one world numbers and writes a copy, so two copying at once are numbered one after the other. */
+export const COPY_LOCK = "decide.lock";
+/** A lock older than this was left by a world that died while it held it. */
+const LOCK_STALE_MS = 10_000;
+/** Tries at the lock, and the wait between them. */
+const LOCK_TRIES = 100;
+const LOCK_WAIT_MS = 20;
 /** Ticks between two reads of the copy. */
 export const LOOK_TICKS = 5 * TICK_RATE;
 
@@ -102,24 +109,51 @@ export class DecideCopy {
     return this.reading ?? Promise.resolve();
   }
 
-  /** Writes this world's settings as the cluster's newest copy. Answers "" when written, else why not. */
+  /**
+   * Writes this world's settings as the cluster's newest copy. Answers "" when written, else why not. The copy is numbered
+   * and written under the cluster's lock: two worlds that copy at once would otherwise both write the same number, and a
+   * world that took the first would never take the second.
+   */
   async clone(): Promise<{ why: string; rev: number }> {
-    let rev = this.rev;
+    const lock = join(this.ctx.root, COPY_LOCK);
+    if (!(await this.lock(lock))) return { why: "another world of the cluster is copying its settings: try again in a moment", rev: 0 };
     try {
-      rev = Math.max(rev, readCopy(await readFile(this.path, "utf8"))?.rev ?? 0);
-    } catch {
-      // No copy yet.
-    }
-    const file: CopyFile = { rev: rev + 1, from: this.ctx.world, at: this.ctx.now(), settings: this.ctx.settings() };
-    const dir = join(this.ctx.root, "tmp"), tmp = join(dir, `decide-${process.pid}-${++this.written}`);
-    try {
+      let rev = this.rev;
+      try {
+        rev = Math.max(rev, readCopy(await readFile(this.path, "utf8"))?.rev ?? 0);
+      } catch {
+        // No copy yet.
+      }
+      const file: CopyFile = { rev: rev + 1, from: this.ctx.world, at: this.ctx.now(), settings: this.ctx.settings() };
+      const dir = join(this.ctx.root, "tmp"), tmp = join(dir, `decide-${process.pid}-${this.ctx.world}-${++this.written}`);
       await mkdir(dir, { recursive: true });
       await writeFile(tmp, JSON.stringify(file));
       await rename(tmp, this.path);
+      return { why: "", rev: file.rev };
     } catch (err) {
       return { why: `the cluster's folder could not be written: ${err instanceof Error ? err.message : String(err)}`, rev: 0 };
+    } finally {
+      await rm(lock, { force: true });
     }
-    return { why: "", rev: file.rev };
+  }
+
+  /** Takes the cluster's lock, or breaks one left by a world that died holding it. False when it stays held. */
+  private async lock(path: string): Promise<boolean> {
+    for (let i = 0; i < LOCK_TRIES; i++) {
+      try {
+        await (await open(path, "wx")).close();
+        return true;
+      } catch {
+        try {
+          if (Date.now() - (await stat(path)).mtimeMs > LOCK_STALE_MS) await rm(path, { force: true });
+        } catch {
+          // Let go of between the two calls: try again at once.
+          continue;
+        }
+        await Bun.sleep(LOCK_WAIT_MS);
+      }
+    }
+    return false;
   }
 
   private async read(): Promise<void> {

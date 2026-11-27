@@ -25,7 +25,10 @@ export interface AnsweredJson {
   other?: number;
   x?: number;
   z?: number;
-  tables: { profile: string; k: number; state: number[]; rows: number[]; score: number[]; bias: number[]; mask: number[]; out: number[] }[];
+  /** Each pass's table; `weight` is what its scores counted for in the answer, where it was added into one. */
+  tables: { profile: string; k: number; weight?: number; state: number[]; rows: number[]; score: number[]; bias: number[]; mask: number[]; out: number[] }[];
+  /** The answer as the server made it, where passes were added into one: each candidate's score in all, its bias, mask and chance. */
+  final?: { k: number; score: number[]; bias: number[]; mask: number[]; out: number[] };
 }
 
 export interface ProfileJson {

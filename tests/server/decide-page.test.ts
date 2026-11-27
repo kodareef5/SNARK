@@ -6,8 +6,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  combined, eceText, gateText, labHtml, mapSvg, microsText, pointAt, policyRows, policyText, readPolicy, recentHtml, regretText, ringSvg, scoreOf,
-  scorersHtml, statusText, wedgeAngles, wedgePath, withPolicy,
+  answerRing, eceText, gateText, labHtml, mapSvg, microsText, pointAt, policyRows, policyText, readPolicy, recentHtml, regretText, ringSvg, scoreOf,
+  passRing, scorersHtml, statusText, wedgeAngles, wedgePath, whyText, withPolicy,
 } from "../../client/core/admin/decide.ts";
 import { resolveAdmin, sections } from "../../client/core/admin/navigation.ts";
 import { adminSite } from "../../server/admin/site.ts";
@@ -56,12 +56,19 @@ test("a ring shades each heading by its chance, greys a masked one and outlines 
   expect(svg).toContain('fill="#9aa7b4"');
   expect(svg).toContain("heading 3: masked");
   expect(svg).toContain('stroke="#a33127"');
-  // The passes added evenly: a heading either masks stays masked.
-  const both = combined([table([1, 0, 0, 0]), table([0, 1, 0, 0], [0, 0, 1, 0])], 0)!;
-  expect(both.mask).toEqual([0, 0, 1, 0]);
-  expect(both.out[0]).toBeCloseTo(both.out[1]!, 6);
-  expect(both.out[2]).toBe(0);
-  expect(combined([table([1, 0])], 0)).toBeNull();
+});
+
+test("an answer is drawn as the server made it, and says why its heading won", () => {
+  const far = { ...table([2, 0, 0, 1]), profile: "ring.far", weight: 0.5 }, near = { ...table([0, 1, 0, 0], [0, 0, 1, 0]), profile: "ring.near", weight: 2 };
+  const final = { k: 4, score: [1, 2, 0, 0.5], bias: [0.5, 0, 0, 0], mask: [0, 0, 1, 0], out: [0.4, 0.45, 0, 0.15] };
+  const a: AnsweredJson = { id: 0, t: 96, point: "nav.ring", rung: 3, policy: "rule", pick: 0, tables: [far, near], final };
+  // A pass is its share of the answer: score times weight, shaded above its least open heading.
+  const p = passRing(near, 0);
+  expect([p.label, p.out, p.says]).toEqual(["ring.near ×2", [0, 2, 0, 0], ["adds +0.00", "adds +2.00", "adds +0.00", "adds +0.00"]]);
+  // The answer's chances are the server's own, the held heading's bonus in them.
+  expect(answerRing(a)).toMatchObject({ label: "answer", out: final.out, mask: final.mask, pick: 0 });
+  expect(whyText(a)).toBe("heading 0: ring.far +1.00, ring.near +0.00, held and bias +0.50 = +1.50, a 40% chance");
+  expect([answerRing({ ...a, final: undefined }), whyText({ ...a, final: undefined })]).toEqual([null, ""]);
 });
 
 test("recent answers are drawn as rings for a ring and as a table for the rest", () => {
@@ -70,8 +77,9 @@ test("recent answers are drawn as rings for a ring and as a table for the rest",
   const s = { recent: [ring, pick], size: { x: 1000, z: 1000 }, profiles: [{ name: "ring.mid", ring: true }, { name: "ring.near", ring: true }, { name: "pick", ring: false }] } as unknown as DecideJson;
   const html = recentHtml(s);
   expect(html.indexOf("<b>pick</b>")).toBeLessThan(html.indexOf("<b>nav.ring</b>"));
-  expect(html.match(/<figure/g)!.length).toBe(3);
-  expect(html).toContain("<figcaption>combined</figcaption>");
+  // With no final table sent, each pass is drawn by its own chances and nothing is made up beside them.
+  expect(html.match(/<figure/g)!.length).toBe(2);
+  expect(recentHtml({ ...s, recent: [{ ...ring, final: { k: 4, score: [0, 2, 1, 0], bias: [0, 0.5, 0, 0], mask: [0, 0, 0, 0], out: [0.1, 0.6, 0.2, 0.1] } }] })).toContain("<figcaption>answer</figcaption>");
   expect(html).toContain('<table class="candidates"><caption>pick</caption>');
   expect(html).toContain("stuck</span> at 12, 30");
   expect(mapSvg(s).match(/<circle /g)!.length).toBe(1);

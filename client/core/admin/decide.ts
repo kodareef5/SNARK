@@ -135,26 +135,45 @@ export function wedgePath(k: number, i: number, cx: number, cy: number, r0: numb
   return `M${x0} ${y0}A${r1} ${r1} 0 ${large} 1 ${x1} ${y1}L${x2} ${y2}A${r0} ${r0} 0 ${large} 0 ${x3} ${y3}Z`;
 }
 
-/** One ring: `out` probabilities, `mask` 1 where a heading may not be taken, `pick` the heading chosen or -1. */
+/**
+ * One ring: `out` what each heading is shaded by (a chance, or a pass's share of the score above its least), `mask` 1
+ * where a heading may not be taken, `pick` the heading chosen or -1, `says` what each heading's wedge tells on a hover.
+ */
 export interface Ring {
   label: string;
   out: readonly number[];
   mask: readonly number[];
   pick: number;
+  says?: readonly string[];
 }
 
-/** The passes added evenly, as the decider adds them where each weighs the same: their scores and biases summed, a mask kept. */
-export function combined(tables: AnsweredJson["tables"], pick: number): Ring | null {
-  const rings = tables.filter((t) => t.k > 1 && t.k === tables[0]!.k);
-  if (rings.length < 2) return null;
-  const k = rings[0]!.k, sum = new Array<number>(k).fill(0), mask = new Array<number>(k).fill(0);
-  for (const t of rings) for (let i = 0; i < k; i++) {
-    sum[i]! += (t.score[i] ?? 0) + (t.bias[i] ?? 0);
-    if (t.mask[i]) mask[i] = 1;
-  }
-  const top = Math.max(...sum.filter((_, i) => !mask[i]));
-  const e = sum.map((v, i) => (mask[i] || !Number.isFinite(top) ? 0 : Math.exp(v - top))), total = e.reduce((a, b) => a + b, 0);
-  return { label: "combined", out: e.map((v) => (total > 0 ? v / total : 0)), mask, pick };
+const signed = (v: number): string => `${v >= 0 ? "+" : ""}${(Math.round(v * 100) / 100).toFixed(2)}`;
+const percent = (p: number): string => `${Math.round(p * 100)}%`;
+
+/** A pass as its share of the answer: each heading's score times what the pass counted for, shaded above the least. */
+export function passRing(t: AnsweredJson["tables"][number], pick: number): Ring {
+  const w = t.weight ?? 1, share = t.score.map((v) => v * w);
+  const open = share.filter((_, i) => !t.mask[i]), least = open.length ? Math.min(...open) : 0;
+  return {
+    label: t.weight !== undefined ? `${t.profile} ×${Math.round(w * 100) / 100}` : t.profile, pick, mask: t.mask,
+    out: share.map((v, i) => (t.mask[i] ? 0 : v - least)), says: share.map((v) => `adds ${signed(v)}`),
+  };
+}
+
+/** The answer as the server made it: each heading's chance, from the final table it chose by. Null where it sent none. */
+export function answerRing(a: AnsweredJson): Ring | null {
+  const f = a.final;
+  if (!f) return null;
+  return { label: "answer", out: f.out, mask: f.mask, pick: a.pick, says: f.out.map((p, i) => `${percent(p)}, score ${signed((f.score[i] ?? 0) + (f.bias[i] ?? 0))}`) };
+}
+
+/** Why the heading chosen won: what each pass added to it, then the bonus for the heading held and any author's bias. */
+export function whyText(a: AnsweredJson): string {
+  const f = a.final, i = a.pick;
+  if (!f || i < 0 || i >= f.k) return "";
+  const parts = a.tables.filter((t) => t.weight !== undefined && t.k === f.k).map((t) => `${t.profile} ${signed((t.score[i] ?? 0) * t.weight!)}`);
+  if (f.bias[i]) parts.push(`held and bias ${signed(f.bias[i]!)}`);
+  return `heading ${i}: ${parts.join(", ")} = ${signed((f.score[i] ?? 0) + (f.bias[i] ?? 0))}, a ${percent(f.out[i] ?? 0)} chance`;
 }
 
 /** A ring as inline SVG: a wedge for each heading shaded by its probability, a masked one greyed, the pick outlined. */
@@ -163,7 +182,7 @@ export function ringSvg(ring: Ring, size = 96): string {
   const wedges = ring.out.map((p, i) => {
     const d = wedgePath(k, i, c, c, r0, r1), masked = ring.mask[i] !== 0;
     const fill = masked ? 'fill="#9aa7b4" fill-opacity="0.35"' : `fill="#1957a5" fill-opacity="${(0.06 + 0.94 * (p / most)).toFixed(2)}"`;
-    return `<path d="${d}" ${fill} stroke="#ffffff" stroke-width="1"><title>heading ${i}: ${masked ? "masked" : `${Math.round(p * 100)}%`}</title></path>`;
+    return `<path d="${d}" ${fill} stroke="#ffffff" stroke-width="1"><title>heading ${i}: ${masked ? "masked" : esc(ring.says?.[i] ?? percent(p))}</title></path>`;
   }).join("");
   const pick = ring.pick >= 0 && ring.pick < k ? `<path d="${wedgePath(k, ring.pick, c, c, r0, r1)}" fill="none" stroke="#a33127" stroke-width="2.5"/>` : "";
   const [nx, ny] = pointAt(c, c, r0 - 6, 0);
@@ -182,13 +201,15 @@ export function recentHtml(s: DecideJson): string {
   const ringed = new Set(s.profiles.filter((p) => p.ring).map((p) => p.name));
   return s.recent.slice(-SHOWN).reverse().map((a) => {
     const rings = a.tables.filter((t) => ringed.has(t.profile)), plain = a.tables.filter((t) => !ringed.has(t.profile));
-    const all = rings.map((t): Ring => ({ label: t.profile, out: t.out, mask: t.mask, pick: a.pick }));
-    const both = combined(rings, a.pick);
-    if (both) all.push(both);
+    // A pass added into an answer is drawn as its share of it; one that is the answer is drawn by its own chances.
+    const all = rings.map((t): Ring => (a.final ? passRing(t, a.pick) : { label: t.profile, out: t.out, mask: t.mask, pick: a.pick }));
+    const made = answerRing(a);
+    if (made) all.push(made);
+    const why = whyText(a);
     const where = a.x !== undefined && a.z !== undefined ? ` at ${Math.round(a.x)}, ${Math.round(a.z)}` : "";
     const other = a.other !== undefined ? `, the other would take ${a.other}` : "";
     return `<div class="answer"><p><b>${esc(a.point)}</b> <span style="color:${RUNG_COLOURS[a.rung] ?? "#555"}">${RUNG_NAMES[a.rung] ?? a.rung}</span>${esc(where)} · tick ${a.t} · ${esc(a.policy)} took ${a.pick}${esc(other)}</p>` +
-      `<div class="rings">${all.map((r) => ringSvg(r)).join("")}</div>${plain.map((t) => tableHtml(t, a.pick)).join("")}</div>`;
+      `<div class="rings">${all.map((r) => ringSvg(r)).join("")}</div>${why ? `<p class="dim">${esc(why)}</p>` : ""}${plain.map((t) => tableHtml(t, a.pick)).join("")}</div>`;
   }).join("");
 }
 

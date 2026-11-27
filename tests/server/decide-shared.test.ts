@@ -2,10 +2,10 @@
 // off the tick's thread every five seconds and takes one newer than the last it took, which its save keeps.
 
 import { afterAll, expect, test } from "bun:test";
-import { writeFileSync } from "node:fs";
+import { existsSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DecideAdmin } from "../../server/admin/decide.ts";
-import { COPY_FILE, readCopy } from "../../server/decide/shared.ts";
+import { COPY_FILE, COPY_LOCK, readCopy } from "../../server/decide/shared.ts";
 import { TestCluster, type Server } from "../fixtures/cluster.ts";
 import { Harness } from "../fixtures/net.ts";
 
@@ -48,6 +48,35 @@ test("a copy from one world reaches every world, its writer too, kept and logged
   expect([policy(a), copied(a), copied(b)]).toEqual(["*=rule", 2, 2]);
   a.h.host.shutdown();
   b.h.host.shutdown();
+});
+
+test("two worlds copying at once are numbered one after the other, and all take the last", async () => {
+  const a = t.server("Island", "race", clock), b = t.server("Miami", "race", clock), c = t.server("Tampa", "race", clock);
+  expect(a.h.host.pageSetting("DecidePolicy", "*=rule").why).toBe("");
+  expect(b.h.host.pageSetting("DecidePolicy", "*=off").why).toBe("");
+  const [one, two] = await Promise.all([new DecideAdmin(a.h.host).act({ op: "clone" }), new DecideAdmin(b.h.host).act({ op: "clone" })]);
+  expect([one, two]).toEqual(["", ""]);
+  const last = readCopy(await Bun.file(fileOf(a)).text())!;
+  expect(last.rev).toBe(2);
+  // A world that took the first copy before the second was written still takes the second.
+  writeFileSync(fileOf(a), JSON.stringify({ ...last, rev: 1, settings: { ...last.settings, DecidePolicy: last.settings.DecidePolicy === "*=off" ? "*=rule" : "*=off" } }));
+  await beat(c);
+  expect(copied(c)).toBe(1);
+  writeFileSync(fileOf(a), JSON.stringify(last));
+  await beat(a, b, c);
+  expect([policy(a), policy(b), policy(c)]).toEqual([last.settings.DecidePolicy, last.settings.DecidePolicy, last.settings.DecidePolicy]);
+  expect([copied(a), copied(b), copied(c)]).toEqual([2, 2, 2]);
+  for (const s of [a, b, c]) s.h.host.shutdown();
+});
+
+test("a lock left by a world that died does not stop the next copy", async () => {
+  const a = t.server("Island", "stale", clock);
+  const lock = join(a.h.host.cluster!.folder.root, COPY_LOCK);
+  writeFileSync(lock, "");
+  utimesSync(lock, new Date(Date.now() - 60_000), new Date(Date.now() - 60_000));
+  expect(await new DecideAdmin(a.h.host).act({ op: "clone" })).toBe("");
+  expect(existsSync(lock)).toBe(false);
+  a.h.host.shutdown();
 });
 
 test("a copy no newer than the last taken is left", async () => {
