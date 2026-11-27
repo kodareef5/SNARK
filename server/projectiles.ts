@@ -196,6 +196,7 @@ export class Projectiles {
   private readonly toldBack = new Uint8Array(TOLD_MOST);
   private readonly toldFlags = new Uint8Array(TOLD_MOST);
   private readonly toldEcho = new Uint8Array(TOLD_MOST);
+  private readonly toldShooter = new Int32Array(TOLD_MOST);
   private readonly toldBy = new Int32Array(TOLD_MOST);
   private toldCount = 0;
   /** Numbered rounds, by number: whether one flies, its start and way as the message says them, and a byte a client slot told of it. */
@@ -683,6 +684,7 @@ export class Projectiles {
     this.toldBack[n] = Math.min(255, Math.round(back));
     this.toldFlags[n] = flags;
     this.toldBy[n] = c.id;
+    this.toldShooter[n] = this.ctx.world.reg.ammoBoltSize[ammo]! > 0 ? c.ent : -1;
     this.toldEcho[n] = this.toShooter ? 1 : 0;
   }
 
@@ -725,7 +727,7 @@ export class Projectiles {
           w.u8(EVENT_BOLTS);
           w.u8(0);
         }
-        writeBolt(w, this.toldPacked, n * 5, this.toldAmmo[n]!, this.toldBack[n]!, this.toldFlags[n]! | (mine ? BOLT_MINE : 0), last, this.toldEnded[n]!, this.toldSpeed[n]!);
+        writeBolt(w, this.toldPacked, n * 5, this.toldAmmo[n]!, this.toldBack[n]!, this.toldFlags[n]! | (mine ? BOLT_MINE : 0), last, this.toldEnded[n]!, this.toldSpeed[n]!, this.toldShooter[n]!);
         last = this.toldAmmo[n]!;
         if (++said === BOLTS_MOST) {
           // The count is the message's third byte, written last.

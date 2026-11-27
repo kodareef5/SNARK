@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import { ASPHALT } from "../../content/vehicles/compact.ts";
+import { SEMI } from "../../content/vehicles/heavy-road.ts";
+import { ROAD_FLEET } from "../../content/vehicles/road-fleet.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { applyTuning } from "../../shared/content/tuning.ts";
 import { quatRotate } from "../../shared/math/quat.ts";
@@ -14,7 +16,7 @@ import {
 } from "../../shared/sim/vehicle-thrusters.ts";
 import { Heightfield } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
-import { StaticVehicleWorld } from "../../shared/world/vehicle.ts";
+import { carMeetsVehicle, StaticVehicleWorld } from "../../shared/world/vehicle.ts";
 
 // The thrusters on the sports chassis they are fitted to, on flat asphalt: the module alone, apart from the Zephyr's art.
 const dims = { chunksX: 4, chunksZ: 4 }, hf = new Heightfield(dims, 1, -128, 1 / 256);
@@ -36,7 +38,7 @@ function settled(speed = 0, s = spec) {
 
 const FLIPS = [["a kickflip", 0, 0], ["a roll left", 0, 1], ["a roll right", 0, -1], ["a front flip", 1, 0], ["a back flip", -1, 0]] as const;
 
-for (const [name, throttle, steer] of FLIPS) for (const speed of [0, 20]) test(`${name} at ${speed} m/s hops about three metres and lands on its wheels below the damage speed`, () => {
+for (const [name, throttle, steer] of FLIPS) for (const speed of [0, 20]) test(`${name} at ${speed} m/s stays below six metres and lands upright`, () => {
   const car = settled(speed);
   let apex = 0, landing = -1, lowest = 1, airborne = false, cushioned = false, caught = false;
   for (let t = 0; t < 120; t++) {
@@ -46,13 +48,36 @@ for (const [name, throttle, steer] of FLIPS) for (const speed of [0, 20]) test(`
     if (!car.grounded) airborne = true;
     else if (airborne && landing < 0) landing = r.landSpeed;
   }
-  expect(apex).toBeGreaterThan(3); expect(apex).toBeLessThan(4.5);
+  expect(apex).toBeGreaterThan(5); expect(apex).toBeLessThan(6);
   // Turned all the way over, caught, and down soft: under the 12 m/s at which a landing hurts (server/urban.ts).
   expect(lowest).toBeLessThan(-.99); expect(caught).toBe(true); expect(cushioned).toBe(true);
   expect(landing).toBeGreaterThan(0); expect(landing).toBeLessThan(9);
   expect(upOf(car)).toBeGreaterThan(.999); expect(car.grounded).toBe(true);
   expect(Math.hypot(car.pitchRate, car.rollRate)).toBeLessThan(.05);
   expect(thrustAxis(car.thrust!)).toBe(0);
+});
+
+test("the Zephyr kickflips just above the semi cab on level asphalt", () => {
+  const zephyr = ROAD_FLEET.find(d => d.id === "core:zephyr")?.vehicle;
+  const truck = SEMI.species.vehicle;
+  if (!zephyr || !isWheelVehicle(zephyr) || !truck) throw new Error("Missing stunt vehicles");
+  for (const runUp of [11, 12, 13]) {
+    const car = settled(0, zephyr.spec);
+    car.vz = 15;
+    const semi = { x: car.x - 0.575, y: 0, z: car.z + runUp, yaw: Math.PI / 2, pitch: 0, roll: 0 };
+    expect(carMeetsVehicle(zephyr.spec, { ...car, z: semi.z }, truck, semi)).not.toBeNull();
+    const lower = { ...semi, y: 0.25 }, upper = { ...semi, y: 0.8 };
+    let touchedUpper = false;
+    for (let t = 0; t < 105; t++) {
+      stepVehicle(car, { ...coast, burst: t === 0 }, zephyr.spec, world);
+      expect(carMeetsVehicle(zephyr.spec, car, truck, lower)).toBeNull();
+      touchedUpper ||= carMeetsVehicle(zephyr.spec, car, truck, upper) !== null;
+    }
+    expect(touchedUpper).toBe(true);
+    expect(car.z).toBeGreaterThan(semi.z + zephyr.spec.halfLength);
+    expect(car.grounded).toBe(true);
+    expect(upOf(car)).toBeGreaterThan(.999);
+  }
 });
 
 test("each direction turns the car the way it names: A rolls the roof left, D and none right, W the nose down, S up", () => {
@@ -81,20 +106,29 @@ test("the boost adds about thirty metres a second over three quarters of one, th
   expect(endless.vz).toBeGreaterThan(85);
 });
 
-test("a flip waits out its cooldown from the press, and with none a fresh press flips again as soon as it is down", () => {
-  const car = settled();
-  for (let t = 0; t < 60; t++) stepVehicle(car, { ...coast, burst: t === 0 || t === 50 }, spec, world);
-  // The second press came on the ground inside three seconds: nothing.
-  expect(thrustAxis(car.thrust!)).toBe(0); expect(flipCooling(car.thrustCool!)).toBe(ZEPHYR_THRUSTERS.flipCooldownTicks - 59);
-  const free: VehicleSpec = { ...spec, thrusters: { ...ZEPHYR_THRUSTERS, flipCooldownTicks: 0 } }, again = settled(0, free);
-  let lifts = 0, lifting = false;
-  for (let t = 0; t < 120; t++) {
-    stepVehicle(again, { ...coast, burst: t === 0 || t === 50 }, free, world);
-    const now = (again.thrust! & FIRED_LIFT) !== 0; if (now && !lifting) lifts++; lifting = now;
+test("the first press after landing respects the driver's flip cooldown", () => {
+  const free: VehicleSpec = { ...spec, thrusters: { ...ZEPHYR_THRUSTERS, flipCooldownTicks: 0 } };
+  for (const setup of [spec, free]) {
+    const car = settled(0, setup);
+    let secondPress = 0, launches = 0, lifting = false;
+    for (let t = 0; t < 160; t++) {
+      const ready = t > 0 && !secondPress && car.grounded && thrustAxis(car.thrust!) === 0;
+      if (ready) {
+        secondPress = t;
+        expect(flipCooling(car.thrustCool!)).toBe(Math.max(0, setup.thrusters!.flipCooldownTicks - (t - 1)));
+      }
+      stepVehicle(car, { ...coast, burst: t === 0 || ready }, setup, world);
+      const fired = (car.thrust! & FIRED_LIFT) !== 0;
+      if (fired && !lifting) launches++;
+      lifting = fired;
+    }
+    expect(secondPress).toBeGreaterThan(0);
+    expect(secondPress).toBeLessThan(ZEPHYR_THRUSTERS.flipCooldownTicks);
+    expect(launches).toBe(setup === free ? 2 : 1);
+    expect(upOf(car)).toBeGreaterThan(.999);
   }
-  expect(lifts).toBe(2); expect(upOf(again)).toBeGreaterThan(.999);
   // Held, it does not repeat: each flip is a press.
-  const held = settled(0, free); lifts = 0; lifting = false;
+  const held = settled(0, free); let lifts = 0, lifting = false;
   for (let t = 0; t < 120; t++) {
     stepVehicle(held, { ...coast, burst: true }, free, world);
     const now = (held.thrust! & FIRED_LIFT) !== 0; if (now && !lifting) lifts++; lifting = now;
