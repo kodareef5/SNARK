@@ -25,8 +25,12 @@ export const POLICIES = ["off", "watch", "rule", "model"] as const;
 
 /** What a question costs to answer: a yes or no from numbers already held, a few probes, or a full ring of them. */
 export const COST_YES = 0, COST_PROBE = 1, COST_RING = 2;
-/** Questions of each cost answered in one tick, at most. Guesses, to be set by the bench (tools/bench/decide.ts). */
-export const CAPS: readonly number[] = [64, 32, 8];
+/**
+ * Questions of each cost answered in one tick, at most. Guesses, to be set by the bench (tools/bench/decide.ts). A full
+ * ring of 12 headings measured 66 µs in a dense wood and 125 at its 99th percentile, so four keep a tick's worst near
+ * half a millisecond.
+ */
+export const CAPS: readonly number[] = [64, 32, 4];
 /**
  * Questions one tick may hold for movers a player is close to, and for those in the background; more are cut and counted.
  * They are held apart, so however much the background asks it never takes the place of a mover a player is beside.
@@ -179,6 +183,8 @@ export class Decide {
   /** The hand rule and the trained scorer for each profile, by its name. */
   readonly rules = new Map<string, Model>();
   readonly trained = new Map<string, Model>();
+  /** What each trained scorer's file says of itself (its lab scores), by profile, for a page. */
+  readonly abouts = new Map<string, Record<string, unknown>>();
   readonly refused: string[] = [];
   /** Other logs flushed with this one's, so no log of the server's writes inside a tick (Cast's). */
   readonly sinks: LineLog[] = [];
@@ -248,6 +254,11 @@ export class Decide {
     return this.policyOf[point] !== OFF;
   }
 
+  /** Whether `point`'s answers are acted on (the rule or a trained scorer decides it), not only watched. */
+  acts(point: number): boolean {
+    return this.policyOf[point]! >= RULE;
+  }
+
   /**
    * Puts a question for this tick: mover `e` at `point`, `rung` deep in trouble. `back` says no player is close to it: it
    * is answered only with what the movers players are close to leave. Does nothing while the point is off.
@@ -297,6 +308,8 @@ export class Decide {
       this.answerAll(back, tick, 1);
     }
     front.n = back.n = 0;
+    // Nobody looks any more: what was kept for a page is let go.
+    if (this.recent.length > 0 && tick >= this.lookUntil) this.recent.length = 0;
     for (let p = 0; p < this.points.length; p++) if (this.waiting[p]!.count > 0) this.close(p, tick);
   }
 
@@ -317,6 +330,7 @@ export class Decide {
   /** Reads the trained weights again, so a scorer the lab has just written decides without a restart. */
   reload(): void {
     this.trained.clear();
+    this.abouts.clear();
     this.refused.length = 0;
     if (this.weightsDir !== null) this.load(this.weightsDir);
   }
@@ -460,11 +474,13 @@ export class Decide {
     for (const name of names) {
       let why: string;
       try {
-        const file = JSON.parse(readFileSync(join(dir, name), "utf8")) as { profile?: unknown };
+        const file = JSON.parse(readFileSync(join(dir, name), "utf8")) as { profile?: unknown; about?: unknown };
         const p = PROFILES.find((q) => q.name === file.profile);
         const m = p ? readModel(file, p) : `made for ${String(file.profile)}, which is no profile here`;
         if (typeof m !== "string") {
           this.trained.set(m.profile, m);
+          if (file.about && typeof file.about === "object") this.abouts.set(m.profile, file.about as Record<string, unknown>);
+          else this.abouts.delete(m.profile);
           continue;
         }
         why = m;
