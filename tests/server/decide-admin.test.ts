@@ -53,13 +53,14 @@ class Probe implements Point {
   apply(): void {}
 }
 
-/** A world with two stand-in points, and its admin pages signed in as kody with the map's password. */
+/** A world with two stand-in points beside the real ones, and its admin pages signed in as kody with the map's password. */
+let ring = -1;
 type Answer = { ok?: boolean; why?: string } & Partial<DecideJson>;
 
 function world(): { h: Harness; page: (path: string, body?: unknown) => Promise<{ status: number; json: Answer; req: Request }> } {
   const h = new Harness({}, 3, 30, { dev: true, wild: false, map: writeMap(flatMap(4)) });
-  h.host.decide.add(new Probe("nav.ring"));
-  h.host.decide.add(new Probe("nav.snag"));
+  ring = h.host.decide.add(new Probe("test.ring"));
+  h.host.decide.add(new Probe("test.snag"));
   const pages = new AdminPages({ host: h.host, meter: new TickMeter(() => gaugesOf(h.host)), dir: tmpdir(), start: { tick: 0, wall: 0 } });
   const page = async (path: string, body?: unknown) => {
     const req = new Request(`http://localhost${path}`, {
@@ -74,7 +75,7 @@ function world(): { h: Harness; page: (path: string, body?: unknown) => Promise<
 }
 
 const kodys = (h: Harness): string[] => h.host.acts.recent().filter((a) => a.name === "(kody)").map((a) => a.what);
-const policies = (h: Harness): string[] => h.host.decide.report().points.map((p) => `${p.name}=${p.policy}`);
+const policies = (h: Harness): string[] => h.host.decide.report().points.filter((p) => p.name.startsWith("test.")).map((p) => `${p.name}=${p.policy}`);
 
 test("the page's JSON says each point, the settings, the profiles and the part", async () => {
   const { h, page } = world();
@@ -83,7 +84,9 @@ test("the page's JSON says each point, the settings, the profiles and the part",
   expect(status).toBe(200);
   expect(changedNothing(req)).toBe(true);
   const names = [...COUNT_NAMES].sort();
-  expect(json.points!.map((p) => [p.name, p.policy, Object.keys(p.counts).sort()])).toEqual([["nav.ring", "off", names], ["nav.snag", "off", names]]);
+  expect(json.points!.filter((p) => p.name.startsWith("test.")).map((p) => [p.name, p.policy, Object.keys(p.counts).sort()])).toEqual([["test.ring", "off", names], ["test.snag", "off", names]]);
+  // The real points are listed too, every one of them off.
+  expect(json.points!.filter((p) => p.name.startsWith("nav.")).every((p) => p.policy === "off")).toBe(true);
   const rules = h.host.rules, settings = { DecidePolicy: "", DecideSample: rules.num("DecideSample"), DecideLogMegabytes: rules.num("DecideLogMegabytes") };
   expect([json.caps, json.settings, json.recent, json.world, json.copied]).toEqual([[...CAPS], settings, [], 0, 0]);
   expect(json.profiles!.map((p) => p.name)).toEqual(PROFILES.map((p) => p.name));
@@ -98,28 +101,28 @@ test("the page's JSON says each point, the settings, the profiles and the part",
 test("a point's policy is set through DecidePolicy and takes hold within five seconds", async () => {
   const { h, page } = world();
   h.run(200);
-  expect((await page("/admin/decide", { op: "policy", point: "nav.ring", policy: "rule" })).status).toBe(200);
-  expect(h.host.rules.text("DecidePolicy")).toBe("nav.ring=rule");
+  expect((await page("/admin/decide", { op: "policy", point: "test.ring", policy: "rule" })).status).toBe(200);
+  expect(h.host.rules.text("DecidePolicy")).toBe("test.ring=rule");
   // Kept beside the save as the settings page keeps it, and in the admin log.
-  expect(h.host.kept.words.get("DecidePolicy")).toBe("nav.ring=rule");
-  expect(kodys(h)).toEqual(["setting DecidePolicy nav.ring=rule"]);
+  expect(h.host.kept.words.get("DecidePolicy")).toBe("test.ring=rule");
+  expect(kodys(h)).toEqual(["setting DecidePolicy test.ring=rule"]);
   h.run(5100);
-  expect(policies(h)).toEqual(["nav.ring=rule", "nav.snag=off"]);
+  expect(policies(h)).toEqual(["test.ring=rule", "test.snag=off"]);
 });
 
 test("a star and a named point are set together, and a point may follow the star again", async () => {
   const { h, page } = world();
-  for (const [point, policy] of [["nav.ring", "rule"], ["*", "watch"], ["nav.snag", "model"]]) expect((await page("/admin/decide", { op: "policy", point, policy })).json.why).toBe("");
-  expect(h.host.rules.text("DecidePolicy")).toBe("nav.ring=rule,nav.snag=model,*=watch");
+  for (const [point, policy] of [["test.ring", "rule"], ["*", "watch"], ["test.snag", "model"]]) expect((await page("/admin/decide", { op: "policy", point, policy })).json.why).toBe("");
+  expect(h.host.rules.text("DecidePolicy")).toBe("test.ring=rule,test.snag=model,*=watch");
   h.run(5100);
-  expect(policies(h)).toEqual(["nav.ring=rule", "nav.snag=model"]);
-  expect((await page("/admin/decide", { op: "policy", point: "nav.snag", policy: "" })).status).toBe(200);
+  expect(policies(h)).toEqual(["test.ring=rule", "test.snag=model"]);
+  expect((await page("/admin/decide", { op: "policy", point: "test.snag", policy: "" })).status).toBe(200);
   h.run(5100);
-  expect(policies(h)).toEqual(["nav.ring=rule", "nav.snag=watch"]);
+  expect(policies(h)).toEqual(["test.ring=rule", "test.snag=watch"]);
   // A point there is not, or a policy there is not, is refused and changes nothing.
   const before = kodys(h).length;
   expect((await page("/admin/decide", { op: "policy", point: "nav.none", policy: "rule" })).json.why).toContain("no decision point called nav.none");
-  expect((await page("/admin/decide", { op: "policy", point: "nav.ring", policy: "maybe" })).status).toBe(400);
+  expect((await page("/admin/decide", { op: "policy", point: "test.ring", policy: "maybe" })).status).toBe(400);
   expect(kodys(h).length).toBe(before);
 });
 
@@ -140,10 +143,10 @@ test("answers are kept while the page looks and let go once nobody does", async 
   const { h, page } = world();
   h.run(200);
   const d = h.host.decide, e = h.host.spawnCreature("core:dodo", 100, 100, 1);
-  d.set("nav.ring=rule");
+  d.set("test.ring=rule");
   const ask = (ticks: number): void => {
     for (let i = 0; i < ticks; i++) {
-      d.put(0, e, 2);
+      d.put(ring, e, 2);
       h.server.tick();
     }
   };
@@ -153,7 +156,7 @@ test("answers are kept while the page looks and let go once nobody does", async 
   ask(5);
   const seen = (await page("/admin/decide.json?look=1")).json.recent!;
   expect(seen.length).toBe(5);
-  expect(seen[0]).toMatchObject({ point: "nav.ring", rung: 2, policy: "rule", pick: e % 8 });
+  expect(seen[0]).toMatchObject({ point: "test.ring", rung: 2, policy: "rule", pick: e % 8 });
   expect([typeof seen[0]!.x, typeof seen[0]!.z]).toEqual(["number", "number"]);
   expect(seen[0]!.tables[0]!.profile).toBe("ring.mid");
   // Past the look's ten seconds nothing more is kept, and what was is let go.
@@ -185,8 +188,8 @@ test("weights written after the start are read again when asked, with their scor
 test("the lab's scoreboard and status are given where the checkout has them", async () => {
   const { h } = world();
   const lab = folder();
-  const board: Scoreboard = { made: "2026-11-27T09:00:00Z", revision: "abc123", points: [{ point: "nav.ring", profile: "ring.mid", headroom: 0.2, scores: [] }] };
-  const status: LabStatus = { step: "fit", point: "nav.ring", done: 3, of: 10, at: "2026-11-27T09:01:00Z" };
+  const board: Scoreboard = { made: "2026-11-27T09:00:00Z", revision: "abc123", points: [{ point: "test.ring", profile: "ring.mid", headroom: 0.2, scores: [] }] };
+  const status: LabStatus = { step: "fit", point: "test.ring", done: 3, of: 10, at: "2026-11-27T09:01:00Z" };
   writeFileSync(join(lab, "scoreboard.json"), JSON.stringify(board));
   writeFileSync(join(lab, "status.json"), JSON.stringify(status));
   const read = async (o: ConstructorParameters<typeof DecideAdmin>[1]) => (JSON.parse(await new DecideAdmin(h.host, o).json(false)) as DecideJson).lab;

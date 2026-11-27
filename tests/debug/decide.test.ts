@@ -55,7 +55,7 @@ test("the server's state holds the decider only when it is asked for", () => {
   h.server.tick();
   expect(serverState(host, meter, c).decide).toBeUndefined();
   const s = serverState(host, meter, c, Date.now(), true).decide!;
-  expect(s.points).toEqual([{ name: "nav.test", policy: "rule", put: 1, answered: 1, cut: 0, backPut: 0, backCut: 0 }]);
+  expect(s.points.filter((p) => p.name === "nav.test")).toEqual([{ name: "nav.test", policy: "rule", put: 1, answered: 1, cut: 0, backPut: 0, backCut: 0 }]);
   expect([s.caps, s.mover]).toEqual([[...CAPS], null]);
   // A point that can describe a mover is asked of the one the survivor stands by.
   host.decide.describe = (e) => (e === dodo ? { rung: 2, held: 5 } : null);
