@@ -76,7 +76,7 @@ export interface Point {
   /** The tick a logged answer given now is judged at, where its answers do not all wait `horizon`. */
   due?(e: number, tick: number): number;
   /** Writes a few numbers of what became of `e` since its answer at tick `asked` to `out`, and returns how many. */
-  outcome?(e: number, tick: number, out: Float32Array, asked: number): number;
+  outcome?(e: number, tick: number, out: Float32Array, asked?: number): number;
   /**
    * Its answers are no longer acted on (turned off or only watched): it lets go of all it had set going in movers, so
    * they go back to today's code at once.

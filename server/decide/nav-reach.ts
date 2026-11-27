@@ -176,7 +176,7 @@ export class Reach {
    * For the log, of the goal held when it was asked at `asked`: whether it was reached by its deadline (1 or 0, -1 where its
    * goal changed with nothing said of it, or is gone), and the share of its time spent.
    */
-  private arrived(e: number, tick: number, out: Float32Array, asked: number): number {
+  private arrived(e: number, tick: number, out: Float32Array, asked = Infinity): number {
     const s = this.pool.find(e, this.world.ents.gen[e]!), mind = this.mind, ents = this.world.ents;
     const mode = mind.wants(e), want = mind.want;
     if (s < 0 || (asked < this.from[s]! && asked < this.prevFrom[s]!)) {

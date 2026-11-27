@@ -156,7 +156,7 @@ test("the state changes nothing through a line of weights, and a cross lets it r
   expect(() => profile("bad", "choice", false, ["a"], ["b"], [["a", "c" as "b"]])).toThrow();
 });
 
-test("the rules use their crosses: pain is paid deep in trouble, and haste picks the nearer place", () => {
+test("the rules use their crosses: pain is paid deep in trouble, and a step of priority outweighs a trip", () => {
   const t = tableFor(RING_MID, 4), c = RING_MID.c, w = RING_MID.columns.length;
   const wade = (rung: number): number => {
     t.clear(4);
@@ -170,13 +170,14 @@ test("the rules use their crosses: pain is paid deep in trouble, and haste picks
   };
   expect([wade(0), wade(1)]).toEqual([2, 0]);
   const p = tableFor(PICK, 2), pc = PICK.c, pw = PICK.columns.length;
-  const place = (urgency: number): number => {
+  // A step of priority outweighs any trip; a way that leads nowhere outweighs priority.
+  const place = (noWay: number): number => {
     p.clear(2);
-    p.state[PICK.s.urgency] = urgency;
-    p.rows[0 * pw + pc.priority] = 1;
-    p.rows[0 * pw + pc.travelSoon] = 0.9;
-    p.rows[1 * pw + pc.priority] = 0.6;
-    p.rows[1 * pw + pc.travelSoon] = 0.1;
+    p.rows[0 * pw + pc.priority] = 4 / 7;
+    p.rows[0 * pw + pc.travelSoon] = 0.95;
+    p.rows[0 * pw + pc.noWay] = noWay;
+    p.rows[1 * pw + pc.priority] = 3 / 7;
+    p.rows[1 * pw + pc.travelSoon] = 0.05;
     return decide(RULE_PICK, PICK, p);
   };
   expect([place(0), place(1)]).toEqual([0, 1]);
