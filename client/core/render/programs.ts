@@ -227,6 +227,67 @@ export const PROGRAMS: Readonly<Record<string, Make>> = MAKE;
 /** Each program's number, its place in PROGRAMS: how a frame's draws name the one they are drawn with, and how a shell keeps them. */
 export const PROGRAM = Object.fromEntries(Object.keys(MAKE).map((name, n) => [name, n])) as Readonly<Record<keyof typeof MAKE, number>>;
 
+/**
+ * How a shell draws a program once before play first does (its warm draws): the vertices its draws give it (a level's,
+ * a textured level's, the terrain tile's, a detail's card, a screen's quad, or none), the states play draws it in, as
+ * bits of WARM_STATE, and its target, null for the scene's: the light target where its copy draws light, else the
+ * canvas. A driver may make a program again the first time a draw meets a target's samples, a cut-out's coverage or a
+ * set of vertex streams; a warm draw meets them first. A textured level's streams are warmed as a near body's (surface,
+ * skin, entity), an attachment's (surface, entity) and a static's (surface).
+ */
+export const WARM_FORM = { mesh: 0, tile: 1, detail: 2, face: 3, none: 4, surface: 5 } as const;
+export const WARM_STATE = { opaque: 1, covered: 2, blended: 4, blendedCovered: 8 } as const;
+export const WARM_AIM = { light: 0, canvas: 1, shadow: 2, bloom: 3 } as const;
+export interface WarmDraw {
+  readonly form: number;
+  readonly states: number;
+  readonly aim: number | null;
+  /** Whether the first frame waits for it: what a first meeting or a fight draws first, people, their shadows, blood and fire. */
+  readonly early: boolean;
+}
+const warm = (form: number, states: number, aim: number | null = null): WarmDraw => ({ form, states, aim, early: false });
+const SOLID = WARM_STATE.opaque | WARM_STATE.blended, CUT = SOLID | WARM_STATE.covered | WARM_STATE.blendedCovered, { mesh: MESH_FORM, tile: TILE_FORM, surface: TEXTURED } = WARM_FORM;
+const WARM: Readonly<Record<keyof typeof MAKE, WarmDraw>> = {
+  flat: warm(MESH_FORM, CUT),
+  terrain: warm(TILE_FORM, WARM_STATE.opaque),
+  terrainWindow: warm(TILE_FORM, WARM_STATE.opaque),
+  seeThrough: warm(MESH_FORM, WARM_STATE.blended | WARM_STATE.blendedCovered),
+  far: warm(MESH_FORM, CUT),
+  pulled: warm(MESH_FORM, CUT),
+  surface: warm(TEXTURED, CUT),
+  surfaceWhole: warm(TEXTURED, SOLID),
+  surfaceUndyed: warm(TEXTURED, CUT),
+  surfaceUndyedWhole: warm(TEXTURED, SOLID),
+  surfaceLayer: warm(TEXTURED, CUT),
+  sky: warm(WARM_FORM.none, WARM_STATE.opaque),
+  water: warm(MESH_FORM, CUT),
+  waterWake: warm(MESH_FORM, CUT),
+  details: warm(WARM_FORM.detail, WARM_STATE.covered | WARM_STATE.blended),
+  depth: warm(TEXTURED, WARM_STATE.opaque, WARM_AIM.shadow),
+  depthCutout: warm(TEXTURED, WARM_STATE.opaque, WARM_AIM.shadow),
+  depthTerrain: warm(TILE_FORM, WARM_STATE.opaque, WARM_AIM.shadow),
+  skyline: warm(MESH_FORM, CUT),
+  signal: warm(MESH_FORM, CUT),
+  depthTerrainWindow: warm(TILE_FORM, WARM_STATE.opaque, WARM_AIM.shadow),
+  fire: warm(MESH_FORM, CUT),
+  orb: warm(MESH_FORM, CUT),
+  screens: warm(WARM_FORM.face, WARM_STATE.opaque),
+  bloomDown: warm(WARM_FORM.none, WARM_STATE.opaque, WARM_AIM.bloom),
+  bloomUp: warm(WARM_FORM.none, WARM_STATE.blended, WARM_AIM.bloom),
+  finish: warm(WARM_FORM.none, WARM_STATE.opaque, WARM_AIM.canvas),
+  surfacePrinted: warm(TEXTURED, SOLID),
+  surfacePrintedCut: warm(TEXTURED, CUT),
+  surfacePrintedLayer: warm(TEXTURED, CUT),
+  surfaceHair: warm(TEXTURED, CUT),
+};
+/**
+ * The programs the first frame waits for (WarmDraw.early). The world's own are drawn at once by the first frame or a
+ * frame at a time after it: on Intel each program's variants take its card 100 to 500 ms, and all of them doubled the wait.
+ */
+const EARLY: readonly (keyof typeof MAKE)[] = ["surface", "surfaceWhole", "surfaceUndyed", "surfaceUndyedWhole", "surfaceLayer", "surfacePrinted", "surfacePrintedCut", "surfacePrintedLayer", "surfaceHair", "depth", "depthCutout", "details", "fire"];
+/** The same by a program's number. */
+export const WARM_DRAWS: readonly WarmDraw[] = Object.keys(MAKE).map((name) => ({ ...WARM[name as keyof typeof MAKE], early: EARLY.includes(name as keyof typeof MAKE) }));
+
 const FLAT_DRAW = [...FRAME_ROWS, ...MESH_ROWS, ...FLAT_ROWS], SURFACE_DRAW = [...FRAME_ROWS, ...MESH_ROWS, ...MATERIAL_ROWS];
 const GROUND_TILES = [...FRAME_ROWS, ...tileRows(SOURCE_MAP)], WINDOW_TILES = [...FRAME_ROWS, ...tileRows(SOURCE_WINDOW)];
 

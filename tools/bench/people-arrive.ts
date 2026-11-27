@@ -4,14 +4,16 @@
 // Each run's worst frame of our own work and of the page's frame interval, and the worst in the two seconds after the
 // arrival, against the crowd that was there all along.
 //
-//   bun tools/bench/people-arrive.ts [--client dir] [--runs 3] [--tier medium] [--profile]
+//   bun tools/bench/people-arrive.ts [--client dir] [--runs 3] [--tier medium] [--profile] [--nowarm] [--firsts]
 //
 // --profile prints each stretch the page's main thread worked 30 ms or more without a break, and what took it.
+// --nowarm runs the page without its warm draws (client/shell/gl.ts warmStep); --firsts lists each program's first
+// draw under a state that took the card's process 2 ms or more. Each run says when its first frame began and how long it took.
 //
 // The card is the one tools/chrome.ts picks: SNARK_GPU=mesa or nvidia. The page is a client built for it into
 // var/people-arrive/client, or the one --client names, which must be built from this source.
 
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { CROWD_VIEWER, crowdView } from "../../client/core/people-crowd.ts";
@@ -32,6 +34,7 @@ const arg = (name: string, or: string): string => (argv.includes(name) ? argv[ar
 const runs = Number(arg("--runs", "3"));
 const tier = arg("--tier", "medium");
 const profiled = argv.includes("--profile");
+const query = (argv.includes("--nowarm") ? "&nowarm" : "") + (argv.includes("--firsts") ? "&firsts" : "");
 const given = argv.includes("--client") ? resolve(arg("--client", "")) : null;
 const dist = given ?? join(ROOT, "var/people-arrive/client");
 if (!given) {
@@ -54,13 +57,15 @@ const server = startServer({ port: 0, hostname: "127.0.0.1", clientDir: dist, pr
 const hf = server.host.world.hf;
 const hold = holdAt(server, { name: "people", east: hf.sizeX / 2 - CROWD_VIEWER.x, north: CROWD_VIEWER.z - hf.sizeZ / 2, up: 0 });
 const noon = holdHour(server, 12);
-const profile = mkdtempSync(join(tmpdir(), "snark-arrive-"));
 
+let survivors = 0;
 /** One run's report, the crowd coming at ARRIVE where `arrive`, else there from the start. */
 async function once(arrive: boolean): Promise<Record<string, any> | null> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const report = new Promise<Record<string, any> | null>((done) => ((got = done), (timer = setTimeout(() => done(null), SETTLE_MS + 120000))));
-  rmSync(join(profile, "DevToolsActivePort"), { force: true });
+  // A profile of its own, so Chrome holds no program of a run before (its GPU cache), as on a first visit; as it holds no
+  // survivor's key either, each run plays a survivor of its own.
+  const profile = mkdtempSync(join(tmpdir(), "snark-arrive-"));
   const browser = Bun.spawn([chrome!, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", `--window-size=${WINDOW.join(",")}`, "--force-device-scale-factor=1", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
   try {
     const page = await devtools(profile);
@@ -69,15 +74,18 @@ async function once(arrive: boolean): Promise<Record<string, any> | null> {
       await page.send("Profiler.setSamplingInterval", { interval: 250 });
       await page.send("Profiler.start");
     }
-    await page.send("Page.navigate", { url: `http://127.0.0.1:${server.port}/?bench=1&name=bench&tier=${tier}&still&look=near&people=near&looks=unique&close=8${arrive ? `&arrive=${ARRIVE}` : ""}` });
+    await page.send("Page.navigate", { url: `http://127.0.0.1:${server.port}/?bench=1&name=bench${++survivors}&tier=${tier}&still&look=near&people=near&looks=unique&close=8${arrive ? `&arrive=${ARRIVE}` : ""}${query}` });
     const r = await report;
     if (profiled) longTasks((await page.send("Profiler.stop")).profile);
+    const warm = JSON.parse((await page.send("Runtime.evaluate", { expression: "JSON.stringify(globalThis.snarkWarm?.() ?? null)", returnByValue: true }))?.result?.value ?? "null");
+    if (warm && r) r.warm = warm;
     page.close();
     return r;
   } finally {
     clearTimeout(timer);
     browser.kill();
     await browser.exited;
+    rmSync(profile, { recursive: true, force: true });
   }
 }
 
@@ -120,12 +128,19 @@ try {
     const ours: number[] = r.ourFrames ?? [], gpu: number[] = r.gpuFrames ?? [], from = Math.round((ARRIVE * 60) / 1000);
     const after = ours.slice(from - 2, from + AFTER), gpuAfter = gpu.slice(from - 2, from + AFTER);
     console.log(`${arrive ? "arrives" : "there   "} ${r.renderer}: ours worst ${worst(ours).toFixed(2)} ms, p99 ${r.buildAndSubmitMs?.p99}, median ${r.buildAndSubmitMs?.median}; after ${ARRIVE} ms worst ${worst(after).toFixed(2)} ms; frame interval worst ${r.frameMs?.worst} ms, median ${r.frameMs?.median}; GPU worst ${worst(gpu).toFixed(2)}, after ${worst(gpuAfter).toFixed(2)} ms; posed ${r.turn?.posed}, bones ${r.turn?.bones}`);
+    // The first second alone, which the shell's ask for errors every 5 s on a card that never catches up does not reach.
+    console.log(`  in the first second after: ours worst ${worst(ours.slice(from - 2, from + 60)).toFixed(2)} ms, GPU worst ${worst(gpu.slice(from - 2, from + 60)).toFixed(2)} ms`);
     console.log(`  frames over 8 ms, by frames after the arrival (ours, GPU): ${ours.map((m, i) => (m > 8 || (gpu[i] ?? 0) > 150 ? `${i - from}: ${m.toFixed(1)}, ${(gpu[i] ?? 0).toFixed(1)}` : "")).filter(Boolean).join("; ")}`);
+    const w = r.warm, first = w?.firstFrame as number[] | null;
+    if (first) console.log(`  first frame began ${first[0]!.toFixed(0)} ms into the page and took ${(first[1]! - first[0]!).toFixed(1)} ms; ${w.warmDraws} warm draws, the last at ${w.warmedAt.toFixed(0)} ms; GL errors ${w.errors}`);
+    const firsts = (w?.firsts ?? []) as { what: string; ms: number; at: number; frame: number }[];
+    if (w?.firsts) console.log(`  ${firsts.length} first draws under a state, ${firsts.reduce((a, f) => a + f.ms, 0).toFixed(0)} ms in all`);
+    if (w?.firsts) writeFileSync(join(ROOT, `var/people-arrive/firsts-${k}-${arrive ? "arrives" : "there"}.json`), JSON.stringify(firsts, null, 1));
+    for (const f of firsts) if (f.ms >= 2) console.log(`  first draw at ${f.at.toFixed(0)} ms, frame ${f.frame}: ${f.ms.toFixed(1)} ms, ${f.what}`);
   }
 } finally {
   clearInterval(hold);
   clearInterval(noon);
   server.stop();
-  rmSync(profile, { recursive: true, force: true });
 }
 process.exit(0);

@@ -12,14 +12,14 @@ import { MASK_LAYER, MASK_MATERIALS, SURFACE_NAMES, SURFACE_PREFIX } from "../..
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { DetailAtlas, type ReadAtlas } from "./detail-atlas.ts";
 import { PIECE_KEYS, PIECE_ROWS } from "../core/render/pieces.ts";
-import { PROGRAM, PROGRAMS, UNIFORMS, UNIT, drawProgram, tierPrograms, type ProgramText } from "../core/render/programs.ts";
+import { PROGRAM, PROGRAMS, UNIFORMS, UNIT, WARM_AIM, WARM_DRAWS, WARM_FORM, drawProgram, tierPrograms, type ProgramText } from "../core/render/programs.ts";
 import { PictureArray } from "./picture-array.ts";
 import {
   AT_DRAW, AT_FRAME, AT_TILES, Drawn, SEND_1F, SEND_1I, SEND_2F, SEND_3F, SEND_3FV, SEND_FLOATS, SHELL_UNIFORMS, type UniformRow,
 } from "../core/render/uniforms.ts";
 import { made, type Made } from "./texgen.ts";
 import type { Orders, Texgen } from "../core/texgen/engine.ts";
-import { PASS_CASTERS, PASS_DOME, PASS_FAR_SEE, PASS_FINISH, PASS_MAKING, PASS_OF_STEP, PASS_UPLOADS, type PassClock, type PassCpu } from "../core/passes.ts";
+import { PASSES, PASS_CASTERS, PASS_DOME, PASS_FAR_SEE, PASS_FINISH, PASS_MAKING, PASS_OF_STEP, PASS_UPLOADS, type PassClock, type PassCpu } from "../core/passes.ts";
 import { comparedLookup } from "../core/render/shadowfilter.ts";
 import {
   BLOOM_FORMAT, LIGHT_FORMATS, LIGHT_SAMPLES, bloomLevels, drawsLight, levelShift, passExtent, sceneSize, tapShift,
@@ -64,7 +64,29 @@ interface Program {
   serial: number;
   /** The bounds uCenter and uHalf were set from: a level's own or its mesh's. */
   bounds: object | null;
+  /** Its name, for the first draws' notes, and the warm draws put in line for it, by bit (WARM_STATES a target). */
+  label: string;
+  warm: number;
 }
+
+/** What each first draw of a program under a state took the card's process, in ms (GlRenderer.noteFirsts). */
+export interface FirstDraw {
+  what: string;
+  ms: number;
+  at: number;
+  frame: number;
+}
+
+/** How many programs a step before the first frame draws warm (GlRenderer.warmStep); a frame of play draws one. */
+const WARM_BEFORE = 4;
+/** The states of a warm draw a target holds as bits of a program's `warm`, and the targets' names in the first draws' notes. */
+const WARM_STATES = 4;
+/**
+ * The sets of streams a level is warmed with (warmForm): a near body's, an attachment's, a static's and a built
+ * piece's; a level drawn flat takes the last two.
+ */
+const WARM_STREAMS = 4;
+const WARM_AIMS = ["light", "canvas", "shadow", "bloom"];
 
 /**
  * The uniforms the shell sets by code (uniforms.ts SHELL_UNIFORMS), by their place in a program's `at` and `last`.
@@ -184,6 +206,21 @@ export class GlRenderer {
   /** Each tier's programs as `ready` asks after them, and whether the card links away from the page. */
   private readonly asked = new Map<Tier, Program[]>();
   private parallel = false;
+  /**
+   * Programs in line to be drawn once under each state play will draw them in (warmStep), the fence after the last
+   * drawn, and the small targets and vertex arrays they are drawn with. The canvas is its own: a draw of nothing leaves
+   * its pixels. Off (`?nowarm`) to measure play without them.
+   */
+  private readonly warming: { prog: Program; n: number; aim: number }[] = [];
+  private warmFence: WebGLSync | null = null;
+  private warmTargets: (WebGLFramebuffer | undefined)[] = [];
+  private warmForms: (WebGLVertexArrayObject | undefined)[] = [];
+  private warmBytes: WebGLBuffer | null = null;
+  private warmIndices: WebGLBuffer | null = null;
+  warmOn = true;
+  /** When the last warm draw was handed to the card, and how many there have been. */
+  warmedAt = 0;
+  warmDraws = 0;
   /** Where the frame's GPU time goes (passes.ts), if anything times it. */
   passes: PassClock | null = null;
   /** The page's own time in each pass, which each draw fills while the debug bar reads it (passes.ts PassCpu). */
@@ -363,6 +400,10 @@ export class GlRenderer {
     // Where the browser can, programs compile and link away from the page, which asks after one only to draw with it.
     this.parallel = gl.getExtension("KHR_parallel_shader_compile") !== null;
     this.asked.clear();
+    this.warming.length = 0;
+    this.warmFence = this.warmBytes = this.warmIndices = null;
+    this.warmTargets = [];
+    this.warmForms = [];
     this.multi = gl.getExtension("WEBGL_multi_draw");
     this.buffers.clear();
     this.quads.length = this.quadBytes.length = 0;
@@ -774,8 +815,250 @@ export class GlRenderer {
   private program(n: number, light = this.light > 0, tier = this.warmed!): Program {
     const text = Object.values(PROGRAMS)[n]!(tier, this.format, this.shadowLookup === "hard", light);
     const key = n + text.defines + text.vertex + text.fragment;
-    const made = this.linked.get(key) ?? this.linked.set(key, this.link(text, UNIFORMS[n]!)).get(key)!;
+    const made = this.linked.get(key) ?? this.linked.set(key, this.link(text, UNIFORMS[n]!, Object.keys(PROGRAMS)[n] + (light ? "" : " unlit"))).get(key)!;
     return light === this.light > 0 && tier === this.warmed ? (this.made[n] = made) : made;
+  }
+
+  /**
+   * Begins `tier`'s programs before its first frame and draws each warm as it links (warmStep), between the page's
+   * tasks. Done once none is left, or once a frame has been drawn, which draws the rest a frame at a time.
+   */
+  prewarm(tier: Tier): Promise<void> {
+    if (!this.warmOn) return Promise.resolve();
+    this.warmTier(tier, false, true);
+    return new Promise((done) => {
+      const step = (): void => void (this.serial > 0 || this.warmStep(WARM_BEFORE) ? done() : setTimeout(step, 4));
+      step();
+    });
+  }
+
+  /**
+   * Puts each program a frame of `tier` may draw with in line to be drawn warm under the states it will meet, at the
+   * front of the line where `first`, and only those the first frame waits for where `early` (WarmDraw.early). The
+   * copies a governor's step to no light target draws wait for that step.
+   */
+  private warmTier(tier: Tier, first = false, early = false): void {
+    if (!this.warmOn) return;
+    const light = this.light > 0, jobs = [];
+    for (const n of tierPrograms(tier)) {
+      if (early && !WARM_DRAWS[n]!.early) continue;
+      const prog = this.program(n, light, tier), warm = WARM_DRAWS[n]!, aim = warm.aim ?? (drawsLight(tier, light) ? WARM_AIM.light : WARM_AIM.canvas);
+      const bits = warm.states << (aim * WARM_STATES);
+      if ((prog.warm & bits) === bits) continue;
+      prog.warm |= bits;
+      jobs.push({ prog, n, aim });
+    }
+    if (first) this.warming.unshift(...jobs);
+    else this.warming.push(...jobs);
+  }
+
+  /**
+   * Draws the next programs in line, up to `most`, once under each state play will draw them in, into a small target of
+   * the format and samples play draws into: a driver that makes a program again for a target's samples or a cut-out's
+   * coverage does it now, not in the frame that first meets the program. A program waits its turn until it has linked
+   * and the card has done the last step's draws, so asking after either waits for nothing. Whether none are left.
+   */
+  private warmStep(most: number): boolean {
+    const gl = this.gl;
+    if (this.warmFence) {
+      if (gl.getSyncParameter(this.warmFence, gl.SYNC_STATUS) !== gl.SIGNALED) return false;
+      gl.deleteSync(this.warmFence);
+      this.warmFence = null;
+    }
+    let drawn = 0;
+    for (let i = 0; i < this.warming.length && drawn < most; ) {
+      const job = this.warming[i]!, prog = job.prog;
+      if (prog.text && this.parallel && !gl.getProgramParameter(prog.program, COMPLETION_STATUS)) {
+        i++;
+        continue;
+      }
+      this.warming.splice(i, 1);
+      // One that failed to link is left to its first draw, which says why.
+      if (!this.setUp(prog)) continue;
+      this.warmDraw(prog, job.n, job.aim);
+      drawn++;
+    }
+    if (drawn > 0) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      this.warmFence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+      gl.flush();
+    }
+    return this.warming.length === 0;
+  }
+
+  /**
+   * Program `n`'s draws of nothing into target `aim` under each of its states, from vertices of the form its draws give,
+   * a textured level's in each of its sets of streams.
+   */
+  private warmDraw(prog: Program, n: number, aim: number): void {
+    const gl = this.gl, { form, states } = WARM_DRAWS[n]!;
+    // Bound whatever the mirrors say: the textures the card makes are drawn between these steps and leave them behind.
+    gl.useProgram((this.current = prog).program);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.warmTarget(aim));
+    gl.viewport(0, 0, 1, 1);
+    for (let streams = form === WARM_FORM.mesh ? 2 : 0; streams < (form === WARM_FORM.mesh || form === WARM_FORM.surface ? WARM_STREAMS : 1); streams++) {
+      gl.bindVertexArray((this.vao = this.warmForm(form, streams)));
+      for (let s = 0; s < WARM_STATES; s++) {
+        if ((states & (1 << s)) === 0) continue;
+        this.set(s >= 2, false, (s & 1) === 1);
+        if (form === WARM_FORM.none) gl.drawArrays(gl.TRIANGLES, 0, 3);
+        else if (form === WARM_FORM.detail || form === WARM_FORM.face) gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, 1);
+        else gl.drawElementsInstanced(gl.TRIANGLES, 3, gl.UNSIGNED_SHORT, 0, 1);
+        this.warmDraws++;
+      }
+    }
+    this.warmedAt = performance.now();
+  }
+
+  /**
+   * The target of `aim`: the canvas itself, or a small one made the first time, of renderbuffers of the format and
+   * samples of the target it stands for.
+   */
+  private warmTarget(aim: number): WebGLFramebuffer | null {
+    const gl = this.gl, made = this.warmTargets[aim];
+    if (made || aim === WARM_AIM.canvas) return made ?? null;
+    const fb = (this.warmTargets[aim] = gl.createFramebuffer()!);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    const samples = aim === WARM_AIM.light ? Math.min(this.samples, LIGHT_SAMPLES) : 0;
+    const colour = aim === WARM_AIM.light ? this.light : aim === WARM_AIM.bloom ? BLOOM_FORMAT : 0;
+    const depth = aim === WARM_AIM.shadow ? gl.DEPTH_COMPONENT16 : aim === WARM_AIM.bloom ? 0 : gl.DEPTH_COMPONENT24;
+    for (let k = 0; k < 2; k++) {
+      const format = k ? depth : colour;
+      if (format === 0) continue;
+      const buffer = gl.createRenderbuffer()!;
+      gl.bindRenderbuffer(gl.RENDERBUFFER, buffer);
+      gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, format, 4, 4);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, k ? gl.DEPTH_ATTACHMENT : gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, buffer);
+    }
+    return fb;
+  }
+
+  /**
+   * The vertex array of `form`, made the first time over a buffer of zeros, its attributes of the type and layout its
+   * draws point them with. A textured level's add its surface to a level's, and by `streams` a near body's skin and
+   * entity, an attachment's entity, nothing, or a built piece's key (WARM_STREAMS). One play leaves off reads its value
+   * of the type.
+   */
+  private warmForm(form: number, streams = 0): WebGLVertexArrayObject | null {
+    const gl = this.gl;
+    if (form === WARM_FORM.none) return null;
+    const made = this.warmForms[form * WARM_STREAMS + streams];
+    if (made) return made;
+    const vao = (this.warmForms[form * WARM_STREAMS + streams] = gl.createVertexArray()!);
+    gl.bindVertexArray((this.vao = vao));
+    const fresh = !this.warmBytes;
+    gl.bindBuffer(gl.ARRAY_BUFFER, (this.arrayBuffer = this.warmBytes ??= gl.createBuffer()!));
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, (this.warmIndices ??= gl.createBuffer()!));
+    if (fresh) {
+      gl.bufferData(gl.ARRAY_BUFFER, 1024, gl.STATIC_DRAW);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, 6, gl.STATIC_DRAW);
+    }
+    const f = (a: number, size: number, type: number, normalized: boolean, stride: number, at: number, each = false): void => {
+      gl.enableVertexAttribArray(a);
+      gl.vertexAttribPointer(a, size, type, normalized, stride, at);
+      gl.vertexAttribDivisor(a, each ? 1 : 0);
+    };
+    const i = (a: number, size: number, type: number, stride: number, at: number, each = false): void => {
+      gl.enableVertexAttribArray(a);
+      gl.vertexAttribIPointer(a, size, type, stride, at);
+      gl.vertexAttribDivisor(a, each ? 1 : 0);
+    };
+    const B = gl.UNSIGNED_BYTE, F = gl.FLOAT, PACKED = gl.INT_2_10_10_10_REV;
+    if (form === WARM_FORM.mesh || form === WARM_FORM.surface) {
+      f(0, 3, gl.SHORT, true, VERTEX_BYTES, 0);
+      i(1, 1, B, VERTEX_BYTES, 6);
+      i(6, 1, B, VERTEX_BYTES, 7);
+      f(2, 3, F, false, INSTANCE_BYTES, 0, true);
+      f(3, 1, gl.UNSIGNED_SHORT, true, INSTANCE_BYTES, 12, true);
+      i(4, 4, B, INSTANCE_BYTES, 14, true);
+      i(5, 2, B, INSTANCE_BYTES, 18, true);
+      if (form === WARM_FORM.surface) {
+        f(7, 2, gl.UNSIGNED_SHORT, true, SURFACE_BYTES, 0);
+        f(8, 4, PACKED, true, SURFACE_BYTES, 4);
+        f(9, 4, PACKED, true, SURFACE_BYTES, 8);
+      }
+      if (form === WARM_FORM.surface && streams === 0) {
+        i(10, 4, B, SKIN_BYTES, 0);
+        f(11, 4, B, true, SKIN_BYTES, 4);
+      }
+      if (form === WARM_FORM.surface && streams < 2) i(12, 1, gl.UNSIGNED_INT, 4, 0, true);
+      if (streams === 3) i(15, 1, gl.UNSIGNED_INT, 4, 0);
+    } else if (form === WARM_FORM.tile) {
+      i(0, 4, B, 4, 0);
+      f(1, 4, F, false, 24, 0, true);
+      f(2, 2, F, false, 24, 16, true);
+    } else if (form === WARM_FORM.detail) {
+      const stride = DETAIL_FLOATS * 4;
+      for (let a = 0; a < 4; a++) f(a, a === 3 ? 1 : 3, F, false, stride, a * 12, true);
+      f(4, 4, B, true, stride, 40, true);
+      f(5, 4, B, true, stride, 44, true);
+      i(6, 4, B, stride, 48, true);
+    } else {
+      const stride = FACE_FLOATS * 4;
+      for (let a = 0; a < 6; a++) f(a, a < 3 ? 3 : 4, F, false, stride, a < 3 ? a * 12 : 36 + (a - 3) * 16, true);
+      i(6, 3, gl.UNSIGNED_INT, stride, 84, true);
+    }
+    return vao;
+  }
+
+  /**
+   * Notes from now on each program's first draw under each state (its target, blending, coverage and vertex form), and
+   * the ms the card's process took over it: the draw alone, the work before it done first by `wait`, a question of the
+   * card that waits for every command before it and gives an error, if any. For `?firsts`.
+   */
+  noteFirsts(wait: () => number): readonly FirstDraw[] {
+    const gl = this.gl, list: FirstDraw[] = [], seen = new Set<string>();
+    let fb: WebGLFramebuffer | null = null;
+    const bind = gl.bindFramebuffer.bind(gl);
+    gl.bindFramebuffer = (target, to): void => void (target !== gl.READ_FRAMEBUFFER && (fb = to), bind(target, to));
+    // Which of a level's streams the bound vertex array reads: surface, skin, entity, bends, piece.
+    const form = (vao: WebGLVertexArrayObject | null): string => (vao ? [7, 10, 12, 13, 15].map((a) => (gl.getVertexAttrib(a, gl.VERTEX_ATTRIB_ARRAY_ENABLED) ? "1" : "0")).join("") : "none");
+    const state = (): string => {
+      const warm = this.warmTargets.indexOf(fb ?? undefined);
+      const target = fb === null ? "canvas" : warm >= 0 ? `warm ${WARM_AIMS[warm]}` : fb === this.post.fbs[0] ? "light" : this.shadow.targets.includes(fb) ? "shadow" : "bloom";
+      return `${this.current?.label ?? "none"}, ${target}${this.blending ? ", blend" : ""}${this.covering ? ", cover" : ""}${this.weighed ? ", weighed" : ""}, streams ${form(this.vao)}`;
+    };
+    const wrap = (of: object, name: string): void => {
+      const own = of as Record<string, (...args: unknown[]) => void>, draw = own[name]!.bind(of);
+      own[name] = (...args: unknown[]): void => {
+        const what = state(), first = !seen.has(what);
+        seen.add(what);
+        const before = wait(), t = performance.now();
+        draw(...args);
+        const after = wait(), ms = performance.now() - t;
+        // A draw seen before is noted where it took 5 ms, with its mesh and material.
+        if (first || ms >= 5) list.push({ what: what + (first ? "" : `, again, mesh ${this.drawn.mesh}, material ${this.drawn.material?.id ?? "none"}`) + (before || after ? `, errors ${before} ${after}` : ""), ms, at: t, frame: this.serial });
+      };
+    };
+    for (const name of ["drawArrays", "drawArraysInstanced", "drawElementsInstanced"]) wrap(gl, name);
+    if (this.multi) wrap(this.multi, "multiDrawElementsInstancedWEBGL");
+    // A program's first use, which waits for its link, where that took 5 ms.
+    const setUp = this.setUp.bind(this);
+    this.setUp = (prog: Program): boolean => {
+      if (!prog.text) return true;
+      wait();
+      const t = performance.now(), linked = setUp(prog);
+      wait();
+      if (performance.now() - t >= 5) list.push({ what: `set up ${prog.label}`, ms: performance.now() - t, at: t, frame: this.serial });
+      return linked;
+    };
+    // And each frame whose passes took the card's process 20 ms or more, pass by pass.
+    const mark = this.mark.bind(this), passes = new Float64Array(PASSES.length);
+    let open = -1, from = 0;
+    this.mark = (pass: number): void => {
+      wait();
+      const now = performance.now();
+      if (open >= 0) passes[open]! += now - from;
+      open = pass;
+      from = now;
+      if (pass < 0) {
+        const sum = passes.reduce((a, b) => a + b, 0);
+        if (sum >= 20) list.push({ what: `the frame's passes: ${PASSES.map((name, k) => (passes[k]! >= 1 ? `${name} ${passes[k]!.toFixed(1)}` : "")).filter(Boolean).join(", ")}`, ms: sum, at: now, frame: this.serial });
+        passes.fill(0);
+      }
+      mark(pass);
+    };
+    return list;
   }
 
   /**
@@ -826,6 +1109,7 @@ export class GlRenderer {
     if (!this.warmed) return;
     for (const n of tierPrograms(this.warmed)) if (!this.made[n]) this.program(n);
     if (drawsLight(this.warmed, this.light)) for (const n of tierPrograms(this.warmed)) this.program(n, false);
+    this.warmTier(this.warmed, true);
   }
 
   /** Job `k`'s program of the textures the card makes, once linked; none while it links, and none for good where it failed. */
@@ -958,6 +1242,24 @@ export class GlRenderer {
   }
 
   /**
+   * Checks the link of a program not yet drawn with, which waits for it, and makes it current, finding its uniforms and
+   * pointing its samplers at their units; false where it did not link.
+   */
+  private setUp(prog: Program): boolean {
+    const gl = this.gl, text = prog.text;
+    if (!text) return true;
+    if (!gl.getProgramParameter(prog.program, gl.LINK_STATUS)) return false;
+    gl.useProgram((this.current = prog).program);
+    for (const s in text.samplers) gl.uniform1i(gl.getUniformLocation(prog.program, s), text.samplers[s]!);
+    for (let k = 0; k < SHELL_UNIFORMS.length; k++) prog.at[k] = gl.getUniformLocation(prog.program, SHELL_UNIFORMS[k]!);
+    this.find(prog);
+    const block = gl.getUniformBlockIndex(prog.program, "Frame");
+    if (block !== gl.INVALID_INDEX) gl.uniformBlockBinding(prog.program, block, 0);
+    prog.text = null;
+    return true;
+  }
+
+  /**
    * Makes program `n` current, the first time after checking its link, which waits for it, finding its uniforms and
    * pointing its samplers at their units; and sets what its draws share where the step or the frame has changed since
    * it last drew: the frame's uniforms are set here and nowhere else.
@@ -966,18 +1268,9 @@ export class GlRenderer {
     const gl = this.gl;
     const prog = this.made[n] ?? this.program(n);
     const at = prog.at;
-    if (prog.text) {
-      if (!gl.getProgramParameter(prog.program, gl.LINK_STATUS)) {
-        const shaders = gl.getAttachedShaders(prog.program)!.map((s) => gl.getShaderInfoLog(s)).join("");
-        throw new Error("program: " + gl.getProgramInfoLog(prog.program) + shaders);
-      }
-      gl.useProgram((this.current = prog).program);
-      for (const s in prog.text.samplers) gl.uniform1i(gl.getUniformLocation(prog.program, s), prog.text.samplers[s]!);
-      for (let k = 0; k < SHELL_UNIFORMS.length; k++) at[k] = gl.getUniformLocation(prog.program, SHELL_UNIFORMS[k]!);
-      this.find(prog);
-      const block = gl.getUniformBlockIndex(prog.program, "Frame");
-      if (block !== gl.INVALID_INDEX) gl.uniformBlockBinding(prog.program, block, 0);
-      prog.text = null;
+    if (prog.text && !this.setUp(prog)) {
+      const shaders = gl.getAttachedShaders(prog.program)!.map((s) => gl.getShaderInfoLog(s)).join("");
+      throw new Error("program: " + gl.getProgramInfoLog(prog.program) + shaders);
     }
     if (this.current !== prog) gl.useProgram((this.current = prog).program);
     if (p.lit) {
@@ -1082,6 +1375,7 @@ export class GlRenderer {
       for (const n of tierPrograms(p.tier)) if (!this.made[n]) this.program(n);
       // The governor's step to no light target draws the same tier with these, which a step should not wait to link.
       if (drawsLight(p.tier, this.light)) for (const n of tierPrograms(p.tier)) this.program(n, false);
+      this.warmTier(p.tier, true);
       for (let r = 0; r < this.world.length; r++) {
         const t = this.world[r];
         if (!t) continue;
@@ -1343,6 +1637,8 @@ export class GlRenderer {
     while (step < STEP_FAR_SEE) this.step(p, ++step);
     gl.disable(gl.SCISSOR_TEST);
     if (finish) this.toCanvas(p);
+    // A program still waiting to be drawn warm is drawn after the frame, one a frame.
+    if (this.warming.length > 0) this.warmStep(1);
     // Every draw ends in the state the next begins from, as the mirror of it says, whatever another user of the context
     // (the device page) puts back between. The next frame's clear writes depth.
     this.set(false, false, false);
@@ -1711,7 +2007,7 @@ export class GlRenderer {
   }
 
   /** Compiles and links the texts as given, with the defines after their first line, the #version line, asking nothing of either until `use`. */
-  private link(text: ProgramText, rows: readonly UniformRow[]): Program {
+  private link(text: ProgramText, rows: readonly UniformRow[], label = "texgen"): Program {
     const gl = this.gl;
     const program = gl.createProgram()!;
     for (const type of [gl.VERTEX_SHADER, gl.FRAGMENT_SHADER]) {
@@ -1722,6 +2018,6 @@ export class GlRenderer {
     }
     gl.linkProgram(program);
     const last = new Float64Array(SHELL_UNIFORMS.length + 2).fill(NaN);
-    return { program, text, rows, frame: [], draw: [], tiles: [], held: NO_FLOATS, at: [], last, view: -1, serial: -1, bounds: null };
+    return { program, text, rows, frame: [], draw: [], tiles: [], held: NO_FLOATS, at: [], last, view: -1, serial: -1, bounds: null, label, warm: 0 };
   }
 }
