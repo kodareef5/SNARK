@@ -2344,7 +2344,7 @@ export class Characters {
       if (ammo && this.noteAmmo[k] !== ammo) continue;
       if (mine !== undefined && (this.noteId[k] === this.ownBodyId) !== mine) continue;
       if (shooter !== undefined && this.noteId[k] !== shooter) continue;
-      if (mine) return k;
+      if (mine || shooter !== undefined) return k;
       const o = k * NOTE_FLOATS, dx = at[o]! - x, dy = y - at[o + 1]!, dz = at[o + 2]! - z, d = dx * dx + dz * dz;
       if (d < near && dy > -0.5 && dy < SHOOTER_TALL) { near = d; best = k; }
     }
