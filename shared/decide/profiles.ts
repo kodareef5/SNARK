@@ -91,14 +91,19 @@ export const PROBE_SECONDS = 2;
 const PLACE = ["isGo", "isDanger", "isEnemy", "isResource", "isMeet"] as const;
 
 /**
- * Which place to make for. `priority` is its author's, a share of the highest allowed. `pull` is -1 to 1. `travelSoon`
- * is how long the trip is. `danger` and `crowd` are what waits there. `age` is how long ago it was set. `current` is 1
- * for the place already being made for, and `detour` 1 for a distraction on the way to something else.
+ * Which of an objective's choices to make for next. `priority` is its author's, a share of the highest allowed. `pull` is
+ * -1 to 1: its own and that of the mover's tribe's pins it lies in. `travelSoon` is the seconds there at the mover's pace;
+ * `byWay` is 1 where they were measured along a way found, 0 where they are the straight line's. `noWay` is 1 where a
+ * search found that no way leads there. `danger` is how much of the way lies in a pin that repels, by its pull. A detour
+ * (`detour` 1) stands for the way to its aim through it: its priority, seconds and `noWay` are the aim's, `extraSoon` is
+ * the seconds it adds and `worth` the seconds it is worth, both pressed by the same half, so a detour that adds less
+ * than it is worth scores more. `current` is 1 for the aim kept from before a detour.
  */
-export const PICK = profile("pick", "choice", false,
-  [...MODE, "urgency"],
-  [...PLACE, "priority", "pull", "travelSoon", "danger", "crowd", "age", "current", "detour"],
-  [["urgency", "travelSoon"], ["urgency", "priority"], ["flee", "danger"], ["flee", "isDanger"], ["chase", "isEnemy"], ["wander", "detour"]]);
+export const PICK = profile("nav.pick", "choice", false, [],
+  [...PLACE, "priority", "pull", "travelSoon", "byWay", "noWay", "danger", "worth", "detour", "extraSoon", "current"]);
+/** Seconds at which a trip's `travelSoon` is a half, and a detour's `worth` and `extraSoon`. */
+export const PICK_HALF = 20;
+export const DETOUR_HALF = 10;
 
 /** What an action changes, one of them 1. `none` is to do nothing but keep moving. */
 const EFFECT = ["over", "through", "removes", "opens", "medium", "harms", "calls", "waits", "none"] as const;

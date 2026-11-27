@@ -65,7 +65,7 @@ test("a mover at a crowd or at water arrives with every ladder point under the r
 
 test("the lab knows every point the ladder declares on a host", () => {
   const b = build(scene);
-  expect(b.lab.host.decide.points.map((p) => p.name)).toEqual([...NAV_POINTS]);
+  expect(b.lab.host.decide.points.map((p) => p.name)).toEqual([...NAV_POINTS, "nav.pick"]);
   expect(Number.isNaN(b.way)).toBe(false);
   b.lab.host.shutdown();
 });

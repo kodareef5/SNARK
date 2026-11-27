@@ -78,7 +78,7 @@ export class Nav implements Ladder, Held {
   private readonly world: ServerWorld;
   private readonly mind: Behavior;
   private readonly decide: Decide;
-  private readonly rings: Rings;
+  readonly rings: Rings;
   // By slot. The last slot is scratch, for a mover asked about before it has one of its own.
   private readonly owner: Int32Array;
   private readonly rungs: Uint8Array;

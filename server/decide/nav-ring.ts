@@ -94,6 +94,9 @@ export class Rings {
   private readonly knee: Float64Array;
   private kneeFresh = false;
   private readonly fan: Fan;
+  /** What the mover's tribe's pins add along each heading from (x, z), as one vector into `out`; null for nothing. */
+  pullOf: ((e: number, x: number, z: number, out: { x: number; z: number }) => void) | null = null;
+  private readonly pull = { x: 0, z: 0 };
 
   constructor(world: ServerWorld, mind: Behavior, blocking: BodyBlocking, n: number, k: number, dx: Float64Array, dz: Float64Array) {
     this.world = world;
@@ -233,6 +236,9 @@ export class Rings {
       gx /= gd;
       gz /= gd;
     }
+    const pv = this.pull;
+    pv.x = pv.z = 0;
+    this.pullOf?.(this.e, x, z, pv);
     for (let i = 0; i < k; i++) {
       const at = (s * k + i) * FK, dx = this.dx[i]!, dz = this.dz[i]!;
       this.farC[at] = gd > 0 ? q(gx * dx + gz * dz) : 0;
@@ -241,7 +247,7 @@ export class Rings {
       this.farC[at + 3] = pd > 0.1 ? q((px * dx + pz * dz) / pd) : 0;
       this.farC[at + 4] = 0;
       this.farC[at + 5] = td > 0 ? q((tx * dx + tz * dz) / td) : 0;
-      this.farC[at + 6] = 0;
+      this.farC[at + 6] = q(pv.x * dx + pv.z * dz);
     }
     this.farAt[s] = tick;
     this.farGX[s] = want.x;

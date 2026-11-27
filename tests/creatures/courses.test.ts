@@ -259,7 +259,7 @@ test("an objective goes to the highest priority, then the nearest, picking again
   expect([order, ended]).toEqual([[1, 0, 2], 1]);
 });
 
-test("a detour near the way is visited once on the way, and the pick hook chooses when set", () => {
+test("a detour near the way is visited once on the way, and a picker that acts chooses", () => {
   const { h, at, tame } = ground();
   const courses = h.host.courses;
   const t = tame(at.x, at.z);
@@ -271,9 +271,15 @@ test("a detour near the way is visited once on the way, and the pick hook choose
 
   const u = tame(at.x - 4, at.z);
   const picks: number[] = [];
-  courses.pick = (e, left) => {
-    picks.push(left.choices.length);
-    return e === u.e ? left.choices.length - 1 : 0;
+  // Asked, it sends the mover for the last choice still open.
+  courses.pick = {
+    on: () => true,
+    acts: () => true,
+    ask: (e) => {
+      const o = courses.objectiveOf(e)!, open = o.choices.map((_c, i) => i).filter((i) => courses.open(e, i));
+      picks.push(open.length);
+      courses.take(e, open.at(-1)!, -1);
+    },
   };
   const near = { choices: [{ place: place(at.x - 4, at.z + 5, 5), detour: false }, { place: place(at.x - 4, at.z + 12, 0), detour: false }] };
   const went: number[] = [];
