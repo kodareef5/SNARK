@@ -16,7 +16,7 @@ test("every family draws the same scene from a seed, and another from the next",
   }
 });
 
-test("a choice missed costs two horizons, a priority weighs twice a step, a detour visited takes its worth off", () => {
+test("a miss costs two horizons, priority doubles a weight, a detour takes off its worth", () => {
   const s = drawPick("priority", 1), H = s.horizon / TICK_RATE;
   const [lo, hi] = [s.choices[0]!.place.priority, s.choices[1]!.place.priority];
   const w = [2 ** lo, 2 ** hi];
@@ -28,7 +28,7 @@ test("a choice missed costs two horizons, a priority weighs twice a step, a deto
   expect(costOf(d, [pin], played([30, -1], { danger: 2 })) - costOf(d, [pin], played([30, -1]))).toBeCloseTo(6, 6);
 });
 
-test("a choice near by line and far by way: the oracle forces each, and the rule's is the cheaper", () => {
+test("the oracle forces each first pick, and the rule's costs what it played", () => {
   const s = drawPick("wayFar", 3);
   const seen = seePick(s);
   expect(seen.forced.length).toBe(2);
@@ -48,7 +48,7 @@ test("a leg shut in is given up early under the rule, and rightly", () => {
   expect(seen.forced[0]!).toBeLessThan(seen.forced[1]!);
 });
 
-test("against an earlier run, a scene that reaches fewer ends is lost and more is gained", () => {
+test("against an earlier run, fewer ends reached is lost and more is gained", () => {
   const one = (arrived: number[]): PickSeen => ({ family: "wayFar", seed: 1, kind: "core:raptor", fact: "", course: false, detours: [0, 0], today: played(arrived), rule: played(arrived), forced: [], rulePick: 0 });
   expect(againstPick([one([5, 9])], [one([5, -1])], "rule").lost.length).toBe(1);
   expect(againstPick([one([5, -1])], [one([5, 9])], "rule").gained.length).toBe(1);

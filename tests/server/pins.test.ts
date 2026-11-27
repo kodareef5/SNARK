@@ -185,7 +185,7 @@ test("the pins are saved by the commit after they change, ten seconds apart at m
   expect(pins.dirty).toBe(false);
 });
 
-test("a survivor's pins join the tribe it joins with their ids, and the newest 32 stay", () => {
+test("a survivor's pins join its tribe with their ids, and the newest 32 stay", () => {
   const { h, sessions: [bob, ada], rec, pins } = world(["bob", "ada"]);
   const lone = rec(ada!).team;
   h.say(bob!, "tribe create Wolves");

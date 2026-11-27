@@ -100,7 +100,7 @@ test("a pin that repels beside the nearer choice sends the rule to the other", (
   expect(go(true)).toEqual([1, 0]);
 });
 
-test("the rule takes a detour worth its seconds off the way, and not one behind a wall", () => {
+test("the rule takes a detour worth its seconds, and not one behind a wall", () => {
   const go = (wall: boolean): number[] => {
     const w = near();
     // Off the way by 9 m: past the plain look aside's slack, an extra few seconds by the open way.
@@ -205,7 +205,7 @@ test("a pin's pull reaches the far pass of a tame of its tribe on the ladder", (
   w.host.shutdown();
 });
 
-test("a mover the rule sent elsewhere goes back to the plain pick when the rule is turned off", () => {
+test("a mover the rule re-aimed goes back to the plain pick when it is turned off", () => {
   const s = walled("nav.pick=rule");
   s.w.host.courses.aim(s.e, s.o, {});
   for (let t = 0; t < 2 * TICK_RATE; t++) s.w.tick();
