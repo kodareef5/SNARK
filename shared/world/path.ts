@@ -90,8 +90,6 @@ const NEAR_YES = 8;
 const CLOSED = 16;
 /** Water deep enough to swim, in a search that crosses it (`swim`). */
 const WET = 32;
-/** Deeper than any water: a body given this swim depth never swims. */
-const NEVER_SWIMS = 1e6;
 
 export class PathFinder {
   readonly world: CollisionWorld;
@@ -152,23 +150,20 @@ export class PathFinder {
   private readonly trail: number[] = [];
   private readonly px: number[] = [];
   private readonly pz: number[] = [];
-  /** `body` as one that never swims, for a search that crosses water, and the body it was made from. */
-  private wader: Walker | null = null;
-  private waderOf: Walker | null = null;
-
   constructor(world: CollisionWorld, body: Walker) {
     this.world = world;
     this.body = body;
   }
 
-  /** groundAt for the body searched for; where it crosses water, deep water is no stop and what stands in it is. */
+  /**
+   * groundAt for the body searched for. Where it crosses water, water deep enough to swim is free unless something stands
+   * in it where the body floats, whatever is on the bed below.
+   */
   private ground(x: number, z: number, r = this.body.radius): number {
-    if (this.swim <= 0) return groundAt(this.world, this.body, x, z, r);
-    if (this.waderOf !== this.body) {
-      this.wader = { ...this.body, swimDepth: NEVER_SWIMS };
-      this.waderOf = this.body;
-    }
-    return groundAt(this.world, this.wader!, x, z, r);
+    const g = groundAt(this.world, this.body, x, z, r);
+    if (g !== GROUND_WATER || this.swim <= 0) return g;
+    const b = this.body, y = Math.max(groundUnder(this.world.hf, x, z, r), this.world.hf.waterAt(x, z) - swimDepth(b));
+    return capsuleFree(this.world, x, y, z, r, b.height) ? GROUND_FREE : GROUND_SOLID;
   }
 
   /** Later searches treat the cell at (x, z) as not free, until `forget`. */
@@ -335,6 +330,8 @@ export class PathFinder {
       const x = ax + (dx * k) / n;
       const z = az + (dz * k) / n;
       if (this.ground(x, z, r) !== GROUND_FREE) return false;
+      // Where a swim costs more than a walk, a straight line may not swim what the search paid to go round.
+      if (this.swim > 1 && groundAt(this.world, this.body, x, z, r) === GROUND_WATER) return false;
       if (this.avoided.size > 0 && this.avoided.has(Math.floor(x) * 65536 + Math.floor(z))) return false;
     }
     return true;

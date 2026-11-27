@@ -941,10 +941,12 @@ export class Behavior {
     return true;
   }
 
-  /** The ladder let `e` go: it is calm, and a search under way for it is cut back to the budget of any other. */
+  /** The ladder let `e` go: it is calm, and a search under way for it is cut back to the budget of any other, and keeps dry. */
   letGo(e: number): void {
     this.rung[e] = 0;
     if (this.searching === e && this.finder.budget > SEARCH_CELLS) this.finder.budget = SEARCH_CELLS;
+    // Nor does the rest of its search swim.
+    if (this.searching === e) this.finder.swim = 0;
   }
 
   /** `e` is on the patient rung: it asks at once for a way, which is searched further (LONG_SEARCH). */

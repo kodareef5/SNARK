@@ -48,7 +48,8 @@ export const RULE_MID = ruleOf(RING_MID, {
   own: { run: 2, runHigh: 1, drop: -1.5, rise: -0.75, wet: -1, swum: -6, hurt: -2, crowd: -0.5, held: 0.3, tried: -1.5 },
   beside: { run: 0.4, runHigh: 0.2 },
   // Pain is a price, and the deeper the trouble the more of it is worth paying: at the last rung water is nearly free.
-  // Water waded is walked at its pace; a swim costs what this body's swim is slower than its walk, and nothing at a half.
+  // Water waded is walked at its pace. A swim costs less the faster this body swims against its walk: for a raptor what
+  // all water cost before, and on the patient rung a body that swims as fast as it walks takes to it a little.
   cross: { "rung*wet": 0.9, "rung*swum": 2.7, "swim*swum": 8, "rung*hurt": 1, "rung*drop": 0.6 },
 });
 /** Away from what it presses on, toward the open side. */
