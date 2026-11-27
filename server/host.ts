@@ -29,7 +29,7 @@ import { CastHost } from "./cast/host.ts";
 import { Decide } from "./decide/decide.ts";
 import { LineLog } from "./decide/log.ts";
 import { addNav } from "./decide/nav.ts";
-import { addPick } from "./decide/nav-pick.ts";
+import { addPick, pullToward } from "./decide/nav-pick.ts";
 import { Reach } from "./decide/nav-reach.ts";
 import { DecideCopy, settingsOf } from "./decide/shared.ts";
 import type { CastSettings } from "../shared/cast/state.ts";
@@ -2018,9 +2018,10 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   });
   // The stuck ladder's points (server/decide/nav.ts): movers that are snagged or stuck get out.
   creatures.mind.decide = decide;
-  addNav(decide, world, creatures.mind, game.players.blocking);
+  const nav = addNav(decide, world, creatures.mind, game.players.blocking);
   // Objectives pick by `nav.pick` (server/decide/nav-pick.ts), and a leg `nav.reach` doubts is given up early.
   addPick(decide, world, creatures.mind, courses, (team) => pins.of(team));
+  nav.rings.pullOf = (e, x, z, out) => void (world.ents.team[e] !== 0 && pullToward(pins.of(world.ents.team[e]!), x, z, out));
   const reacher = creatures.mind.reacher;
   if (reacher instanceof Reach) {
     reacher.ends = (e) => courses.legEnds(e);
