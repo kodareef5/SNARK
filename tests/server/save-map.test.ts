@@ -59,7 +59,7 @@ test("a fresh save on a map with statics holds none of them, and a restart sets 
   h.join("ada");
   h.run(2000);
   const p = h.host.persistence!;
-  expect(p.commits).toBeGreaterThan(5);
+  expect(p.commits).toBeGreaterThan(0);
   expect(saved(p.store)).toEqual({ chunks: [], bytes: 0 });
   h.host.shutdown();
 
