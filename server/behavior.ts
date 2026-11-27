@@ -16,6 +16,7 @@ import { capsuleFree, groundUnder } from "../shared/world/collide.ts";
 import { GROUND_FREE, PATH_FOUND, PATH_LEG, PATH_NONE, PATH_REACH, PATH_SHORT, ROUTE_MARGIN, PathFinder, groundAt, shapeStamp } from "../shared/world/path.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, rayHit } from "../shared/world/ray.ts";
 import { BodyGrid } from "./bodies.ts";
+import type { Decide } from "./decide/decide.ts";
 import type { GameServer } from "./game.ts";
 import type { ServerWorld } from "./world.ts";
 import { creatureSize, youngMove } from "./young-move.ts";
@@ -97,11 +98,17 @@ const ROUTE_POINTS = 32;
 /** Metres. A point of a way is reached within this, or once passed. */
 const ARRIVE = 0.5;
 export { ROUTE_MARGIN } from "../shared/world/path.ts";
+/** Cells a search may expand for a mover on the patient rung of the ladder, when the lane has room. */
+export const LONG_SEARCH = 4 * SEARCH_CELLS;
+/** In 65536ths of a turn: a mover holding a heading further off than this from its facing turns before it walks. */
+const TURN_FIRST = 10923;
+/** A gain toward the goal not yet measured, in 127ths of its pace: taken as half. */
+const GAIN_UNKNOWN = 64;
 
 /** Where a creature is with its way: heading straight, on a way, or told that no way was found. */
-const WAY_STRAIGHT = 0;
-const WAY_ON = 1;
-const WAY_NONE = 2;
+export const WAY_STRAIGHT = 0;
+export const WAY_ON = 1;
+export const WAY_NONE = 2;
 /** A search asked for by a creature with no way, or to refresh one it is on. */
 const ASK_NOW = 1;
 const ASK_LATER = 2;
@@ -319,6 +326,25 @@ class Route {
   stamp = 0;
 }
 
+/**
+ * The stuck ladder (server/decide/nav.ts) as movement sees it. A mover on it (`Behavior.rung` above 0) may hold a heading
+ * the decider chose, and is taken on a rung higher where it would be told there is no way.
+ */
+export interface Ladder {
+  /** The heading `e` holds now, in 65536ths of a turn, or -1. */
+  held(e: number, tick: number): number;
+  /** Whether `e`'s next question of which way to go is due. */
+  due(e: number, tick: number): boolean;
+  /** Whether an action holds `e` this tick (server/decide/actions.ts); if so it has pressed what it needs. */
+  act(e: number, tick: number): boolean;
+  /** Whether `e` has meant to turn and has not, for a while: a long body caught in a corner. */
+  wedged(e: number, tick: number): boolean;
+  /** `e` would be told there is no way, or would give its hunt up: true where the ladder takes it on instead. */
+  climb(e: number, tick: number): boolean;
+  /** `e` leaves the ladder: what it heads for changed. */
+  drop(e: number): void;
+}
+
 /** Entity indices, oldest first. */
 class Queue {
   list: number[] = [];
@@ -375,6 +401,27 @@ export class Behavior {
   herd: { readonly awake: Int32Array; awakeCount: number } | null = null;
   /** Called when a creature takes fright and stands through its startle before it runs. */
   onStartle: ((e: number) => void) | null = null;
+  /** The decider (server/decide), and the ladder and points the stuck movers' questions go to; null and -1 while unset. */
+  decide: Decide | null = null;
+  ladder: Ladder | null = null;
+  snagPoint = -1;
+  ringPoint = -1;
+  reachPoint = -1;
+  probePoint = -1;
+  /** Where `nav.reach` keeps its answers (server/decide/nav-reach.ts). */
+  reacher: { reachOf(e: number): number } | null = null;
+  /** Per chunk, the players within a chunk of it (Creatures); a mover elsewhere is in the background. Null: all are. */
+  close: Uint16Array | null = null;
+  /** Its rung on the ladder, 0 for calm. Only the ladder raises it. */
+  rung = new Uint8Array(0);
+  /**
+   * For nav.snag, written only while it is on: the distance to its goal at its last think in tenths of a metre (0 for
+   * unknown), and its gains toward the goal over its last four thinks, newest in the low byte, each in 127ths of its pace.
+   */
+  snagLast = new Uint16Array(0);
+  snagGain = new Int32Array(0);
+  /** What `wants` found. */
+  readonly want = { x: 0, z: 0, speed: 0, walk: 0, way: 0, wx: 0, wz: 0, prey: -1 };
   /** `bites` counts bite presses, not hits. `alarmed` counts creatures that took fright or turned because one of their kind was hurt. */
   alarmed = 0;
   hunts = 0;
@@ -386,7 +433,7 @@ export class Behavior {
   spent = 0;
   private readonly world: ServerWorld;
   private readonly game: GameServer;
-  private readonly rng: Rng;
+  private rng: Rng;
   /**
    * The hunted entity and its generation, where the hunt began (for a fleeing creature, the point it makes for), the tick the
    * current state ends, and the tick it may next look for prey.
@@ -482,6 +529,14 @@ export class Behavior {
     this.flightOf = wider(this.flightOf, cap);
     this.asked = wider(this.asked, cap);
     this.askAfter = wider(this.askAfter, cap);
+    this.rung = wider(this.rung, cap);
+    this.snagLast = wider(this.snagLast, cap);
+    this.snagGain = wider(this.snagGain, cap);
+  }
+
+  /** Starts its random numbers again from `seed`: the lab's replays (tools/decide) meet the same luck after a choice. */
+  reseed(seed: number): void {
+    this.rng = new Rng(seed);
   }
 
   reset(e: number): void {
@@ -537,8 +592,10 @@ export class Behavior {
       f.down = false;
       f.parked = whom < 0 && this.world.ents.mode[e] === MODE_FLYER;
     }
-    if (whom >= 0) this.leaderGen[e] = this.world.ents.gen[whom]!;
-    else if (this.mind[e] !== MIND_HUNT) this.stay(e, 0);
+    if (whom >= 0) {
+      this.leaderGen[e] = this.world.ents.gen[whom]!;
+      this.aimed(e);
+    } else if (this.mind[e] !== MIND_HUNT) this.stay(e, 0);
   }
 
   /** An owned creature wanders about as a wild one does, following nobody, with no tether (ARK's has none). A flyer's home is where it was told. */
@@ -703,6 +760,39 @@ export class Behavior {
     }
     if (moved) this.lose(e);
     if (this.mind[e] === MIND_WANDER) this.until[e] = 0;
+    if (moved && pace !== GOAL_NONE && pace !== GOAL_STAY) this.aimed(e);
+  }
+
+  /** `e` was given a goal: `nav.reach` is asked whether it will get there. */
+  private aimed(e: number): void {
+    const d = this.decide;
+    if (d !== null && d.on(this.reachPoint)) d.put(this.reachPoint, e, this.rung[e]!, this.back(e));
+  }
+
+  /**
+   * How likely `e` is to arrive within the time its goal allows, 0 to 1, as `nav.reach` last said; -1 where it has not
+   * said. Nothing here acts on it.
+   */
+  reachOf(e: number): number {
+    return this.reacher ? this.reacher.reachOf(e) : -1;
+  }
+
+  /** The tick at which `e`'s goal runs out of time (a hunt's end), or -1 for a goal with no time of its own. */
+  goalEnds(e: number): number {
+    return this.mind[e] === MIND_HUNT ? this.until[e]! : -1;
+  }
+
+  /** Metres left along the way `e` follows, from where it stands; 0 off a way. */
+  wayLength(e: number): number {
+    if (this.way[e] !== WAY_ON) return 0;
+    const r = this.route(e), ents = this.world.ents;
+    let x = ents.x[e]!, z = ents.z[e]!, d = 0;
+    for (let i = r.next; i < r.count; i++) {
+      d += Math.hypot(r.x[i]! - x, r.z[i]! - z);
+      x = r.x[i]!;
+      z = r.z[i]!;
+    }
+    return d;
   }
 
   /** Whether `e` is within `r` metres of its goal (on the flat). */
@@ -762,8 +852,10 @@ export class Behavior {
     if (this.move[e] === 0 || !barely) this.stuck[e] = 0;
     else if (this.stuck[e]! < 255) this.stuck[e]!++;
     if (this.move[e] === 0) return;
+    if (this.stuck[e] === STUCK_TICKS) this.trouble(e);
     if (barely && into > 0) {
       if (this.pinned[e]! < 255) this.pinned[e]!++;
+      if (this.pinned[e] === PINNED_TICKS) this.trouble(e);
       this.wallYaw[e] = Math.round((Math.atan2(nx, nz) / (Math.PI * 2)) * 65536) & 0xffff;
       // Pinned with no way to follow, it stops pressing now; its mind asks for a way, or turns it from the wall.
       if (this.atWall(e) && this.way[e] !== WAY_ON) {
@@ -776,6 +868,173 @@ export class Behavior {
   /** Whether `e` has pressed into a wall long enough to count as pinned. */
   private atWall(e: number): boolean {
     return this.pinned[e]! >= PINNED_TICKS;
+  }
+
+  /** Whether no player is close to `e`: its questions wait on those of movers a player is beside. */
+  back(e: number): boolean {
+    const close = this.close;
+    return close === null || close[this.world.ents.chunk[e]!] === 0;
+  }
+
+  /** `e` has just been stuck or pinned: on the ground, the ladder is asked which way it goes. */
+  private trouble(e: number): void {
+    const d = this.decide;
+    if (d === null || !d.on(this.ringPoint) || this.flyer(e)) return;
+    d.put(this.ringPoint, e, this.rung[e]! > 2 ? this.rung[e]! : 2, this.back(e));
+  }
+
+  /** At its think, a mover going to (gx, gz) is asked whether it is snagged. */
+  private think(e: number, gx: number, gz: number): void {
+    const d = this.decide;
+    if (d === null) return;
+    if (this.mind[e] !== MIND_FLEE && d.on(this.reachPoint)) d.put(this.reachPoint, e, this.rung[e]!, this.back(e));
+    if (!d.on(this.snagPoint)) return;
+    const ents = this.world.ents;
+    const far = Math.sqrt((gx - ents.x[e]!) * (gx - ents.x[e]!) + (gz - ents.z[e]!) * (gz - ents.z[e]!));
+    const last = this.snagLast[e]!;
+    let gain = GAIN_UNKNOWN;
+    if (last !== 0) {
+      const p = this.walker(e);
+      const expect = p ? (p.walkSpeed * ((this.buttons[e]! & BTN_SPRINT) !== 0 ? p.sprintMul : 1) * Math.abs(this.move[e]!) * THINK_TICKS) / (127 * TICK_RATE) : 0;
+      gain = expect > 0.01 ? Math.max(-127, Math.min(127, Math.round(((last / 10 - far) / expect) * 127))) : 0;
+    }
+    this.snagGain[e] = (this.snagGain[e]! << 8) | (gain & 0xff);
+    this.snagLast[e] = far * 10 >= 65535 ? 0 : Math.max(1, Math.round(far * 10));
+    d.put(this.snagPoint, e, this.rung[e]!, this.back(e));
+  }
+
+  /**
+   * Whether `e`, on the ladder and off any way, holds the heading the decider chose; it turns to it. Its next question is
+   * put when due.
+   */
+  private holding(e: number, tick: number): boolean {
+    const ladder = this.ladder;
+    if (this.rung[e] === 0 || ladder === null || this.way[e] === WAY_ON) return false;
+    if (ladder.due(e, tick)) this.decide?.put(this.ringPoint, e, this.rung[e]!, this.back(e));
+    if (ladder.act(e, tick)) return true;
+    const yaw = ladder.held(e, tick);
+    if (yaw < 0) return false;
+    const facing = this.world.ents.yaw[e]!;
+    this.look[e] = yaw;
+    // Facing well off it, it turns where it stands first: a long body pressed into a corner cannot swing round walking.
+    // One that cannot turn at all backs out the way it faces.
+    if (Math.abs(((facing - yaw + 32768) & 0xffff) - 32768) > TURN_FIRST) {
+      const wedged = ladder.wedged(e, tick);
+      this.move[e] = wedged ? -127 : 0;
+      if (wedged) this.look[e] = facing;
+    } else if (this.move[e] === 0 && this.mind[e] === MIND_WANDER) this.move[e] = 127;
+    return true;
+  }
+
+  /** Where `e` would be told there is no way: the ladder takes it on a rung higher, and on the patient rung it searches further. */
+  private climbs(e: number, tick: number): boolean {
+    const was = this.rung[e]!;
+    if (this.ladder === null || this.flyer(e) || !this.ladder.climb(e, tick)) return false;
+    this.way[e] = WAY_STRAIGHT;
+    if (this.rung[e]! >= 3 && was < 3) this.patient(e, tick);
+    else this.askAfter[e] = tick + NO_WAY_TICKS;
+    return true;
+  }
+
+  /** The ladder let `e` go: it is calm, and a search under way for it is cut back to the budget of any other. */
+  letGo(e: number): void {
+    this.rung[e] = 0;
+    if (this.searching === e && this.finder.budget > SEARCH_CELLS) this.finder.budget = SEARCH_CELLS;
+  }
+
+  /** `e` is on the patient rung: it asks at once for a way, which is searched further (LONG_SEARCH). */
+  patient(e: number, tick: number): void {
+    if (this.way[e] === WAY_ON) return;
+    this.askAfter[e] = 0;
+    this.ask(e, tick, ASK_NOW);
+  }
+
+  /**
+   * The ladder's choice for `e`: it goes `yaw` (65536ths of a turn) until tick `until`, as if it had met nothing. One that
+   * wanders walks it; one with a goal also asks for a way, which it follows once found.
+   */
+  hold(e: number, yaw: number, until: number, tick: number): void {
+    // Asked while on a way, it was stuck there: the way did not hold.
+    if (this.way[e] === WAY_ON) this.way[e] = WAY_STRAIGHT;
+    this.look[e] = yaw;
+    this.pinned[e] = 0;
+    this.stuck[e] = 0;
+    this.leaving[e] = 0;
+    if (this.wants(e) === 0) {
+      this.move[e] = 127;
+      this.buttons[e] = 0;
+      this.until[e] = until;
+    } else if (this.way[e] === WAY_STRAIGHT) this.ask(e, tick, ASK_LATER);
+  }
+
+  /** Turns `e` to the middle of `o`, as a hunter aims at its prey. */
+  aimAt(e: number, o: number): void {
+    this.aim(e, o);
+  }
+
+  /** `e` bites, if it is not already in the middle of a blow (`act`, its ACT_ value). */
+  bite(e: number, act: number): void {
+    if (act !== ACT_NONE) return;
+    this.pressed[e] = BTN_PRIMARY;
+    this.bites++;
+  }
+
+  /** Metres from the eye of `e` to a piece its bite can harm standing between it and `prey`, or -1 where none stands. */
+  pieceBetween(e: number, prey: number): number {
+    if (this.between(e, prey) !== HIT_STRUCTURE) return -1;
+    const t = rayHit.t;
+    return this.walled(e, prey) ? -1 : t;
+  }
+
+  /** What `e` moves by: a tame by its tamed numbers. */
+  walkerOf(e: number): MoveParams | null {
+    return this.walker(e);
+  }
+
+  /**
+   * What `e` is about, as an index of MODES (shared/decide/profiles.ts): 0 wander, 1 seek, 2 flee, 3 chase, 4 follow. Into
+   * `want`: where it goes, the speed it means to go and its walk, in metres a second, its WAY_ state and the next point of
+   * a way it is on, and the prey it chases.
+   */
+  wants(e: number): number {
+    const ents = this.world.ents, w = this.want;
+    let mode = 0;
+    w.x = ents.x[e]!;
+    w.z = ents.z[e]!;
+    w.prey = this.targetOf(e);
+    const lead = this.leader[e]!;
+    if (w.prey >= 0) {
+      mode = 3;
+      w.x = ents.x[w.prey]!;
+      w.z = ents.z[w.prey]!;
+    } else if (this.goalPace[e] !== GOAL_NONE && this.goalPace[e] !== GOAL_STAY && this.mind[e] !== MIND_FLEE) {
+      mode = 1;
+      w.x = this.goalX[e]!;
+      w.z = this.goalZ[e]!;
+    } else if (this.mind[e] === MIND_FLEE) {
+      mode = 2;
+      w.x = this.homeX[e]!;
+      w.z = this.homeZ[e]!;
+    } else if (lead >= 0 && (ents.flags[lead]! & F_ALIVE) !== 0 && ents.gen[lead] === this.leaderGen[e]) {
+      mode = 4;
+      w.x = ents.x[lead]!;
+      w.z = ents.z[lead]!;
+    }
+    const p = this.walker(e);
+    w.walk = p ? p.walkSpeed : 0;
+    w.speed = p ? (p.walkSpeed * ((this.buttons[e]! & BTN_SPRINT) !== 0 ? p.sprintMul : 1) * Math.abs(this.move[e]!)) / 127 : 0;
+    w.way = this.way[e]!;
+    if (w.way === WAY_ON) {
+      const r = this.route(e);
+      w.wx = r.x[Math.min(r.next, r.count - 1)]!;
+      w.wz = r.z[Math.min(r.next, r.count - 1)]!;
+    }
+    return mode;
+  }
+
+  /** Whether `e` minds itself as a flyer, which the ladder leaves alone. */
+  flies(e: number): boolean {
+    return this.flyer(e);
   }
 
   /** Spends this tick's search budget, on those with no way first and in the order they asked. Call once a tick, before steering. */
@@ -838,6 +1097,7 @@ export class Behavior {
     this.until[e] = tick + HUNT_TICKS;
     this.aim(e, prey);
     if (this.blocked(e, prey, tick)) this.ask(e, tick, ASK_NOW);
+    this.aimed(e);
   }
 
   /** It drops what it was doing and stands, and looks for no prey for `rest` ticks. */
@@ -908,6 +1168,12 @@ export class Behavior {
     this.pinned[e] = 0;
     this.leaving[e] = 0;
     if (this.searching === e) this.searching = -1;
+    this.snagLast[e] = 0;
+    this.snagGain[e] = GAIN_UNKNOWN * 0x01010101;
+    if (this.rung[e] !== 0) {
+      if (this.ladder) this.ladder.drop(e);
+      this.rung[e] = 0;
+    }
   }
 
   /** The way of `e`, made the first time it needs one. */
@@ -1064,7 +1330,8 @@ export class Behavior {
       }
       this.move[e] = 127;
       this.buttons[e] = BTN_SPRINT;
-      if (!this.head(e, tick, ents.x[prey]!, ents.z[prey]!, turn && this.blocked(e, prey, tick))) this.giveUp(e, tick);
+      if (!this.holding(e, tick) && !this.head(e, tick, ents.x[prey]!, ents.z[prey]!, turn && this.blocked(e, prey, tick))) this.giveUp(e, tick);
+      else if (turn) this.think(e, ents.x[prey]!, ents.z[prey]!);
       return;
     }
     if (this.goalPace[e] !== GOAL_NONE && mind !== MIND_FLEE) return this.seek(e, tick, turn, heading);
@@ -1075,7 +1342,10 @@ export class Behavior {
         if (prey >= 0) return this.hunt(e, prey, tick);
       }
       if (flyer) return this.wanders[e] !== 0 ? this.roam(e, tick, turn, heading) : this.attend(e, tick, turn, heading);
-      if (this.wanders[e] !== 0) return this.amble(e, tick);
+      if (this.wanders[e] !== 0) {
+        if (this.rung[e] !== 0 && this.holding(e, tick)) return;
+        return this.amble(e, tick);
+      }
       if (heading) this.go(e, tick, turn);
       return;
     }
@@ -1106,7 +1376,8 @@ export class Behavior {
         if (heading || started) {
           this.move[e] = 127;
           this.buttons[e] = BTN_SPRINT;
-          if (!this.head(e, tick, this.homeX[e]!, this.homeZ[e]!, turn && this.blocked(e, -1, tick))) this.move[e] = this.buttons[e] = 0;
+          if (!this.holding(e, tick) && !this.head(e, tick, this.homeX[e]!, this.homeZ[e]!, turn && this.blocked(e, -1, tick))) this.move[e] = this.buttons[e] = 0;
+          if (turn) this.think(e, this.homeX[e]!, this.homeZ[e]!);
         }
         return;
       }
@@ -1120,6 +1391,13 @@ export class Behavior {
         if (prey >= 0) return this.hunt(e, prey, tick);
       }
       return this.roam(e, tick, turn, heading);
+    }
+    if (this.rung[e] !== 0 && this.holding(e, tick)) {
+      if (turn && this.temper(e) === TEMPER_HUNTS && tick >= this.rested[e]!) {
+        const prey = this.prey(e);
+        if (prey >= 0) return this.hunt(e, prey, tick);
+      }
+      return;
     }
     if (!turn && tick < this.until[e]! && !this.atWall(e) && this.stuck[e]! < STUCK_TICKS && this.leaving[e] === 0) return;
     if (turn && this.temper(e) === TEMPER_HUNTS && tick >= this.rested[e]!) {
@@ -1148,10 +1426,11 @@ export class Behavior {
     this.buttons[e] = pace === GOAL_RUN ? BTN_SPRINT : 0;
     this.homeX[e] = gx;
     this.homeZ[e] = gz;
-    if (!this.head(e, tick, gx, gz, turn && this.blocked(e, -1, tick))) {
+    if (!this.holding(e, tick) && !this.head(e, tick, gx, gz, turn && this.blocked(e, -1, tick))) {
       this.move[e] = 0;
       this.buttons[e] = 0;
     }
+    if (turn) this.think(e, gx, gz);
   }
 
   private amble(e: number, tick: number): void {
@@ -1168,6 +1447,7 @@ export class Behavior {
       this.leaving[e] = 0;
       this.move[e] = 127;
       this.until[e] = tick + 30 + rng.int(150);
+      this.probe(e);
       return;
     }
     if (tick < this.until[e]!) return;
@@ -1175,6 +1455,17 @@ export class Behavior {
     this.look[e] = rng.int(65536);
     this.buttons[e] = 0;
     this.until[e] = tick + 30 + rng.int(150);
+    if (this.move[e] !== 0) this.probe(e);
+  }
+
+  /** A wanderer walking ends its walk by tick `until`, if not sooner. */
+  walkUntil(e: number, until: number): void {
+    if (until < this.until[e]!) this.until[e] = until;
+  }
+
+  /** A calm wanderer is to walk the way it looks: `nav.probe` may turn it to a freer way near it. */
+  private probe(e: number): void {
+    this.decide?.put(this.probePoint, e, 0, this.back(e));
   }
 
   /**
@@ -1694,10 +1985,11 @@ export class Behavior {
     if (flat <= near) this.way[e] = WAY_STRAIGHT;
     this.move[e] = flat <= near ? 0 : flat > FOLLOW_RUN ? 127 : 90;
     this.buttons[e] = flat > FOLLOW_RUN ? BTN_SPRINT : 0;
-    if (flat > near && !this.head(e, tick, ents.x[whom]!, ents.z[whom]!, turn && this.blocked(e, whom, tick))) {
+    if (flat > near && !this.holding(e, tick) && !this.head(e, tick, ents.x[whom]!, ents.z[whom]!, turn && this.blocked(e, whom, tick))) {
       this.move[e] = 0;
       this.buttons[e] = 0;
     }
+    if (turn && flat > near) this.think(e, ents.x[whom]!, ents.z[whom]!);
   }
 
   /** An unclaimed young creature's leader becomes the survivor nearest it within its sight, or nobody. Chosen: ARK gives no distance. */
@@ -1750,7 +2042,7 @@ export class Behavior {
    */
   private head(e: number, tick: number, gx: number, gz: number, blocked: boolean): boolean {
     if (this.way[e] === WAY_NONE) {
-      if (tick < this.askAfter[e]!) return false;
+      if (tick < this.askAfter[e]! && !this.climbs(e, tick)) return false;
       this.way[e] = WAY_STRAIGHT;
     }
     const ents = this.world.ents;
@@ -1774,7 +2066,7 @@ export class Behavior {
       }
       if (r.next >= r.count) {
         this.way[e] = WAY_STRAIGHT;
-        if (r.short) {
+        if (r.short && !this.climbs(e, tick)) {
           this.way[e] = WAY_NONE;
           this.askAfter[e] = tick + NO_WAY_TICKS;
           return false;
@@ -1859,6 +2151,7 @@ export class Behavior {
       gz = this.homeZ[e]!;
     } else return -1;
     const f = this.finder;
+    f.budget = this.rung[e]! >= 3 && this.game.lane.may() ? LONG_SEARCH : SEARCH_CELLS;
     // The search freezes a slightly wider/taller footprint, capped at adult size. Its step capability and water
     // tolerance remain the young's actual ones: padding must not invent a climb or make deep water walkable.
     this.searchGrowing = ents.grown[e]! > this.world.tick;
@@ -1914,7 +2207,8 @@ export class Behavior {
       this.ask(e, tick, ASK_NOW);
       return;
     }
-    const follows = this.mind[e] !== MIND_HUNT && this.mind[e] !== MIND_FLEE;
+    // One already stuck does not follow a way that ends short: it leads back into the dead end.
+    const follows = this.mind[e] !== MIND_HUNT && this.mind[e] !== MIND_FLEE && this.rung[e]! < 2;
     if (f.count >= 2 && (status === PATH_FOUND || status === PATH_LEG || (status === PATH_SHORT && follows))) {
       r.growing = this.searchGrowing; r.radius = f.body.radius; r.top = f.body.height + f.body.stepUp;
       this.askAfter[e] = tick + ASK_TICKS;
@@ -1945,6 +2239,7 @@ export class Behavior {
       this.stuck[e] = this.pinned[e] = 0;
       return;
     }
+    if (this.climbs(e, tick)) return;
     this.way[e] = WAY_NONE;
     this.askAfter[e] = tick + NO_WAY_TICKS;
     if (this.mind[e] === MIND_HUNT) this.giveUp(e, tick);

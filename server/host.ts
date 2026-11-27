@@ -28,6 +28,7 @@ import { Beds, type Place } from "./beds.ts";
 import { CastHost } from "./cast/host.ts";
 import { Decide } from "./decide/decide.ts";
 import { LineLog } from "./decide/log.ts";
+import { addNav } from "./decide/nav.ts";
 import { DecideCopy, settingsOf } from "./decide/shared.ts";
 import type { CastSettings } from "../shared/cast/state.ts";
 import { Taming } from "./taming.ts";
@@ -2012,6 +2013,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     settings: () => ({ policy: rules.text("DecidePolicy"), sample: rules.num("DecideSample"), megabytes: rules.num("DecideLogMegabytes") }),
     log: opts.dbPath ? new LineLog(join(dirname(resolve(opts.dbPath)), "decide"), `decide-w${records.worldId}`) : null,
   });
+  // The stuck ladder's points (server/decide/nav.ts): movers that are snagged or stuck get out.
+  creatures.mind.decide = decide;
+  addNav(decide, world, creatures.mind, game.players.blocking);
   // A cluster's worlds take the Decide settings one of them copies to its folder (server/decide/shared.ts).
   const decideCopy = cluster ? new DecideCopy({
     root: cluster.folder.root, world: cluster.world, now: () => cluster.now(), say,

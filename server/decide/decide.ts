@@ -378,6 +378,7 @@ export class Decide {
     if (this.ctx.log?.busy) void this.flush();
   }
 
+  /** Answers `q`'s questions, the deepest rung first. A question an answer puts is answered in this row too, if its rung is not deeper than the one being answered. */
   private answerAll(q: Asked, tick: number, back: number): void {
     const { world, lane } = this.ctx;
     for (let rung = RUNGS - 1; rung >= 0; rung--) {
