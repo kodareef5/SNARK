@@ -404,6 +404,10 @@ export class Behavior {
   ladder: Ladder | null = null;
   snagPoint = -1;
   ringPoint = -1;
+  reachPoint = -1;
+  probePoint = -1;
+  /** Where `nav.reach` keeps its answers (server/decide/nav-reach.ts). */
+  reacher: { reachOf(e: number): number } | null = null;
   /** Per chunk, the players within a chunk of it (Creatures); a mover elsewhere is in the background. Null: all are. */
   close: Uint16Array | null = null;
   /** Its rung on the ladder, 0 for calm. Only the ladder raises it. */
@@ -586,8 +590,10 @@ export class Behavior {
       f.down = false;
       f.parked = whom < 0 && this.world.ents.mode[e] === MODE_FLYER;
     }
-    if (whom >= 0) this.leaderGen[e] = this.world.ents.gen[whom]!;
-    else if (this.mind[e] !== MIND_HUNT) this.stay(e, 0);
+    if (whom >= 0) {
+      this.leaderGen[e] = this.world.ents.gen[whom]!;
+      this.aimed(e);
+    } else if (this.mind[e] !== MIND_HUNT) this.stay(e, 0);
   }
 
   /** An owned creature wanders about as a wild one does, following nobody, with no tether (ARK's has none). A flyer's home is where it was told. */
@@ -752,6 +758,39 @@ export class Behavior {
     }
     if (moved) this.lose(e);
     if (this.mind[e] === MIND_WANDER) this.until[e] = 0;
+    if (moved && pace !== GOAL_NONE && pace !== GOAL_STAY) this.aimed(e);
+  }
+
+  /** `e` was given a goal: `nav.reach` is asked whether it will get there. */
+  private aimed(e: number): void {
+    const d = this.decide;
+    if (d !== null && d.on(this.reachPoint)) d.put(this.reachPoint, e, this.rung[e]!, this.back(e));
+  }
+
+  /**
+   * How likely `e` is to arrive within the time its goal allows, 0 to 1, as `nav.reach` last said; -1 where it has not
+   * said. Nothing here acts on it.
+   */
+  reachOf(e: number): number {
+    return this.reacher ? this.reacher.reachOf(e) : -1;
+  }
+
+  /** The tick at which `e`'s goal runs out of time (a hunt's end), or -1 for a goal with no time of its own. */
+  goalEnds(e: number): number {
+    return this.mind[e] === MIND_HUNT ? this.until[e]! : -1;
+  }
+
+  /** Metres left along the way `e` follows, from where it stands; 0 off a way. */
+  wayLength(e: number): number {
+    if (this.way[e] !== WAY_ON) return 0;
+    const r = this.route(e), ents = this.world.ents;
+    let x = ents.x[e]!, z = ents.z[e]!, d = 0;
+    for (let i = r.next; i < r.count; i++) {
+      d += Math.hypot(r.x[i]! - x, r.z[i]! - z);
+      x = r.x[i]!;
+      z = r.z[i]!;
+    }
+    return d;
   }
 
   /** Whether `e` is within `r` metres of its goal (on the flat). */
@@ -845,7 +884,9 @@ export class Behavior {
   /** At its think, a mover going to (gx, gz) is asked whether it is snagged. */
   private think(e: number, gx: number, gz: number): void {
     const d = this.decide;
-    if (d === null || !d.on(this.snagPoint)) return;
+    if (d === null) return;
+    if (this.mind[e] !== MIND_FLEE && d.on(this.reachPoint)) d.put(this.reachPoint, e, this.rung[e]!, this.back(e));
+    if (!d.on(this.snagPoint)) return;
     const ents = this.world.ents;
     const far = Math.sqrt((gx - ents.x[e]!) * (gx - ents.x[e]!) + (gz - ents.z[e]!) * (gz - ents.z[e]!));
     const last = this.snagLast[e]!;
@@ -1028,6 +1069,7 @@ export class Behavior {
     this.until[e] = tick + HUNT_TICKS;
     this.aim(e, prey);
     if (this.blocked(e, prey, tick)) this.ask(e, tick, ASK_NOW);
+    this.aimed(e);
   }
 
   /** It drops what it was doing and stands, and looks for no prey for `rest` ticks. */
@@ -1377,6 +1419,7 @@ export class Behavior {
       this.leaving[e] = 0;
       this.move[e] = 127;
       this.until[e] = tick + 30 + rng.int(150);
+      this.probe(e);
       return;
     }
     if (tick < this.until[e]!) return;
@@ -1384,6 +1427,17 @@ export class Behavior {
     this.look[e] = rng.int(65536);
     this.buttons[e] = 0;
     this.until[e] = tick + 30 + rng.int(150);
+    if (this.move[e] !== 0) this.probe(e);
+  }
+
+  /** A wanderer walking ends its walk by tick `until`, if not sooner. */
+  walkUntil(e: number, until: number): void {
+    if (until < this.until[e]!) this.until[e] = until;
+  }
+
+  /** A calm wanderer is to walk the way it looks: `nav.probe` may turn it to a freer way near it. */
+  private probe(e: number): void {
+    this.decide?.put(this.probePoint, e, 0, this.back(e));
   }
 
   /**

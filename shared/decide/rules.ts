@@ -3,7 +3,7 @@
 
 import { linear, type Model } from "./forward.ts";
 import { profileHash, type Profile } from "./profile.ts";
-import { DO, PICK, REACH, RING_FAR, RING_MID, RING_NEAR, SNAG, SURE } from "./profiles.ts";
+import { DO, PICK, PROBE, REACH, RING_FAR, RING_MID, RING_NEAR, SNAG, SURE } from "./profiles.ts";
 
 interface Weights<S extends string, C extends string> {
   state?: Partial<Record<S, number>>;
@@ -58,6 +58,8 @@ export const RULE_SNAG = ruleOf(SNAG, { own: { pace: -2, gain1: -1.5, gain2: -1,
 export const RULE_SURE = ruleOf(SURE, { own: { ways: 1, open: 2, run: 1.5, price: -1, tried: -2 }, constant: -1.5 });
 /** It arrives unless it is far, blocked, told there is no way, often stuck, or nearly out of time. */
 export const RULE_REACH = ruleOf(REACH, { own: { lineSoon: -1, waySoon: -0.5, blocked: -1, onWay: 1, noWay: -3, stucks: -2, spent: -1.5 }, constant: 2.5 });
+/** The freest of the three, the one drawn where they are near alike, and a little toward the way it faces. */
+export const RULE_PROBE = ruleOf(PROBE, { own: { run: 3, runHigh: 1.5, drawn: 0.5, facing: 0.2 } });
 /** The highest priority, then the nearest; a little toward the place already made for. */
 export const RULE_PICK = ruleOf(PICK, {
   own: { priority: 3, pull: 1.5, travelSoon: -1.5, danger: -1.5, crowd: -0.3, age: -0.2, current: 0.4, detour: -0.5 },
@@ -71,4 +73,4 @@ export const RULE_DO = ruleOf(DO, {
   cross: { "rung*fits": 2, "tall*over": 1, "soft*removes": 1, "water*medium": 1 },
 });
 
-export const RULES: readonly Model[] = [RULE_FAR, RULE_MID, RULE_NEAR, RULE_SNAG, RULE_SURE, RULE_REACH, RULE_PICK, RULE_DO];
+export const RULES: readonly Model[] = [RULE_FAR, RULE_MID, RULE_NEAR, RULE_SNAG, RULE_SURE, RULE_REACH, RULE_PROBE, RULE_PICK, RULE_DO];

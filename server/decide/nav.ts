@@ -8,7 +8,7 @@
 import { TICK_RATE } from "../../shared/coords.ts";
 import { addPass, stick } from "../../shared/decide/combine.ts";
 import { answer as choose } from "../../shared/decide/forward.ts";
-import { MODES, RING_FAR, RING_MID, RING_NEAR, SNAG } from "../../shared/decide/profiles.ts";
+import { MODES, RING_FAR, RING_MID, RING_NEAR, SNAG, SURE, SURE_SECONDS } from "../../shared/decide/profiles.ts";
 import { Table, tableFor } from "../../shared/decide/table.ts";
 import { soon, unit } from "../../shared/decide/units.ts";
 import { F_AWAKE } from "../../shared/sim/entities.ts";
@@ -17,6 +17,8 @@ import type { BodyBlocking } from "../blocking.ts";
 import type { ServerWorld } from "../world.ts";
 import { COST_RING, COST_YES, type Ask, type Decide, type Point } from "./decide.ts";
 import { FAR_W, MID_W, NEAR_W, Rings, NEVER } from "./nav-ring.ts";
+import { Probe } from "./nav-probe.ts";
+import { Reach } from "./nav-reach.ts";
 import { Pool } from "./pool.ts";
 
 /** Headings in a ring. The lab tries 8, 12 and 16. */
@@ -29,6 +31,14 @@ export const MIX_NEAR = 1;
 export const STICK = 0.5;
 /** A snag this likely makes the mover wary. */
 export const SNAG_AT = 0.5;
+/**
+ * On the stuck rungs a pick `nav.sure` thinks less likely than this to free the mover is passed over for the next best, at
+ * most SURE_TRIES times; with none sure enough the surest of those looked at is held.
+ */
+export const SURE_AT = 0.5;
+export const SURE_TRIES = 2;
+/** Seconds stuck at which `stuckSoon` is a half. */
+const STUCK_HALF = 4;
 /** Ticks a heading is held, and while something is within reach, when the near pass is refreshed. */
 export const HOLD_TICKS = 20;
 export const NEAR_TICKS = 5;
@@ -93,6 +103,15 @@ export class Nav implements Ladder {
   private readonly mid = tableFor(RING_MID, 16);
   private readonly near = tableFor(RING_NEAR, 16);
   private readonly all = new Table(16, 0, 1);
+  private readonly sure = tableFor(SURE, 1);
+  /** Of the answer just given: the headings `nav.sure` passed over, a bit each, and how sure it was of the pick. */
+  private rejected = 0;
+  private picked = -1;
+  /** By slot: how sure `nav.sure` was of the heading held (-1 where it was not asked), and where the mover was then. */
+  private readonly sureOf: Float32Array;
+  private readonly askX: Float32Array;
+  private readonly askZ: Float32Array;
+  private readonly askD: Float32Array;
   private readonly dx: Float64Array;
   private readonly dz: Float64Array;
   private taking = -1;
@@ -127,6 +146,10 @@ export class Nav implements Ladder {
     this.calmFrom = new Int32Array(n);
     this.faceAt = new Uint16Array(n);
     this.faceSince = new Int32Array(n);
+    this.sureOf = new Float32Array(n).fill(-1);
+    this.askX = new Float32Array(n);
+    this.askZ = new Float32Array(n);
+    this.askD = new Float32Array(n);
     const nav = this;
     this.snagPoint = {
       name: "nav.snag", cost: COST_YES, horizon: 0, tables: [{ profile: SNAG, table: this.snagTable }],
@@ -135,11 +158,12 @@ export class Nav implements Ladder {
       apply: (e, tick) => nav.snagged(e, tick),
     };
     this.ringPoint = {
-      name: "nav.ring", cost: COST_RING, horizon: 0,
-      tables: [{ profile: RING_FAR, table: this.far }, { profile: RING_MID, table: this.mid }, { profile: RING_NEAR, table: this.near }],
+      name: "nav.ring", cost: COST_RING, horizon: SURE_SECONDS * TICK_RATE,
+      tables: [{ profile: RING_FAR, table: this.far }, { profile: RING_MID, table: this.mid }, { profile: RING_NEAR, table: this.near }, { profile: SURE, table: this.sure }],
       still: (e) => nav.moving(e),
       answer: (e, tick, rung, ask) => nav.askRing(e, tick, rung, ask),
       apply: (e, tick, rung, pick) => nav.go(e, tick, rung, pick),
+      outcome: (e, tick, out) => nav.freed(e, tick, out),
     };
   }
 
@@ -197,13 +221,13 @@ export class Nav implements Ladder {
     this.mind.rung[e] = 0;
   }
 
-  /** What the ladder knows of `e`, for a page or the debug bar: its rung, since when, the heading held and until when, those tried (a bit each), the last chosen. */
+  /** What the ladder knows of `e`, for a page or the debug bar: its rung, since when, the heading held and until when, those tried (a bit each), the last chosen, how sure of it. */
   describe(e: number): Record<string, unknown> | null {
     const s = this.slot(e);
     if (s < 0) return null;
     let tried = 0;
     for (let i = 0; i < this.k; i++) if (this.tried(s, i, this.world.tick) > 0) tried |= 1 << i;
-    return { rung: this.rungOf[s]!, since: this.since[s]!, held: this.holdK[s]!, until: this.holdUntil[s]!, tried, lastPick: this.lastPick[s]! };
+    return { rung: this.rungOf[s]!, since: this.since[s]!, held: this.holdK[s]!, until: this.holdUntil[s]!, tried, lastPick: this.lastPick[s]!, sure: this.sureOf[s]! };
   }
 
   private moving(e: number): boolean {
@@ -346,7 +370,74 @@ export class Nav implements Ladder {
     addPass(all, mid, MIX_MID / ask(RING_MID, mid));
     addPass(all, near, MIX_NEAR / ask(RING_NEAR, near));
     stick(all, held, STICK);
-    return choose("choice", all, 1);
+    let pick = choose("choice", all, 1);
+    this.rejected = 0;
+    this.picked = -1;
+    this.sure.clear(0);
+    if (deep < 2 || pick < 0) return pick;
+    // Stuck, it asks whether the pick would free it, and takes the next best of one it doubts. Standing is never the answer.
+    let open = 0;
+    for (let i = 0; i < k; i++) if (all.mask[i] === 0) open++;
+    const stuckSoon = soon((tick - (found >= 0 ? this.since[s]! : tick)) / TICK_RATE, STUCK_HALF);
+    let best = pick, surest = -1;
+    for (let tries = 0; ; tries++) {
+      const p = this.askSure(pick, deep, open / k, stuckSoon, ask);
+      if (p > surest) {
+        surest = p;
+        best = pick;
+      }
+      if (p >= SURE_AT) break;
+      // Each doubted heading is marked tried, but for the one held.
+      this.rejected |= 1 << pick;
+      if (tries >= SURE_TRIES) break;
+      all.mask[pick] = 1;
+      pick = choose("choice", all, 1);
+      if (pick < 0) break;
+    }
+    // The table left is that of the pick held, for the log, among what was left when it was looked at.
+    if (best !== pick) {
+      all.mask[best] = 0;
+      choose("choice", all, 1);
+      this.askSure(best, deep, open / k, stuckSoon, ask);
+    }
+    this.rejected &= ~(1 << best);
+    this.picked = surest;
+    return best;
+  }
+
+  /** Fills the SURE table for heading `i` of the ring just scored, has it asked, and returns how sure it is. */
+  private askSure(i: number, deep: number, ways: number, stuckSoon: number, ask: Ask): number {
+    const all = this.all, t = this.sure, c = SURE.c, mid = this.mid.rows, near = this.near.rows, k = all.k;
+    let second = 0;
+    for (let j = 0; j < k; j++) if (j !== i && all.mask[j] === 0 && all.out[j]! > second) second = all.out[j]!;
+    t.clear(1);
+    const row = t.rows, m = i * MID_W, wet = mid[m + RING_MID.c.wet]!, hurt = mid[m + RING_MID.c.hurt]!, drop = mid[m + RING_MID.c.drop]!;
+    row[c.rung] = deep / 3;
+    row[c.ways] = ways;
+    row[c.top] = all.out[i]!;
+    row[c.lead] = all.out[i]! - second > 0 ? all.out[i]! - second : 0;
+    row[c.open] = near[i * NEAR_W + RING_NEAR.c.open]!;
+    row[c.run] = mid[m + RING_MID.c.run]!;
+    row[c.price] = wet > hurt ? (wet > drop ? wet : drop) : hurt > drop ? hurt : drop;
+    row[c.tried] = mid[m + RING_MID.c.tried]!;
+    row[c.stuckSoon] = stuckSoon;
+    choose("yes", t, ask(SURE, t));
+    return t.out[0]!;
+  }
+
+  /** For the log: whether `e` has made real progress since its ring was answered (1 or 0, -1 off the ladder), and how far. */
+  private freed(e: number, _tick: number, out: Float32Array): number {
+    const s = this.slot(e), mind = this.mind, ents = this.world.ents;
+    if (s < 0) {
+      out[0] = -1;
+      return 1;
+    }
+    const mode = mind.wants(e), want = mind.want, x = ents.x[e]!, z = ents.z[e]!;
+    const gain = mode !== 0 ? this.askD[s]! - Math.hypot(want.x - x, want.z - z) : Math.hypot(x - this.askX[s]!, z - this.askZ[s]!);
+    const pace = want.speed > want.walk * 0.5 ? want.speed : want.walk * 0.5;
+    out[0] = gain >= PROGRESS * pace * SURE_SECONDS ? 1 : 0;
+    out[1] = gain;
+    return 2;
   }
 
   /** `e` holds the heading picked, a while, and the one it held before is marked if it led nowhere. */
@@ -373,6 +464,11 @@ export class Nav implements Ladder {
     this.holdUntil[s] = tick + (this.rings.close[s] !== 0 ? NEAR_TICKS + 2 : HOLD_TICKS);
     this.answeredAt[s] = tick;
     this.lastPick[s] = pick;
+    for (let i = 0; i < this.k; i++) if ((this.rejected & (1 << i)) !== 0) this.triedAt[s * this.k + i] = tick;
+    this.sureOf[s] = this.picked;
+    this.askX[s] = ents.x[e]!;
+    this.askZ[s] = ents.z[e]!;
+    this.askD[s] = Math.hypot(mind.want.x - ents.x[e]!, mind.want.z - ents.z[e]!);
     mind.hold(e, this.yawOf(pick), this.holdUntil[s]!, tick);
   }
 
@@ -418,6 +514,10 @@ export function addNav(decide: Decide, world: ServerWorld, mind: Behavior, block
   nav.ring = decide.add(nav.ringPoint);
   mind.snagPoint = nav.snag;
   mind.ringPoint = nav.ring;
+  const reach = new Reach(world, mind);
+  mind.reachPoint = decide.add(reach.point);
+  mind.reacher = reach;
+  mind.probePoint = decide.add(new Probe(world, mind).point);
   mind.ladder = nav;
   decide.describe = (e) => nav.describe(e);
   return nav;

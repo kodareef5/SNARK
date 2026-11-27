@@ -77,6 +77,14 @@ export const SURE_SECONDS = 4;
 export const REACH = profile("nav.reach", "yes", false, [],
   [...MODE, "lineSoon", "waySoon", "blocked", "onWay", "noWay", "stucks", "spent"]);
 
+/**
+ * A calm wanderer's look before it walks: the heading it drew and one either side of it, which are not neighbours in a
+ * ring. `run` and `runHigh` are the free run at knee and at chest height as a share of what it walks in `PROBE_SECONDS`.
+ * `drawn` is 1 for the heading it drew, and `facing` the cosine between a heading and the way it faces now.
+ */
+export const PROBE = profile("nav.probe", "choice", false, [], ["run", "runHigh", "drawn", "facing"]);
+export const PROBE_SECONDS = 2;
+
 /** What kind of place a candidate is, one of them 1, in the order of WAYPOINT_KINDS (shared/world/course.ts). */
 const PLACE = ["isGo", "isDanger", "isEnemy", "isResource", "isMeet"] as const;
 
@@ -104,7 +112,7 @@ export const DO = profile("do", "choice", false,
   [...EFFECT, "seconds", "stamina", "health", "wear", "noise", "reach", "readySoon", "handSoon", "fits"],
   [[RUNG, "fits"], ["stuckSoon", "fits"], ["tall", "over"], ["soft", "removes"], ["soft", "through"], ["water", "medium"], ["threatSoon", "harms"], ["threatSoon", "waits"]]);
 
-export const PROFILES: readonly Profile[] = [RING_FAR, RING_MID, RING_NEAR, SNAG, SURE, REACH, PICK, DO];
+export const PROFILES: readonly Profile[] = [RING_FAR, RING_MID, RING_NEAR, SNAG, SURE, REACH, PROBE, PICK, DO];
 
 /** Where each mode's 1 goes in a profile's state or columns. */
 export const MODES = MODE;
