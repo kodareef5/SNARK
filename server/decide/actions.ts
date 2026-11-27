@@ -84,6 +84,8 @@ export interface Held {
   ways(e: number): number;
   /** Whether `e` has meant to turn and has not, for a while. */
   wedged(e: number, tick: number): boolean;
+  /** The heading the ring holds for `e`, in 65536ths of a turn, or -1. */
+  held(e: number, tick: number): number;
 }
 
 /** What lies along the heading held, found once an answer (`look`). */
@@ -96,9 +98,12 @@ class Ahead {
   tall = 0;
   soft = 0;
   room = 0;
-  /** The share of the way ahead under water, and whether another body stands in it. */
+  /** The share of the way ahead under water, whether another body stands in it, and whether one that is moving does. */
   wet = 0;
   body = 0;
+  moving = 0;
+  /** The share under water along the heading the ring holds: where it is going, which may not be where it was stopped. */
+  wetGoing = 0;
   /** The mover's heading as a unit, and its span. */
   dx = 0;
   dz = 1;
@@ -145,18 +150,18 @@ export class Actions {
         can: () => true, fits: () => 0, start: () => 0,
       },
       {
-        // A body that moves may move off: it stands and lets it.
+        // A body that moves may move off: it stands and lets it. One that stands is gone round, not waited for.
         name: "wait", row: { waits: 1, seconds: soon(WAIT_SECONDS, SECONDS_HALF) }, consent: CONSENT_FREE,
         can: () => true,
-        fits: () => ahead.body,
+        fits: () => ahead.moving,
         start: (e) => (me.stand(e), WAIT_SECONDS * TICK_RATE),
         keep: (e) => me.stand(e),
       },
       {
-        // Through what slows it, water most of all, at a price in stamina.
+        // Through what slows it, water most of all, at a price in stamina: along the heading the ring holds, never its own.
         name: "sprint", row: { through: 1, stamina: 0.5, seconds: soon(SPRINT_SECONDS, SECONDS_HALF), noise: 0.3 }, consent: CONSENT_FREE,
         can: (e) => { const p = mind.walkerOf(e); return p !== null && p.sprintMul > 1 && ents.stamina[e]! > p.staminaSprint * TICK_RATE; },
-        fits: () => ahead.wet,
+        fits: () => ahead.wetGoing,
         start: (e, tick) => (me.go(e, tick, BTN_SPRINT), SPRINT_SECONDS * TICK_RATE),
         keep: (e, tick) => me.go(e, tick, BTN_SPRINT),
       },
@@ -241,6 +246,8 @@ export class Actions {
   private ask(e: number, tick: number, rung: number, ask: Ask): number {
     const yaw = this.held.trying(e);
     if (yaw < 0 || !this.look(e, yaw)) return -1;
+    const going = this.held.held(e, tick);
+    this.ahead.wetGoing = going >= 0 ? this.wetAlong(e, going) : this.ahead.wet;
     const t = this.table, mind = this.mind, ahead = this.ahead, s = DO.s, w = DO.columns.length;
     const mode = mind.wants(e), deep = Math.max(rung, this.held.rungOf(e));
     let k = 0;
@@ -335,21 +342,33 @@ export class Actions {
       const ox = x + dx * (r + ahead.t + r), oz = z + dz * (r + ahead.t + r);
       ahead.room = capsuleFree(world, ox, ground + ahead.tall + 0.05, oz, r, p.height) ? 1 : 0;
     }
-    let wet = 0;
-    for (let j = 1; j <= 4; j++) {
-      const px = x + dx * (r + far) * (j / 4), pz = z + dz * (r + far) * (j / 4);
-      if (hf.waterAt(px, pz) - hf.heightAt(px, pz) > 0.1) wet++;
-    }
-    ahead.wet = wet / 4;
-    ahead.body = 0;
+    ahead.wet = this.wetAlong(e, yaw);
+    ahead.body = ahead.moving = 0;
     const bodies = this.blocking.around(e, x, ents.y[e]!, z, r + far, ents.team[e]!, true, this.mind.targetOf(e));
-    for (let b = 0; bodies !== null && b < bodies.count && ahead.body === 0; b++) {
+    for (let b = 0; bodies !== null && b < bodies.count; b++) {
       const bx = (bodies.ax[b]! + bodies.bx[b]!) / 2 - x, bz = (bodies.az[b]! + bodies.bz[b]!) / 2 - z;
       const along = bx * dx + bz * dz, side = bx * dz - bz * dx;
       const wide = r + bodies.r[b]! + Math.hypot(bodies.ax[b]! - bodies.bx[b]!, bodies.az[b]! - bodies.bz[b]!) / 2;
-      if (along > 0 && along <= r + far + wide && (side < 0 ? -side : side) < wide) ahead.body = 1;
+      if (along > 0 && along <= r + far + wide && (side < 0 ? -side : side) < wide) {
+        ahead.body = 1;
+        if (bodies.soft[b] !== 0) ahead.moving = 1;
+      }
     }
     return true;
+  }
+
+  /** The share of the way ahead of `e` along `yaw` that is under water. */
+  private wetAlong(e: number, yaw: number): number {
+    const p = this.mind.walkerOf(e);
+    if (!p) return 0;
+    const hf = this.world.hf, ents = this.world.ents, a = (yaw / 65536) * Math.PI * 2;
+    const dx = Math.sin(a), dz = Math.cos(a), x = ents.x[e]!, z = ents.z[e]!, reach = p.radius + Math.max(AHEAD_LEAST, p.radius * AHEAD_RADII);
+    let wet = 0;
+    for (let j = 1; j <= 4; j++) {
+      const px = x + dx * reach * (j / 4), pz = z + dz * reach * (j / 4);
+      if (hf.waterAt(px, pz) - hf.heightAt(px, pz) > 0.1) wet++;
+    }
+    return wet / 4;
   }
 
   /** Stands where it is. */
@@ -358,9 +377,9 @@ export class Actions {
     this.mind.buttons[e] = 0;
   }
 
-  /** Goes along the heading it asked along, pressing `button` too. */
-  private go(e: number, _tick: number, button: number): void {
-    const yaw = this.held.trying(e), mind = this.mind;
+  /** Goes along the heading the ring holds, else the one it asked along, pressing `button` too. */
+  private go(e: number, tick: number, button: number): void {
+    const held = this.held.held(e, tick), yaw = held >= 0 ? held : this.held.trying(e), mind = this.mind;
     if (yaw >= 0) mind.look[e] = yaw;
     mind.move[e] = 127;
     mind.buttons[e] = button;

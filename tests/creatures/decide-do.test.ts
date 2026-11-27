@@ -28,7 +28,8 @@ function health(s: ReturnType<(typeof SCENES)[string]>): number {
   return total;
 }
 
-function run(name: string, way: string): Seen {
+/** Plays scene `name` decided by `way`; the trike of `blocker` walks off `leaves` ticks in. */
+function run(name: string, way: string, leaves = 3 * TICK_RATE): Seen {
   const s = SCENES[name]!(1);
   try {
     decideBy(s.w, way);
@@ -36,9 +37,9 @@ function run(name: string, way: string): Seen {
     const x0 = ents.x[e]!, before = health(s);
     let out = -1, aside = 0;
     const h = hashes(s, (t) => {
-      if (name === "blocker" && t === 3 * TICK_RATE) blockerLeaves(s);
+      if (name === "blocker" && t === leaves) blockerLeaves(s);
       if (out < 0 && Math.max(Math.abs(ents.x[e]! - 128), Math.abs(ents.z[e]! - 128)) > 6 + 2.5) out = t;
-      if (name === "blocker" && t < 3 * TICK_RATE) aside = Math.max(aside, Math.abs(ents.x[e]! - x0));
+      if (name === "blocker") aside = Math.max(aside, Math.abs(ents.x[e]! - x0));
     });
     const nav = mind.ladder as Nav;
     return { arrived: s.goal ? mind.arrived(e, 1.5) : false, out, aside, started: { ...nav.actions!.started }, bites: mind.bites, before, after: health(s), hashes: h };
@@ -67,12 +68,20 @@ test("a stuck hunter bites through thatch to its prey, never through stone", () 
   expect([stone.started.bite, stone.bites, stone.after]).toEqual([0, 0, stone.before]);
 });
 
-test("a raptor waits for a trike in its way that walks off, and goes on", () => {
-  const acts = run("blocker", DO);
+test("a raptor waits for a trike that is walking out of its way, and goes on", () => {
+  // The trike sets off while the raptor is pressed behind it.
+  const acts = run("blocker", DO, 1.5 * TICK_RATE);
   expect(acts.started.wait).toBeGreaterThan(0);
   expect(acts.arrived).toBe(true);
   // It stood its ground in line behind the trike rather than going round it.
   expect(acts.aside).toBeLessThan(1);
+});
+
+test("a raptor does not wait for a trike that stands in its way: it goes round", () => {
+  const acts = run("blocker", DO);
+  expect(acts.started.wait).toBe(0);
+  expect(acts.arrived).toBe(true);
+  expect(acts.aside).toBeGreaterThan(1);
 });
 
 test("with nav.do off or watched the ladder runs the same, to the bit", () => {

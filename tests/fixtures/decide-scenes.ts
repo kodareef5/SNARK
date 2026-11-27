@@ -246,7 +246,7 @@ export function wet(seed = 1): Scene {
   return { w, movers: [e], ticks: 90 * TICK_RATE, goal };
 }
 
-/** A raptor sent north with a trike standing in its way, which walks off east after three seconds. */
+/** A raptor sent north with a trike standing in its way, which `blockerLeaves` sends off east. */
 export function blocker(seed = 1): Scene {
   const w = lab(flatMap(4), seed);
   const mind = w.host.creatures.mind, ents = w.world.ents;
@@ -261,7 +261,7 @@ export function blocker(seed = 1): Scene {
   return { w, movers: [e, trike], ticks: 30 * TICK_RATE, goal, prey: trike };
 }
 
-/** Sends the trike of `blocker` off east: call it three seconds in. */
+/** Sends the trike of `blocker` off east. */
 export function blockerLeaves(s: Scene): void {
   s.w.host.creatures.mind.goTo(s.prey!, 150, 116, GOAL_WALK);
 }
