@@ -156,7 +156,7 @@ test("the state changes nothing through a line of weights, and a cross lets it r
   expect(() => profile("bad", "choice", false, ["a"], ["b"], [["a", "c" as "b"]])).toThrow();
 });
 
-test("the rules use their crosses: pain is paid deep in trouble, and a step of priority outweighs a trip", () => {
+test("pain is paid deep in trouble, and a step of priority outweighs any trip", () => {
   const t = tableFor(RING_MID, 4), c = RING_MID.c, w = RING_MID.columns.length;
   const wade = (rung: number): number => {
     t.clear(4);
