@@ -9,11 +9,13 @@ import { TICK_RATE } from "../../shared/coords.ts";
 import { SNAG_SECONDS } from "../../shared/decide/profiles.ts";
 import { Rng } from "../../shared/rng.ts";
 import type { Model } from "../../shared/decide/forward.ts";
+import { endDepth, headDepth, type MoveParams } from "../../shared/sim/character.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { combine } from "../../shared/decide/combine.ts";
 import { answer } from "../../shared/decide/forward.ts";
 import { Table } from "../../shared/decide/table.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
+import { castWorld } from "../../shared/world/ray.ts";
 import { PATH_FOUND, PATH_REACH, PathFinder } from "../../shared/world/path.ts";
 import type { MapData } from "../../shared/world/mapfile.ts";
 import { MapWater } from "../../shared/world/water.ts";
@@ -81,17 +83,44 @@ export interface Built {
   standers: { e: number; until: number; then?: { x: number; z: number } }[];
 }
 
-/** The nearest place to (x, z), out to 24 m, where a body of `r` and `h` stands free. */
-export function freeNear(b: Lab, x: number, z: number, r: number, h: number): { x: number; z: number } {
+/** The nearest place to (x, z), out to 24 m, where a body of `r` and `h` stands free, and `also` holds where it is given. */
+export function freeNear(b: Lab, x: number, z: number, r: number, h: number, also?: (x: number, z: number) => boolean): { x: number; z: number } {
   const hf = b.world.hf;
   for (let d = 0; d <= 24; d += 0.75) {
     const steps = d === 0 ? 1 : Math.ceil((2 * Math.PI * d) / 0.75);
     for (let i = 0; i < steps; i++) {
       const px = x + d * Math.sin((i / steps) * 2 * Math.PI), pz = z + d * Math.cos((i / steps) * 2 * Math.PI);
-      if (capsuleFree(b.world, px, hf.heightAt(px, pz) + 0.05, pz, r, h)) return { x: px, z: pz };
+      if (capsuleFree(b.world, px, hf.heightAt(px, pz) + 0.05, pz, r, h) && (!also || also(px, pz))) return { x: px, z: pz };
     }
   }
   return { x, z };
+}
+
+/** Facings tried for a long body's start, a twelfth of a turn apart. */
+const FACINGS = 12;
+
+/** Whether a body of `p` at (x, z) facing `yaw` (65536ths of a turn) has both ends and its head clear of every wall, and no wall between it and its head. */
+function limbsClear(b: Lab, p: MoveParams, x: number, z: number, yaw: number): boolean {
+  const y = b.world.hf.heightAt(x, z) + 0.05;
+  if (p.endRadius! > 0 && (endDepth(b.world, p, x, y, z, yaw, true) !== 0 || endDepth(b.world, p, x, y, z, yaw, false) !== 0)) return false;
+  if (!(p.headRadius! > 0)) return true;
+  if (headDepth(b.world, p, x, y, z, yaw) !== 0) return false;
+  const a = (yaw / 65536) * 2 * Math.PI;
+  return castWorld(b.world, x, y + p.headUp!, z, Math.sin(a), 0, Math.cos(a), p.headAhead! + p.headRadius!, true) === 0;
+}
+
+/**
+ * The facing nearest `yaw` at which a body of `p` stands at (x, z) with its limbs clear, or -1 where none is: a body put
+ * down with its head in a wall, or through one, can never turn, which no game would do to it.
+ */
+export function clearYaw(b: Lab, p: MoveParams, x: number, z: number, yaw: number): number {
+  for (let i = 0; i <= FACINGS / 2; i++) {
+    for (const side of i === 0 ? [0] : [1, -1]) {
+      const a = (yaw + Math.round((side * i * 65536) / FACINGS)) & 0xffff;
+      if (limbsClear(b, p, x, z, a)) return a;
+    }
+  }
+  return -1;
 }
 
 /** Cells the oracle's search may expand: the whole of its grid. */
@@ -139,6 +168,7 @@ function place(w: Lab, s: Scene, body: { radius: number; height: number; pace: n
   const kept = placed.get(key);
   if (kept !== undefined) return kept;
   const rng = new Rng((s.seed * 7919 + 17) >>> 0), line = Math.hypot(s.goal.x - s.start.x, s.goal.z - s.start.z);
+  const move = w.world.reg.move[w.world.reg.index.get(s.kind)!]!;
   let out: Placed | null = null, easy: Placed | null = null;
   const city = s.map === "miami";
   for (let i = 0; i < (city ? CITY_TRIES : TRIES) && !out; i++) {
@@ -153,7 +183,7 @@ function place(w: Lab, s: Scene, body: { radius: number; height: number; pace: n
       gx += rng.range(-8, 8);
       gz += rng.range(-8, 8);
     }
-    const start = freeNear(w, sx, sz, body.radius, body.height), goal = freeNear(w, gx, gz, body.radius, body.height);
+    const start = freeNear(w, sx, sz, body.radius, body.height, (x, z) => clearYaw(w, move, x, z, s.start.yaw) >= 0), goal = freeNear(w, gx, gz, body.radius, body.height);
     const way = reach(w, s.kind, start.x, start.z, goal.x, goal.z, arrive);
     if (!((way / body.pace) * TICK_RATE <= WAY_SHARE * s.horizon)) continue;
     if (city && !Number.isNaN(reach(w, s.kind, start.x, start.z, goal.x, goal.z, arrive, SEARCH_CELLS))) easy ??= { start, goal, way };
@@ -172,7 +202,8 @@ export function build(s: Scene, at0?: Placed | null): Built {
   for (const p of s.pieces) for (let y = 0; y < p.storeys; y++) w.world.structs.add(wall, p.x, w.world.hf.heightAt(p.x, p.z) + 1.5 + 3 * y, p.z, p.quarter * 16384, 0, 10000);
   const body = bodyOf(s.kind), mind = w.host.creatures.mind, arrive = Math.max(1.5, body.radius + 0.5);
   const at = at0 !== undefined ? at0 : place(w, s, body, arrive);
-  const start = at?.start ?? freeNear(w, s.start.x, s.start.z, body.radius, body.height), goal = at?.goal ?? s.goal;
+  const move = reg.move[reg.index.get(s.kind)!]!;
+  const start = at?.start ?? freeNear(w, s.start.x, s.start.z, body.radius, body.height, (x, z) => clearYaw(w, move, x, z, s.start.yaw) >= 0), goal = at?.goal ?? s.goal;
   const standers: Built["standers"] = [];
   for (const st of s.standers) {
     const e = w.host.spawnCreature(st.kind, st.x, st.z, 1);
@@ -183,7 +214,8 @@ export function build(s: Scene, at0?: Placed | null): Built {
   const mover = w.host.spawnCreature(s.kind, start.x, start.z, 1);
   // Where the body cannot be put down after all, the scene is not played, as one with no way.
   if (mover < 0) return { scene: s, lab: w, mover, goal, body, arrive, standers, way: NaN };
-  w.world.ents.yaw[mover] = mind.look[mover] = s.start.yaw;
+  const facing = clearYaw(w, move, start.x, start.z, s.start.yaw);
+  w.world.ents.yaw[mover] = mind.look[mover] = facing >= 0 ? facing : s.start.yaw;
   mind.stay(mover, s.horizon * 4);
   mind.goTo(mover, goal.x, goal.z, GOAL_WALK);
   return { scene: s, lab: w, mover, goal, body, arrive, standers, way: at?.way ?? NaN };
