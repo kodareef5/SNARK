@@ -178,7 +178,8 @@ export function build(s: Scene): Built {
     standers.push({ e, until: st.until, then: st.then });
   }
   const mover = w.host.spawnCreature(s.kind, start.x, start.z, 1);
-  if (mover < 0 && at) throw new Error(`${s.kind} could not be put down for ${s.family} ${s.seed}`);
+  // Where the body cannot be put down after all, the scene is not played, as one with no way.
+  if (mover < 0) return { scene: s, lab: w, mover, goal, body, arrive, standers, way: NaN };
   w.world.ents.yaw[mover] = mind.look[mover] = s.start.yaw;
   mind.stay(mover, s.horizon * 4);
   mind.goTo(mover, goal.x, goal.z, GOAL_WALK);

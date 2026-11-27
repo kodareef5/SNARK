@@ -233,6 +233,20 @@ export interface FitOptions {
   decay?: number;
   /** "adam", or plain gradient descent with momentum. */
   optimizer?: "adam" | "momentum";
+  /**
+   * Weights to start from (the hand rule), which the decay then pulls toward in place of zero. A hidden layer starts as
+   * the line exactly: two units carry it, one each way, and the rest start silent.
+   */
+  from?: Model;
+  /**
+   * A choice is trained toward a share for each candidate falling off with its cost above the best, by this share of the
+   * decision's median cost, in place of how often it was best; 0 for how often.
+   */
+  soft?: number;
+  /** What early stopping reads on validation: log loss, or the cost of the pick above the best. */
+  stop?: "loss" | "regret";
+  /** A word in the scorer's name, to tell apart scorers made other ways. */
+  tag?: string;
 }
 
 export interface Fitted {
@@ -277,6 +291,33 @@ function eceAt(kind: "choice" | "yes", net: Net, set: readonly Example[], T: num
   return eceOf(said, happened).ece;
 }
 
+/** Mean cost of the pick above the best, at temperature `T`. */
+function meanRegret(net: Net, set: readonly Example[], T = 1): number {
+  const p = new Float64Array(64);
+  let sum = 0;
+  for (const ex of set) {
+    const P = ex.k > p.length ? new Float64Array(ex.k) : p;
+    probabilities("choice", ex, (c) => score(net, ex.x, c * net.n, null), T, P);
+    const pick = argmax(P, ex);
+    let low = Infinity;
+    for (let c = 0; c < ex.k; c++) if (ex.mask[c] === 0 && ex.cost[c]! < low) low = ex.cost[c]!;
+    sum += ex.cost[pick]! - low;
+  }
+  return sum / (set.length || NaN);
+}
+
+/** Each open candidate's share, falling off with its cost above the best by `soft` of the median open cost. */
+export function softTarget(ex: Example, soft: number): Float64Array {
+  const open: number[] = [];
+  for (let c = 0; c < ex.k; c++) if (ex.mask[c] === 0) open.push(ex.cost[c]!);
+  open.sort((a, b) => a - b);
+  const low = open[0]!, scale = Math.max(1e-6, soft * open[open.length >> 1]!), out = new Float64Array(ex.k);
+  let sum = 0;
+  for (let c = 0; c < ex.k; c++) if (ex.mask[c] === 0) sum += out[c] = Math.exp(-(ex.cost[c]! - low) / scale);
+  for (let c = 0; c < ex.k; c++) out[c] = out[c]! / sum;
+  return out;
+}
+
 /** A standard normal draw, by Box and Muller. */
 function normal(rng: Rng): number {
   const u = 1 - rng.float(), v = rng.float();
@@ -293,8 +334,29 @@ export function fit(p: Profile, train: readonly Example[], val: readonly Example
     const s1 = Math.sqrt(2 / n), s2 = Math.sqrt(1 / hidden);
     for (let i = 0; i < hidden * n; i++) net.p[i] = normal(rng) * s1;
     for (let h = 0; h < hidden; h++) net.p[hidden * n + h] = 0.01;
-    for (let h = 0; h < hidden; h++) net.p[hidden * n + hidden + h] = normal(rng) * s2;
+    for (let h = 0; h < hidden; h++) net.p[hidden * n + hidden + h] = o.from ? 0 : normal(rng) * s2;
   }
+  const from = o.from;
+  if (from && (from.hidden !== 0 || from.inputs !== n)) throw new Error(`a scorer for ${p.name} starts only from a line of its ${n} inputs`);
+  if (from && hidden === 0) {
+    net.p.set(from.w1);
+    net.p[n] = from.b2;
+  } else if (from) {
+    if (hidden < 2) throw new Error("a hidden layer starts from a line with two units at least");
+    for (let j = 0; j < n; j++) {
+      net.p[j] = from.w1[j]!;
+      net.p[n + j] = -from.w1[j]!;
+    }
+    net.p[hidden * n] = net.p[hidden * n + 1] = 0;
+    net.p[hidden * n + hidden] = 1;
+    net.p[hidden * n + hidden + 1] = -1;
+    net.p[hidden * n + 2 * hidden] = from.b2;
+  }
+  const anchor = from ? net.p.slice() : new Float64Array(size);
+  if (from) for (let i = 2 * n; i < hidden * n; i++) anchor[i] = 0;
+  const stopOn = o.stop ?? "loss", soft = p.kind === "choice" ? (o.soft ?? 0) : 0;
+  const targets = train.map((ex) => (soft > 0 ? softTarget(ex, soft) : ex.target));
+  const judge = (set: readonly Example[]) => (stopOn === "regret" && p.kind === "choice" ? meanRegret(net, set) : meanLoss(p.kind, net, set, 1));
   const kind = p.kind, beta = kind === "choice" ? (o.brier ?? 0.5) : 0;
   const epochs = o.epochs ?? 300, patience = o.patience ?? 20, batch = o.batch ?? 32;
   const rate = o.rate ?? (hidden > 0 ? 0.005 : 0.03), decay = o.decay ?? 1e-4;
@@ -308,7 +370,7 @@ export function fit(p: Profile, train: readonly Example[], val: readonly Example
   }
   const check = val.length > 0 ? val : train;
   const order = Array.from(train, (_, i) => i);
-  let best = Infinity, bestAt = 0, kept = net.p.slice(), step = 0, epoch = 0;
+  let best = judge(check), bestAt = -1, kept = net.p.slice(), step = 0, epoch = 0;
   const pr = new Float64Array(64), g = new Float64Array(64);
   let acts: Float64Array[] = Array.from({ length: 64 }, () => new Float64Array(Math.max(1, hidden)));
   for (; epoch < epochs; epoch++) {
@@ -324,18 +386,19 @@ export function fit(p: Profile, train: readonly Example[], val: readonly Example
         if (ex.k > acts.length) acts = Array.from({ length: ex.k }, () => new Float64Array(Math.max(1, hidden)));
         const P = ex.k > pr.length ? new Float64Array(ex.k) : pr, G = ex.k > g.length ? new Float64Array(ex.k) : g;
         probabilities(kind, ex, (c) => score(net, ex.x, c * n, acts[c]!), 1, P);
-        if (kind === "yes") G[0] = P[0]! - ex.target[0]!;
+        const y = targets[order[b]!]!;
+        if (kind === "yes") G[0] = P[0]! - y[0]!;
         else {
           let dot = 0;
-          for (let c = 0; c < ex.k; c++) if (ex.mask[c] === 0) dot += P[c]! * (P[c]! - ex.target[c]!);
-          for (let c = 0; c < ex.k; c++) G[c] = ex.mask[c] !== 0 ? 0 : P[c]! - ex.target[c]! + beta * 2 * P[c]! * (P[c]! - ex.target[c]! - dot);
+          for (let c = 0; c < ex.k; c++) if (ex.mask[c] === 0) dot += P[c]! * (P[c]! - y[c]!);
+          for (let c = 0; c < ex.k; c++) G[c] = ex.mask[c] !== 0 ? 0 : P[c]! - y[c]! + beta * 2 * P[c]! * (P[c]! - y[c]! - dot);
         }
         for (let c = 0; c < ex.k; c++) if (G[c] !== 0) back(net, ex.x, c * n, acts[c]!, G[c]! * ex.scale, grad);
       }
       const scale = 1 / (to - from);
       step++;
       for (let i = 0; i < size; i++) {
-        const gi = grad[i]! * scale + (isWeight[i] ? decay * net.p[i]! : 0);
+        const gi = grad[i]! * scale + (isWeight[i] ? decay * (net.p[i]! - anchor[i]!) : 0);
         if (adam) {
           m1[i] = 0.9 * m1[i]! + 0.1 * gi;
           m2[i] = 0.999 * m2[i]! + 0.001 * gi * gi;
@@ -347,7 +410,7 @@ export function fit(p: Profile, train: readonly Example[], val: readonly Example
         }
       }
     }
-    const loss = meanLoss(kind, net, check, 1);
+    const loss = judge(check);
     if (loss < best - 1e-9) {
       best = loss;
       bestAt = epoch;
@@ -355,12 +418,15 @@ export function fit(p: Profile, train: readonly Example[], val: readonly Example
     } else if (epoch - bestAt >= patience) break;
   }
   net.p.set(kept);
-  // The temperature: least validation log loss on a grid from a fifth to five, kept only where it calibrates better.
+  best = meanLoss(kind, net, check, 1);
+  // The temperature: least validation log loss on a grid from a fifth to five, kept only where it calibrates better. In
+  // a sum of passes it weighs this pass against the others, so it may change the pick: none is kept that picks worse.
   let T = 1, lossT = best;
+  const regret1 = kind === "choice" ? meanRegret(net, check, 1) : 0;
   for (let i = 0; i <= 60; i++) {
     const t = Math.exp(Math.log(0.2) + (i / 60) * Math.log(25));
     const l = meanLoss(kind, net, check, t);
-    if (l < lossT - 1e-12) {
+    if (l < lossT - 1e-12 && (kind !== "choice" || meanRegret(net, check, t) <= regret1 + 1e-9)) {
       lossT = l;
       T = t;
     }
@@ -451,7 +517,7 @@ export function scoreModel(m: Model, x: Float32Array, from: number): number {
 
 /** A scorer's name from how it was made. */
 export function modelName(profile: string, o: FitOptions): string {
-  return `${profile}.${o.kind}${o.kind === "hidden" ? (o.hidden ?? 16) : ""}.s${o.seed ?? 1}`;
+  return `${profile}.${o.kind}${o.kind === "hidden" ? (o.hidden ?? 16) : ""}${o.tag ? `.${o.tag}` : ""}.s${o.seed ?? 1}`;
 }
 
 export interface Catalog {
@@ -463,7 +529,7 @@ export interface Catalog {
 }
 
 /** Fits a point's dataset in `root`, writes the weights file, and returns where and what. */
-export function fitPoint(point: string, o: FitOptions & { profile?: string; reading?: number }, cat: Catalog, root = ".cache/decide"): { file: string; written: ModelFile; fitted: Fitted; train: number; val: number } {
+export function fitPoint(point: string, o: FitOptions & { profile?: string; reading?: number; fromRule?: boolean }, cat: Catalog, root = ".cache/decide"): { file: string; written: ModelFile; fitted: Fitted; train: number; val: number } {
   const { manifest, decisions } = readData(dataDir(point, join(root, "data")), cat.profiles);
   const name = o.profile ?? manifest.profiles[0]?.name;
   const p = cat.profiles.find((q) => q.name === name);
@@ -478,7 +544,9 @@ export function fitPoint(point: string, o: FitOptions & { profile?: string; read
     val = train.filter(pick);
     train = train.filter((e) => !pick(e));
   }
-  const fitted = fit(p, train, val, o);
+  const rule0 = cat.rules.get(p.name);
+  if (o.fromRule && !rule0) throw new Error(`${p.name} has no rule to start from`);
+  const fitted = fit(p, train, val, { ...o, from: o.fromRule ? rule0 : undefined });
   const rule = cat.rules.get(p.name) ?? null;
   const name2 = modelName(p.name, o);
   const kind = o.kind === "hidden" ? "hidden" : "linear";
@@ -487,7 +555,7 @@ export function fitPoint(point: string, o: FitOptions & { profile?: string; read
     point, made: new Date().toISOString(), revision: revision(), on: "validation", reading: READINGS[reading],
     decisions: { train: train.length, validation: val.length }, epochs: fitted.epochs, bestEpoch: fitted.best,
     validation: { logLoss: fitted.valLoss, logLossT: fitted.valLossT, eceBefore: fitted.eceBefore, eceAfter: fitted.eceAfter },
-    options: o, score: s,
+    options: { ...o, from: undefined }, score: s,
   });
   const dir = join(root, "models", point);
   mkdirSync(dir, { recursive: true });
@@ -505,7 +573,7 @@ if (import.meta.main) {
   const point = arg("--point");
   const kind = arg("--kind") ?? "linear";
   if (!point || (kind !== "linear" && kind !== "hidden")) {
-    console.error("usage: bun tools/decide/fit.ts --point <name> --kind linear|hidden [--hidden 16] [--seed 1] [--profile <name>] [--reading 1s|5s|end]");
+    console.error("usage: bun tools/decide/fit.ts --point <name> --kind linear|hidden [--hidden 16] [--seed 1] [--profile <name>] [--reading 1s|5s|end] [--from-rule] [--soft 0.05] [--stop loss|regret] [--tag <word>]");
     process.exit(2);
   }
   const { catalog } = await import("./catalog.ts");
@@ -513,6 +581,8 @@ if (import.meta.main) {
   const r = fitPoint(point, {
     kind, hidden: Number(arg("--hidden") ?? 16), seed: Number(arg("--seed") ?? 1), profile: arg("--profile"),
     reading: reading ? READINGS.indexOf(reading as (typeof READINGS)[number]) : undefined,
+    fromRule: process.argv.includes("--from-rule"), soft: Number(arg("--soft") ?? 0), stop: arg("--stop") === "regret" ? "regret" : "loss", tag: arg("--tag"),
+    decay: arg("--decay") ? Number(arg("--decay")) : undefined,
   }, catalog(point));
   const s = r.written.about!.score as Score;
   console.log(`${r.file}: ${r.train} decisions trained on, ${r.val} to stop on; ${r.fitted.epochs} epochs, best at ${r.fitted.best}`);
