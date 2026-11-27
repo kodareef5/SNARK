@@ -20,6 +20,8 @@ import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { Build } from "./build.ts";
 import { Plans } from "./plans.ts";
+import { PINS_SAVE_TICKS, Pins } from "./pins.ts";
+import { Courses, TameOrders } from "./courses.ts";
 import { Motion } from "./motion.ts";
 import { Fixtures } from "./fixtures.ts";
 import { Beds, type Place } from "./beds.ts";
@@ -278,6 +280,10 @@ export interface Host {
   readonly voice: Voice;
   readonly build: Build;
   readonly plans: Plans;
+  readonly pins: Pins;
+  /** Movers sent through places in an order, and the tame orders that send them (server/courses.ts). */
+  readonly courses: Courses;
+  readonly tameOrders: TameOrders;
   readonly fixtures: Fixtures;
   readonly motion: Motion;
   readonly stations: Stations;
@@ -1163,8 +1169,24 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // Templates set down and not yet built: they follow their team, and go with it.
   const plans = new Plans({ world, game, records, items, tribes, rules });
   build.plans = plans;
-  tribes.onMerged = (from, to) => plans.moved(from, to);
-  tribes.onGone = (team) => plans.dropTeam(team);
+  // Pins on the map follow their team and go with it, as plans do.
+  const pins = new Pins({ world, game, records, tribes, deadlines, reach: (c) => gaze.lookReach(c) });
+  if (persistence && !loaded!.fresh) pins.restore(persistence.store.meta("pins"));
+  persistence?.sidecar("pins", pins, PINS_SAVE_TICKS);
+  tribes.onMerged = (from, to) => {
+    plans.moved(from, to);
+    pins.merge(from, to);
+  };
+  tribes.onGone = (team) => {
+    plans.dropTeam(team);
+    pins.drop(team);
+  };
+  // Courses walk a body by its goal; a tame keeps its move or patrol on its record and takes it up with each new body.
+  const courses = new Courses({ world, mind: creatures.mind });
+  const tameOrders = new TameOrders({ world, records, pins, courses, mind: creatures.mind, reach: (c) => gaze.lookReach(c), tell: (pid, text) => notice(pid, text) });
+  taming.courses = tameOrders;
+  creatures.onAdopt.on((e, rec) => tameOrders.adopted(e, rec));
+  creatures.onRemove.on((e) => void courses.stop(e));
   if (persistence) {
     if (!loaded!.fresh) plans.load(persistence.store.loadPlans());
     persistence.plans = plans;
@@ -1596,7 +1618,15 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   supply.begin(persistence && !loaded!.fresh ? (persistence.store.meta("supply") as string | null) : null);
   persistence?.sidecar("supply", supply.saved);
   // Map events (server/mapevent/events.ts). Made before the modules, which define its kinds; begun after them.
-  const mapEvents = new MapEvents({ world, game, records, items, death, combat, projectiles, supply, containers, deadlines, bus, seed: opts.seed ?? 1, say, now: opts.now });
+  const mapEvents = new MapEvents({ world, game, records, items, death, combat, projectiles, supply, containers, deadlines, bus, seed: opts.seed ?? 1, say, now: opts.now, courses,
+    place: (kind, x, z) => spawnCreature(reg.ids[kind]!, x, z, 1, "mapevent"),
+    unplace: (pid) => {
+      const e = records.entOf.get(pid);
+      persistence?.detach(pid);
+      if (e !== undefined) creatures.remove(e);
+      survival.forget(pid);
+      records.delete(pid);
+    } });
   hitches.begin(persistence && !loaded!.fresh ? persistence.store.meta("hitches") as string | null : null);
   persistence?.sidecar("hitches", hitches.saved);
   const airSupport = new AirSupport({ world, game, records, rules, combat, projectiles, urban, hitches, items, wake: wakeView,
@@ -2439,6 +2469,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     physics(loose, LANE_ROW.loose),
     clouds,
     mark(PART.combat),
+    courses,
     creatures,
     mark(PART.creatures),
     decide,
@@ -2509,6 +2540,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     voice,
     build,
     plans,
+    pins,
+    courses,
+    tameOrders,
     fixtures,
     motion,
     stations,

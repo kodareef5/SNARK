@@ -31,7 +31,23 @@ export type EventState = "notice" | "live" | "ended";
 export type PartView =
   | { readonly type: "craft"; readonly id: number; readonly state: "coming" | "flying" | "falling" | "rest" | "gone"; readonly x: number; readonly y: number; readonly z: number; readonly low: number; readonly health: number; readonly most: number; readonly shield: "none" | "closed" | "open" | "broken" }
   | { readonly type: "crate"; readonly id: number; readonly pid: number; readonly x: number; readonly y: number; readonly z: number; readonly stacks: number }
-  | { readonly type: "site"; readonly id: number; readonly x: number; readonly z: number };
+  | { readonly type: "site"; readonly id: number; readonly x: number; readonly z: number }
+  /** `at` is the point of its walk it makes for, -1 when it walks none. */
+  | { readonly type: "walker"; readonly id: number; readonly pid: number; readonly x: number; readonly z: number; readonly at: number };
+
+/** A body an event places: a species of the content that walks, set on the ground at (x, z). */
+export interface WalkerSpec {
+  readonly species: string;
+  readonly x: number;
+  readonly z: number;
+}
+
+/** A place a walker walks to; `radius` is the metres within which it counts as come, 1.5 where not given. */
+export interface WalkPoint {
+  readonly x: number;
+  readonly z: number;
+  readonly radius?: number;
+}
 
 /** One event of a kind, as its handlers see it. */
 export interface EventRun<F extends Fields = Fields> {
@@ -78,6 +94,10 @@ export interface EventRun<F extends Fields = Fields> {
   /** 0 where nothing rolled for it, and it was not made. */
   crate(spec: CrateSpec): number;
   site(spec: SiteSpec): number;
+  /** Places a walker, once the event has come. 0 where there was no room for it. It goes with the event. */
+  walker(spec: WalkerSpec): number;
+  /** Walks a walker through `points` in order, once, round, or there and back, in place of any walk it had. Saved. */
+  walk(walker: number, points: readonly WalkPoint[], mode?: "once" | "loop" | "back"): void;
   /** Brings a craft down where it is, as if struck down by nobody. */
   down(craft: number): void;
   remove(part: number): void;
@@ -114,6 +134,11 @@ export interface EventHandlers<F extends Fields> {
   crateEmptied?(run: EventRun<F>, crate: number): void;
   /** A crate went by its time, or by some other hand. */
   crateGone?(run: EventRun<F>, crate: number, why: "expired" | "removed"): void;
+  /** A walker came to point `at` of its walk, or gave it up, found no way there in its time, and went on to the next. */
+  walkerAt?(run: EventRun<F>, walker: number, at: number): void;
+  walkerFailed?(run: EventRun<F>, walker: number, at: number): void;
+  /** A walk that goes once is over. */
+  walkerDone?(run: EventRun<F>, walker: number): void;
   end?(run: EventRun<F>, reason: string): void;
   /** After a restart, for an event that was saved: put back what lives outside the bag. `saved` is the kind's version it was saved by. */
   resume?(run: EventRun<F>, saved: number): void;
