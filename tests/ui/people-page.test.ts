@@ -189,6 +189,22 @@ test("a listed person opens as its seed and outfit while they draw what was save
   expect([fixed.look.kind, fixed.dress.kind]).toEqual(["bytes", "role"]);
 });
 
+test("a hand-edited person's locks, set and let go, come back as saved", () => {
+  const d = newPerson(S, 31);
+  d.name = "Ana";
+  setByHand(d, "skin", 4, S, BOOK);
+  setLock(d.look, "face", true);
+  setLock(d.look, "hair", true);
+  setLock(d.look, "hair", false);
+  const reopened = draftOf({ id: 1, rev: 1, retired: false, doc: personDoc(d, S, BOOK) }, S, BOOK);
+  expect(reopened.look.kind).toBe("bytes");
+  expect(PART_NAMES.filter((p) => isLocked(reopened.look, p))).toEqual(["face"]);
+  // A locked part stays through a draw on the reopened person; the rest move.
+  const face = bytes(reopened).slice(LOOK_FACE, LOOK_FACE + 8);
+  drawAgain(reopened.look, 99, S, BOOK);
+  expect(bytes(reopened).slice(LOOK_FACE, LOOK_FACE + 8)).toEqual(face);
+});
+
 test("a population or outfit edit moves no saved person, and a rename saves", () => {
   const doc = savedPerson(), { state, book } = edited();
   const d = draftOf({ id: 5, rev: 3, retired: false, doc }, state, book);

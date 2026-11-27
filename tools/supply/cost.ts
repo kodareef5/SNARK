@@ -2,16 +2,15 @@
 // (planning/workstreams/instruments.md): each program drawn full screen at 1,024 square in Chrome on this machine's GPU,
 // blended, by timer query, seven rounds, the median, in ms a megapixel (tools/probe-lit/sky.ts timeRuns).
 //
-// The shaft, its sheath, its halos, a class figure, a jet and the foot's glow are one material of the surface program
-// (DROP_GLOW), a row each; the capsule's lit strips are another (DROP_LIGHT). The streaks are in the sky's program, so
-// their cost is the sky with four in flight less the sky with none.
+// The beacon and its source use detail cards. The jet and capsule strips use the surface program.
+// The difference between the two sky runs measures four streaks in flight.
 //
 //   bun tools/supply/cost.ts
 
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { DROPS_AT, DROP_STREAKS, FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
-import { PROGRAMS } from "../../client/core/render/programs.ts";
-import { GLOW_FIGURE, GLOW_FOOT, GLOW_HALO, GLOW_JET, GLOW_SHAFT, GLOW_SHEATH, LIGHT_LANTERN, packEffect } from "../../client/core/render/supply-light.ts";
+import { DETAIL_BEACON, DETAIL_GLOW, DROPS_AT, DROP_STREAKS, FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
+import { PROGRAMS, withDefines } from "../../client/core/render/programs.ts";
+import { GLOW_JET, LIGHT_LANTERN, packEffect } from "../../client/core/render/supply-light.ts";
 import { writeDropSky } from "../../client/core/render/supply-sky.ts";
 import { airFrame } from "../../client/core/render/atmosphere.ts";
 import { skyFrame, theSky } from "../../client/core/render/sky.ts";
@@ -19,6 +18,7 @@ import { DROP_GLOW, DROP_LIGHT } from "../../content/street-finishes.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { supplyTimes, type SupplyList, type SupplyRow } from "../../shared/sim/supply.ts";
 import { EYE_KNOT } from "../../shared/world/tide-eye.ts";
+import { CARD } from "../bench/fire-cost.ts";
 import { findChrome } from "../chrome.ts";
 import { look, timeRuns } from "../probe-lit/sky.ts";
 
@@ -85,16 +85,17 @@ if (lit !== DROP_STREAKS) throw new Error(`the frame holds ${lit} streaks at str
 /** Twelve seconds after landing, a red drop of six, at full power. */
 const effect = (ringed: boolean): number[] => [12, 0xf03838, 1, packEffect(6, ringed, 3)];
 type Run = Record<string, unknown> & { name: string };
-const glow = (name: string, row: number, metres: number, ringed = false): Run => ({ name, vertex: TUBE, fragment: surface.fragment, samplers: surface.samplers, frame: none, matrix, uniforms: { uTube: [row, metres], uStreetMaterial: [DROP_GLOW], uEffect: effect(ringed), uFrom: [0] } });
+const details = PROGRAMS.details!(high, "rgba", false, true);
+const card = (name: string, flags: number): Run => ({
+  name, vertex: CARD, fragment: withDefines(details.fragment, details.defines), samplers: details.samplers,
+  frame: none, matrix, uniforms: { uCard: [flags, 1, 1, 0], uBlend: [1], uCells: [4], uFrom: [0] },
+});
 const runs: Run[] = [
   { name: "sky, no cast", ...sky, frame: none, matrix },
   { name: "sky, four casts", ...sky, frame: four, matrix },
-  glow("shaft", GLOW_SHAFT, 60),
-  glow("sheath", GLOW_SHEATH, 60, true),
-  glow("halo", GLOW_HALO, 4, true),
-  glow("figure", GLOW_FIGURE, 30),
-  glow("jet", GLOW_JET, 3),
-  glow("foot", GLOW_FOOT, 6),
+  card("shaft", DETAIL_BEACON),
+  card("source glow", DETAIL_GLOW),
+  { name: "jet", vertex: TUBE, fragment: surface.fragment, samplers: surface.samplers, frame: none, matrix, uniforms: { uTube: [GLOW_JET, 3], uStreetMaterial: [DROP_GLOW], uEffect: effect(false), uFrom: [0] } },
   { name: "capsule light", vertex: TUBE, fragment: surface.fragment, samplers: surface.samplers, frame: none, matrix, uniforms: { uTube: [LIGHT_LANTERN, 2], uStreetMaterial: [DROP_LIGHT], uEffect: effect(false), uFrom: [0] } },
 ];
 // COST_ONLY names the runs to keep, by the start of their names: for looking at one.
@@ -105,6 +106,4 @@ console.log(`full screen at 1,024 square on ${t.renderer}, blended, ${t.timer ? 
 for (const r of runs) console.log(`  ${r.name.padEnd(18)} ${(t[r.name] as number).toFixed(3)}`);
 const ms = (name: string): number => t[name] as number;
 if (t["sky, four casts"] !== undefined && t["sky, no cast"] !== undefined) console.log(`  four casts alone   ${(ms("sky, four casts") - ms("sky, no cast")).toFixed(3)}`);
-// A far shaft is three pixels wide and, from 1 km at 1,080 lines, about 600 tall: twelve of them are 0.0216 megapixels.
-if (t.shaft !== undefined) console.log(`  twelve far shafts  ${(ms("shaft") * 12 * 3 * 600 / 1e6).toFixed(4)} ms a frame (three pixels wide, 600 tall each)`);
 process.exit(0);

@@ -2,7 +2,7 @@
 // capsule's stance, held to the measurements its model is built to (shared/world/supply-capsule.json).
 
 import { expect, test } from "bun:test";
-import { JET_LEAST, JET_MOST, SQUASH, bellAt, jetLength, squash, CAPSULE, HALOS, HALO_CLIMB, PIECE, PIECES, SHAFT_FADE_FROM, SHAFT_FADE_TO, SHAFT_HAZE, SHAFT_PIXELS, SHAFT_RADIUS, SHEATH_FAR, SHEATH_WIDER, shaftFlat, SLATS, collarBone, fixedBone, haloAt, hatchBone, hoopBone, legBone, markBone, shaftKeeps, shaftRadius, slatBone, slatOpen, uprightBone, type CapsuleStance } from "../../client/core/render/supply.ts";
+import { JET_LEAST, JET_MOST, SQUASH, bellAt, jetLength, squash, CAPSULE, PIECE, PIECES, SHAFT_FADE_FROM, SHAFT_FADE_TO, SHAFT_HAZE, SHAFT_PIXELS, SHAFT_RADIUS, SLATS, collarBone, fixedBone, hatchBone, hoopBone, legBone, markBone, shaftKeeps, shaftRadius, slatBone, slatOpen, uprightBone, type CapsuleStance } from "../../client/core/render/supply.ts";
 import { MARKS } from "../../shared/sim/supply.ts";
 
 const TAU = 2 * Math.PI;
@@ -24,8 +24,8 @@ const rigid = (rows: Float32Array): boolean => {
 const rows = new Float32Array(12);
 
 test("the pieces are the model's, a top-mark to each class's mark, and the measurements are a capsule's", () => {
-  expect([...PIECES]).toEqual(["hull", "leg", "shutter", "hatch", "collar", "hoop", "lights", ...MARKS.map((m) => `mark_${m}`), "shaft", "sheath", "halo", "jet", "foot", ...MARKS.map((m) => `figure_${m}`)]);
-  expect([PIECES[PIECE.mark], PIECES[PIECE.mark + 6], PIECES[PIECE.shaft], PIECES[PIECE.sheath], PIECES[PIECE.halo], PIECES[PIECE.jet], PIECES[PIECE.foot], PIECES[PIECE.figure], PIECES[PIECE.figure + 6]]).toEqual(["mark_bar", "mark_cone_up", "shaft", "sheath", "halo", "jet", "foot", "figure_bar", "figure_cone_up"]);
+  expect([...PIECES]).toEqual(["hull", "leg", "shutter", "hatch", "collar", "hoop", "lights", ...MARKS.map((m) => `mark_${m}`), "jet"]);
+  expect([PIECES[PIECE.mark], PIECES[PIECE.mark + 6], PIECES[PIECE.jet]]).toEqual(["mark_bar", "mark_cone_up", "jet"]);
   expect([CAPSULE.legs, SLATS, CAPSULE.collar.most, CAPSULE.feet, CAPSULE.height > 2.4 && CAPSULE.height < 2.8]).toEqual([3, 12, 7, 1.2, true]);
   // Seven collars fit the register, between the drum's upper belt and the lantern's sill.
   expect([CAPSULE.collar.first > 1.14, CAPSULE.collar.first + CAPSULE.collar.most * CAPSULE.collar.pitch < 1.425]).toEqual([true, true]);
@@ -121,44 +121,17 @@ test("the whole capsule goes where its stance puts it and turns as it is turned:
   expect([turned[0] - 12, turned[1] + 3, turned[2] - 40].map((v) => Math.round(v * 1e5) / 1e5)).toEqual([plain[2], plain[1], -plain[0]].map((v) => Math.round(v * 1e5) / 1e5));
 });
 
-test("a shaft is its own width at hand and never under three pixels wide however far off, where it is lit flat; the haze takes at most a little over half of it, and it fades out between six and eight kilometres", () => {
+test("a distant shaft keeps its width in pixels and fades through the haze", () => {
   const fov = 1.2217, tall = 1080;
-  expect([shaftRadius(5, fov, tall), shaftRadius(150, fov, tall), shaftRadius(5, fov, tall, SHEATH_WIDER)]).toEqual([SHAFT_RADIUS, SHAFT_RADIUS, SHAFT_RADIUS * SHEATH_WIDER]);
+  expect(shaftRadius(5, fov, tall)).toBe(SHAFT_RADIUS);
   for (const far of [1000, 4000, 7900]) {
-    // Its width in pixels: its diameter over what a pixel is there.
     const pixels = (2 * shaftRadius(far, fov, tall)) / ((far * fov) / tall);
-    // A ringed drop's sheath is three times as wide there: a wider column from across the map.
-    expect([far, Math.abs(pixels - SHAFT_PIXELS) < 1e-9, shaftRadius(far, fov, tall, SHEATH_WIDER) / shaftRadius(far, fov, tall), shaftFlat(far, fov, tall)]).toEqual([far, true, SHEATH_FAR, 1]);
+    expect(pixels).toBeCloseTo(SHAFT_PIXELS);
   }
-  // Lit by how its side faces the eye while it is its own width, and flat by where it is drawn twice as wide.
-  const own = (SHAFT_RADIUS * 2 * tall) / (fov * SHAFT_PIXELS);
-  expect([shaftFlat(5, fov, tall), shaftFlat(own, fov, tall), shaftFlat(own * 1.5, fov, tall), shaftFlat(own * 2, fov, tall)].map((v) => Math.round(v * 1e6) / 1e6)).toEqual([0, 0, 0.5, 1]);
   // A taller picture has smaller pixels: the floor is narrower in metres.
   expect(shaftRadius(4000, fov, 2160)).toBeCloseTo(shaftRadius(4000, fov, 1080) / 2, 9);
   expect([shaftKeeps(100, 0), shaftKeeps(3000, 1), shaftKeeps(3000, 0.5), shaftKeeps(SHAFT_FADE_FROM, 0), shaftKeeps(SHAFT_FADE_TO, 0), shaftKeeps(9000, 0)]).toEqual([1, 1 - SHAFT_HAZE, 0.75, 1, 0, 0]);
   expect(shaftKeeps((SHAFT_FADE_FROM + SHAFT_FADE_TO) / 2, 0)).toBeCloseTo(0.5, 6);
-});
-
-test("a ringed drop's halos climb its shaft one after another, each out of the foot and gone before it would turn back", () => {
-  const at = { height: 0, strength: 0 };
-  for (let k = 0; k < HALOS; k++) {
-    let was = -1;
-    let wraps = 0;
-    for (let s = 0; s < 60; s += 0.05) {
-      haloAt(s, k, at);
-      expect([at.height >= 2.5, at.height <= 2.5 + HALO_CLIMB, at.strength >= 0 && at.strength <= 1]).toEqual([true, true, true]);
-      if (at.height < was) {
-        // It only ever goes back down as a new halo at the foot, and the old one had faded out before.
-        wraps++;
-        expect([at.height < 3.2, at.strength < 0.05]).toEqual([true, true]);
-      }
-      was = at.height;
-    }
-    expect(wraps).toBeGreaterThan(2);
-  }
-  // The three are a third of the climb apart.
-  const heights = [0, 1, 2].map((k) => (haloAt(1, k, at), at.height));
-  expect([heights[1]! - heights[0]!, heights[2]! - heights[1]!].map((d) => Math.round(d * 1000) / 1000)).toEqual([HALO_CLIMB / HALOS, HALO_CLIMB / HALOS]);
 });
 
 test("a piece of light stands upright where it is put, as wide and as tall as it is told", () => {

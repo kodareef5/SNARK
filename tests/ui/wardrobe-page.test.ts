@@ -7,7 +7,7 @@ import { parseStageCommand, stageMessage } from "../../shared/people/stage.ts";
 import { cluster, resolveAdmin } from "../../client/core/admin/navigation.ts";
 import {
   BUSY_WAITS, CLOTH_COLOURS, DRAFT_PRINT, FIT_LEAST, FIT_TRIES, LAYERS_MAX, LOOKS, STORE_CAPS, addPicture, addShape, addText, draftFaults, draftFrom, fitNote, fitStep,
-  Latest, changeGarment, freezeDraft, giveEdition, latestOnly, publishAsPressed, publishedText, sameDesign, heldSize, layerAt, placeFor, sheetOfCut, lookOf, moveLayer, newDraft, newSheet, outcomeText, placeOf, previewChanges, publishBody, publishDraft, retireEdition, wardrobeCommand,
+  Pictures, changeGarment, freezeDraft, removeLayer, giveEdition, givenEdition, giveOptionsHtml, pictureRead, publishAsPressed, publishedText, sameDesign, heldSize, layerAt, placeFor, sheetOfCut, lookOf, moveLayer, newDraft, newSheet, outcomeText, placeOf, previewChanges, publishBody, publishDraft, retireEdition, wardrobeCommand,
   type Answer, type Draft, type PeopleState, type Preview, type PublishIo,
 } from "../../client/core/admin/wardrobe.ts";
 
@@ -74,7 +74,7 @@ test("a sheet is square or twice as wide, not empty, and its texts are short", (
 test("a sheet takes no more layers than its cap", () => {
   const sheet = newSheet();
   for (let k = 0; k < LAYERS_MAX; k++) expect(addShape(sheet)).not.toBeNull();
-  expect([addText(sheet), addShape(sheet), addPicture(sheet, "p", 10, 10)]).toEqual([null, null, null]);
+  expect([addText(sheet), addShape(sheet), addPicture(sheet, "p")]).toEqual([null, null, null]);
 });
 
 test("the place sent always lies inside the sheet, with its scale and turn in range", () => {
@@ -123,9 +123,10 @@ test("a big picture is held smaller, and a new picture layer fits the sheet", ()
   expect(heldSize(300, 200)).toEqual({ width: 300, height: 200 });
   const wide = newSheet();
   wide.height = 256;
-  const tall = addPicture(wide, "tall", 100, 400)!;
+  const tall = addPicture(wide, "tall")!;
+  pictureRead(wide, tall, 100, 400);
   // Three quarters of the sheet high: 192 of 256 pixels, so 48 across of 512.
-  expect(tall.kind === "picture" && Math.round(tall.w * 512)).toBe(48);
+  expect([Math.round(tall.w * 512), tall.loading]).toEqual([48, false]);
 });
 
 /** A fake set of routes: each call takes the next answer of its kind, and every call is kept. */
@@ -317,19 +318,69 @@ test("a picture that fails to fit is not published, and nothing is uploaded", as
   expect([outcome, io.calls]).toEqual([{ kind: "refused", status: 0, error: "too big" }, []]);
 });
 
-test("of answers coming back out of order only the last asked for is taken", async () => {
-  const latest = new Latest(), first = later<string>(), second = later<string>();
-  const a = latestOnly(latest, () => first.promise), b = latestOnly(latest, () => second.promise);
-  second.settle("new picture");
-  first.settle("old picture");
-  expect(await b).toBe("new picture");
-  expect(await a).toBeNull();
-  // Settled the other way round, the same one wins.
-  const c = later<string>(), d = later<string>();
-  const x = latestOnly(latest, () => c.promise), y = latestOnly(latest, () => d.promise);
-  c.settle("old");
-  d.settle("new");
-  expect([await x, await y]).toEqual([null, "new"]);
+/** Pictures held by name, and those let go. */
+function pictures(): Pictures<string> & { gone: string[] } {
+  const gone: string[] = [];
+  return Object.assign(new Pictures<string>((p) => void gone.push(p)), { gone });
+}
+const EDITION = { id: 3, garment: "core:tee", colours: [4, 5, 6] as [number, number, number], name: "Old tee", print: { hash: "dddddddddddddddd", width: 512, height: 512, place: { u: 0.1, v: 0.2, w: 0.3, h: 0.4, scale: 1, turn: 0 } } };
+
+test("an add to a copy keeps the original's art under it, whichever read ends first", async () => {
+  for (const originalFirst of [false, true]) {
+    const held = pictures(), d = draftFrom(EDITION), current = (): Draft => d;
+    const original = d.sheet!.layers[0]!, slow = later<{ picture: string; width: number; height: number }>();
+    if (original.kind !== "picture") throw new Error("the copy has no picture layer");
+    const opening = held.fill(d, original, () => slow.promise, current);
+    const added = addPicture(d.sheet!, "logo.png")!, quick = later<{ picture: string; width: number; height: number }>();
+    const adding = held.fill(d, added, () => quick.promise, current);
+    const settle = [() => slow.settle({ picture: "original", width: 512, height: 512 }), () => quick.settle({ picture: "logo", width: 200, height: 100 })];
+    for (const s of originalFirst ? settle : settle.reverse()) {
+      s();
+      await Bun.sleep(0);
+    }
+    expect([await opening, await adding]).toEqual([true, true]);
+    expect(d.sheet!.layers.map((l) => [l.kind === "picture" && l.name, held.get(l.id)])).toEqual([["edition 3's print", "original"], ["logo.png", "logo"]]);
+    expect([original.w, faults(d), held.gone]).toEqual([1, [], []]);
+  }
+});
+
+test("a draft with a picture still loading cannot be published", async () => {
+  const held = pictures(), d = draftFrom(EDITION), slow = later<{ picture: string; width: number; height: number }>();
+  d.name = "New tee";
+  const original = d.sheet!.layers[0]!;
+  if (original.kind !== "picture") throw new Error("the copy has no picture layer");
+  expect(draftFaults(d, S0).map((f) => f.text)).toEqual(["edition 3's print is still being read."]);
+  const opening = held.fill(d, original, () => slow.promise, () => d);
+  slow.settle({ picture: "original", width: 512, height: 512 });
+  expect([await opening, faults(d)]).toEqual([true, []]);
+});
+
+test("a read whose layer or draft went first is let go, and a failed read takes its layer off", async () => {
+  const held = pictures(), d = draftFrom(EDITION);
+  d.name = "New tee";
+  const original = d.sheet!.layers[0]!;
+  if (original.kind !== "picture") throw new Error("the copy has no picture layer");
+  // A new draft is begun while the original loads.
+  let now: Draft | null = d;
+  const slow = later<{ picture: string; width: number; height: number }>(), opening = held.fill(d, original, () => slow.promise, () => now);
+  now = newDraft("core:tee", null);
+  slow.settle({ picture: "original", width: 512, height: 512 });
+  expect([await opening, held.gone]).toEqual([false, ["original"]]);
+  // A layer taken off while it loads, its id then reused by the next add.
+  now = d;
+  const first = addPicture(d.sheet!, "a.png")!, read = later<{ picture: string; width: number; height: number }>(), reading = held.fill(d, first, () => read.promise, () => now);
+  removeLayer(d.sheet!, first.id);
+  const second = addPicture(d.sheet!, "b.png")!;
+  read.settle({ picture: "a", width: 10, height: 10 });
+  expect([await reading, held.get(second.id), second.loading, held.gone]).toEqual([false, undefined, true, ["original", "a"]]);
+  await expect(held.fill(d, second, async () => Promise.reject(new Error("not a picture")), () => now)).rejects.toThrow("not a picture");
+  expect(d.sheet!.layers.map((l) => l.id)).toEqual([original.id]);
+});
+
+test("Give hands out the edition on show, else the one it held, else the newest", () => {
+  const st = state(4, ["a", "b", "c"]);
+  expect([givenEdition(st, 2, 1), givenEdition(st, 0, 1), givenEdition(st, 0, 9), givenEdition(state(0), 0, 0)]).toEqual([2, 1, 3, 0]);
+  expect(giveOptionsHtml(st, 2)).toBe(`<option value="3">#3 c</option><option value="2" selected>#2 b</option><option value="1">#1 a</option>`);
 });
 
 test("a give sends the edition, the survivor and the dye, and says what was done", async () => {

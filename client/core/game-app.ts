@@ -226,6 +226,12 @@ export class GameApp {
   private warmedBase: Tier | null = null;
   private readonly warming: Tier[] = [];
   private tierShown = false;
+
+  /** The tier the first frame is drawn at, as the settings and the page's address have it: the card may begin on it while the world loads. */
+  firstTier(): Tier {
+    const chosen = forTouch(tierOf(this.ui.settings.tier), this.ui.settings.touchFirst);
+    return this.tools ? this.tools.tier(chosen) : chosen;
+  }
   /** The screen's device pixels a CSS pixel. */
   dpr = 1;
   private interval = 0;

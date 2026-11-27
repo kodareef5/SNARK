@@ -491,8 +491,11 @@ export interface HumanBodiesAsset {
     readonly visor?: boolean;
     /** Slot 3 draws a powered exhaust plume in its own local coordinates. */
     readonly exhaust?: boolean;
-    /** `shift` moves a point drawn on the Quaternius body to sit as it did on the body worn, where that is another. */
-    readonly make: (body: readonly SourceMesh[], rig: PackRig, shift?: (p: [number, number, number]) => [number, number, number]) => SourceMesh[];
+    /**
+     * `shift` moves a point drawn on the Quaternius body to sit as it did on the body worn, where that is another;
+     * `weigh` gives the bones and weights of that body's skin nearest a point.
+     */
+    readonly make: (body: readonly SourceMesh[], rig: PackRig, shift?: (p: [number, number, number]) => [number, number, number], weigh?: (p: [number, number, number]) => { joints: number[]; weights: number[] } | null) => SourceMesh[];
   };
   readonly materials?: Readonly<Record<string, MaterialSpec>>;
   readonly kind: "human-bodies";

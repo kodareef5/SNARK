@@ -67,7 +67,7 @@ export type Shape = (typeof SHAPES)[number];
 export type Layer =
   | { readonly id: number; kind: "text"; text: string; font: string; size: number; colour: string; bold: boolean; x: number; y: number; turn: number }
   | { readonly id: number; kind: "shape"; shape: Shape; colour: string; w: number; h: number; x: number; y: number; turn: number }
-  | { readonly id: number; kind: "picture"; name: string; width: number; height: number; w: number; x: number; y: number; turn: number };
+  | { readonly id: number; kind: "picture"; name: string; width: number; height: number; w: number; x: number; y: number; turn: number; loading: boolean };
 
 export interface Sheet {
   width: number;
@@ -116,10 +116,11 @@ export function changeGarment(d: Draft, from: GarmentChoice | undefined, to: Gar
   if (p.u === start.u && p.v === start.v && p.w === start.w && p.h === start.h && p.scale === 1 && p.turn === 0) d.place = placeFor(to.cut);
 }
 
-/** A draft begun from a published edition: its garment, colours and place, its name marked as a copy. Its print comes as a picture layer. */
+/** A draft begun from a published edition: its garment, colours and place, its name marked as a copy. Its print is a picture layer filling the sheet, loading. */
 export function draftFrom(e: Edition): Draft {
   const name = [...`${e.name} copy`].slice(0, EDITION_NAME_MAX).join("");
-  return { garment: e.garment, colours: [...e.colours] as [number, number, number], name, sheet: e.print ? { width: e.print.width, height: e.print.height, fill: null, layers: [] } : null, place: e.print ? { ...e.print.place } : { ...DEFAULT_PLACE } };
+  const p = e.print, original: Layer | null = p ? { id: 1, kind: "picture", name: `edition ${e.id}'s print`, width: p.width, height: p.height, w: 1, x: 0.5, y: 0.5, turn: 0, loading: true } : null;
+  return { garment: e.garment, colours: [...e.colours] as [number, number, number], name, sheet: p ? { width: p.width, height: p.height, fill: null, layers: [original!] } : null, place: p ? { ...p.place } : { ...DEFAULT_PLACE } };
 }
 
 const nextId = (sheet: Sheet): number => sheet.layers.reduce((m, l) => Math.max(m, l.id), 0) + 1;
@@ -137,13 +138,73 @@ export function addShape(sheet: Sheet, shape: Shape = "box"): Layer | null {
   sheet.layers.push(l);
   return l;
 }
-/** A picture of `width` x `height` pixels as held, at most three quarters of the sheet across or down. */
-export function addPicture(sheet: Sheet, name: string, width: number, height: number): Layer | null {
-  if (sheet.layers.length >= LAYERS_MAX || !(width > 0 && height > 0)) return null;
-  const across = Math.min(0.75, (0.75 * sheet.height * width) / (height * sheet.width));
-  const l: Layer = { id: nextId(sheet), kind: "picture", name: name.slice(0, 60), width, height, w: round(across), x: 0.5, y: 0.5, turn: 0 };
+/** A picture layer on top, loading: its place in the order is taken when it is asked for, its size once it is read. */
+export function addPicture(sheet: Sheet, name: string): Extract<Layer, { kind: "picture" }> | null {
+  if (sheet.layers.length >= LAYERS_MAX) return null;
+  const l: Layer = { id: nextId(sheet), kind: "picture", name: name.slice(0, 60), width: 0, height: 0, w: 0, x: 0.5, y: 0.5, turn: 0, loading: true };
   sheet.layers.push(l);
   return l;
+}
+
+/** Picture layer `l` read at `width` x `height` pixels as held: a new one is at most three quarters of the sheet across or down. */
+export function pictureRead(sheet: Sheet, l: Extract<Layer, { kind: "picture" }>, width: number, height: number): void {
+  l.width = width;
+  l.height = height;
+  if (l.w === 0) l.w = round(Math.min(0.75, (0.75 * sheet.height * width) / (height * sheet.width)));
+  l.loading = false;
+}
+
+/** What a picture's read gives: the picture and its size as held. */
+export interface Read<P> {
+  readonly picture: P;
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * The pictures of the draft's sheet, by layer. Each read fills the layer it was asked for, so reads ending in any order
+ * keep the order they were asked in; a read whose layer or draft went first is let go.
+ */
+export class Pictures<P> {
+  private readonly held = new Map<number, P>();
+  private readonly release: (p: P) => void;
+  constructor(release: (p: P) => void) {
+    this.release = release;
+  }
+
+  get(id: number): P | undefined {
+    return this.held.get(id);
+  }
+
+  drop(id: number): void {
+    const p = this.held.get(id);
+    if (p !== undefined) this.release(p);
+    this.held.delete(id);
+  }
+
+  clear(): void {
+    for (const p of this.held.values()) this.release(p);
+    this.held.clear();
+  }
+
+  /** Reads `l` of `d`'s sheet, while `current()` is still `d`. True once it is filled; a failed read takes the layer off and throws. */
+  async fill(d: Draft, l: Extract<Layer, { kind: "picture" }>, read: () => Promise<Read<P>>, current: () => Draft | null): Promise<boolean> {
+    const here = (): boolean => current() === d && !!d.sheet?.layers.includes(l);
+    let r: Read<P>;
+    try {
+      r = await read();
+    } catch (err) {
+      if (here()) removeLayer(d.sheet!, l.id);
+      throw err;
+    }
+    if (!here()) {
+      this.release(r.picture);
+      return false;
+    }
+    pictureRead(d.sheet!, l, r.width, r.height);
+    this.held.set(l.id, r.picture);
+    return true;
+  }
 }
 
 export function removeLayer(sheet: Sheet, id: number): void {
@@ -173,7 +234,7 @@ export function layerBox(l: Layer, width: number, height: number): { x: number; 
   }
   if (l.kind === "shape") return { x, y, w: l.w * width, h: l.h * width };
   const w = l.w * width;
-  return { x, y, w, h: (w * l.height) / l.width };
+  return { x, y, w, h: l.width > 0 ? (w * l.height) / l.width : 0 };
 }
 
 /** The topmost layer at pixel `px`, `py` of the sheet, or null. */
@@ -248,7 +309,10 @@ export function draftFaults(d: Draft, state: Pick<PeopleState, "garments" | "cap
     if (size) out.push({ at: "sheet", text: size });
     if (d.sheet.layers.length === 0 && d.sheet.fill === null) out.push({ at: "sheet", text: "The print is empty: give it a fill or a layer, or take the print off." });
     if (d.sheet.layers.length > LAYERS_MAX) out.push({ at: "sheet", text: `A sheet holds ${LAYERS_MAX} layers at most.` });
-    for (const l of d.sheet.layers) if (l.kind === "text" && (l.text.trim() === "" || [...l.text].length > TEXT_MAX)) out.push({ at: `layer:${l.id}`, text: `A text is 1 to ${TEXT_MAX} letters.` });
+    for (const l of d.sheet.layers) {
+      if (l.kind === "text" && (l.text.trim() === "" || [...l.text].length > TEXT_MAX)) out.push({ at: `layer:${l.id}`, text: `A text is 1 to ${TEXT_MAX} letters.` });
+      if (l.kind === "picture" && l.loading) out.push({ at: `layer:${l.id}`, text: `${l.name} is still being read.` });
+    }
   }
   // The store's own reading, with a stand-in hash, catches what the lines above do not.
   if (out.length === 0) {
@@ -383,22 +447,15 @@ export function publishedText(id: number, sent: Draft, garment: string, kept: bo
   return `Published edition ${id}, ${garment} "${editionName(sent.name) ?? sent.name}", as it was when Publish was pressed.${kept ? " Your changes since stay in the draft." : ""}`;
 }
 
-/** Hands out numbers in turn, so of several answers coming back in any order only the last asked for is taken. */
-export class Latest {
-  private n = 0;
-  next(): number {
-    return ++this.n;
-  }
-  is(k: number): boolean {
-    return k === this.n;
-  }
+/** The edition Give hands out: the one on show, else the one it held while that is listed, else the newest; 0 for none. */
+export function givenEdition(state: PeopleState, showing: number, held: number): number {
+  const listed = (id: number): boolean => state.editions.some((e) => e.id === id);
+  return listed(showing) ? showing : listed(held) ? held : (state.editions.at(-1)?.id ?? 0);
 }
 
-/** `work`'s result, or null where another was asked of `latest` before it came. */
-export async function latestOnly<T>(latest: Latest, work: () => Promise<T>): Promise<T | null> {
-  const k = latest.next();
-  const v = await work();
-  return latest.is(k) ? v : null;
+/** Give's choice of editions, newest first, `picked` chosen. */
+export function giveOptionsHtml(state: PeopleState, picked: number): string {
+  return [...state.editions].reverse().map((e) => `<option value="${e.id}"${e.id === picked ? " selected" : ""}>#${e.id} ${esc(e.name)}</option>`).join("");
 }
 
 /** Gives edition `id` to the survivor named or numbered (#12) `survivor`, as the console's `dress` (server/people/give.ts). */
@@ -562,7 +619,7 @@ export function paletteHtml(palette: Uint8Array, current: number): string {
 export function layersHtml(sheet: Sheet, selected: number, faults: readonly Fault[]): string {
   if (sheet.layers.length === 0) return `<p class="faint">No layers yet.</p>`;
   return [...sheet.layers].reverse().map((l) => {
-    const what = l.kind === "text" ? `Text “${esc(l.text)}”` : l.kind === "shape" ? `Shape: ${l.shape}` : `Picture: ${esc(l.name)}`;
+    const what = l.kind === "text" ? `Text “${esc(l.text)}”` : l.kind === "shape" ? `Shape: ${l.shape}` : `Picture: ${esc(l.name)}${l.loading ? ", loading" : ""}`;
     const wrong = faults.some((f) => f.at === `layer:${l.id}`);
     return `<div class="layer${l.id === selected ? " picked" : ""}${wrong ? " wrong" : ""}" data-layer="${l.id}"><button data-pick-layer="${l.id}">${what}</button><span class="grow"></span><button data-layer-up="${l.id}" aria-label="Up" title="Up">↑</button><button data-layer-down="${l.id}" aria-label="Down" title="Down">↓</button><button data-layer-del="${l.id}" class="risk" aria-label="Remove" title="Remove">✕</button></div>`;
   }).join("");

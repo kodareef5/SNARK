@@ -35,7 +35,9 @@ export const SENDER_ZENITH = 255;
 export const BRAKE_HEIGHT = 120;
 /** Seconds a capsule takes to shut, lift off and go once it is emptied or out of time. */
 export const LEAVE_SECONDS = 12;
-/** Seconds its shaft takes to come up when it is called, and to fade as it leaves. */
+/** Metres the beacon reaches above the mast. */
+export const SHAFT_HEIGHT = 600;
+/** Seconds the shaft takes to rise after landing and to fade on departure. */
 export const SHAFT_RISE = 2;
 export const SHAFT_FADE = 3;
 /** Seconds after landing at which its shutters start to open, and how long they take. */
@@ -47,7 +49,7 @@ export const LEAVE_STANDS = 1.5;
 /** How a drop is told of besides its shaft, as the wire carries Announce (shared/supply/book.ts). */
 export const ANNOUNCES = ["none", "compass", "map", "chat"] as const;
 
-/** What a drop of a tier shows: its name and colour, the level that opens it, and its place among the tiers (the count of its pulses and collars). */
+/** What a drop of a tier shows: its name and colour, the level that opens it, and its place among the tiers (the count of its collars). */
 export interface SupplyTier {
   name: string;
   rgb: number;
@@ -62,7 +64,7 @@ export interface SupplyClass {
 
 /** When a drop does what, in world ticks. */
 export interface SupplyTimes {
-  /** The tick it was called: its shaft stands from here. */
+  /** The tick the server called the drop. */
   called: number;
   /** The tick its cast leaves the sender. */
   release: number;
@@ -146,14 +148,14 @@ export interface SupplyPose {
   thrust: number;
   legs: number;
   shutters: number;
-  /** 0 to 1: how strongly its shaft stands, and how far its pulses have turned from running down to standing. */
+  /** Brightness of the landed beacon and the fraction of its height reached. */
   shaft: number;
-  standing: number;
+  shaftHeight: number;
   /** Seconds since it landed, or since it started to leave: negative before. */
   since: number;
 }
 
-export const newPose = (): SupplyPose => ({ state: POSE_COMING, x: 0, y: 0, z: 0, speed: 0, along: 0, thrust: 0, legs: 0, shutters: 0, shaft: 0, standing: 0, since: -1 });
+export const newPose = (): SupplyPose => ({ state: POSE_COMING, x: 0, y: 0, z: 0, speed: 0, along: 0, thrust: 0, legs: 0, shutters: 0, shaft: 0, shaftHeight: 0, since: -1 });
 
 const smooth = (v: number): number => {
   const a = v < 0 ? 0 : v > 1 ? 1 : v;
@@ -166,7 +168,7 @@ const smooth = (v: number): number => {
  * the speed the braking starts at; the braking is one steady deceleration to nothing at the ground. So its place is
  * continuous at the release, at the jets and at the landing, and its speed at the last two.
  */
-export function supplyPose(d: SupplyRow | (SupplyTimes & Pick<SupplyRow, "ox" | "oy" | "oz" | "x" | "y" | "z">), tick: number, rate: number, out: SupplyPose): SupplyPose {
+export function supplyPose(d: SupplyRow, tick: number, rate: number, out: SupplyPose): SupplyPose {
   const jets = d.land - d.brake;
   const brakeS = d.brake / rate;
   out.thrust = 0;
@@ -174,9 +176,14 @@ export function supplyPose(d: SupplyRow | (SupplyTimes & Pick<SupplyRow, "ox" | 
   out.shutters = 0;
   out.speed = 0;
   out.along = 0;
-  out.standing = 0;
   out.since = -1;
-  out.shaft = smooth((tick - d.called) / (SHAFT_RISE * rate));
+  out.shaft = 0;
+  out.shaftHeight = 0;
+  if (d.landed && tick >= d.land) {
+    const last = d.left > 0 ? Math.min(tick, d.left) : tick;
+    out.shaftHeight = smooth((last - d.land) / (SHAFT_RISE * rate));
+    out.shaft = 0.35 + 0.65 * out.shaftHeight;
+  }
   if (d.left > 0 && tick >= d.left) {
     // Shut, then up on the jets, the legs folding as the ground leaves them.
     const t = (tick - d.left) / rate;
@@ -191,8 +198,7 @@ export function supplyPose(d: SupplyRow | (SupplyTimes & Pick<SupplyRow, "ox" | 
     out.shutters = 1 - smooth(t / 1.2);
     out.thrust = out.state === POSE_GONE ? 0 : smooth((t - 0.7) / 0.8);
     out.legs = 1 - smooth((t - 2.2) / 1.4);
-    out.shaft = 1 - smooth(t / SHAFT_FADE);
-    out.standing = 1;
+    out.shaft *= 1 - smooth(t / SHAFT_FADE);
     return out;
   }
   if (tick < d.release) {
@@ -245,7 +251,6 @@ export function supplyPose(d: SupplyRow | (SupplyTimes & Pick<SupplyRow, "ox" | 
   out.legs = 1;
   out.thrust = 0.7 * (1 - smooth(t / 0.3));
   out.shutters = smooth((t - SHUTTERS_AFTER) / SHUTTERS_TAKE);
-  out.standing = smooth(t / 1.5);
   return out;
 }
 

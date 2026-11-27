@@ -97,27 +97,31 @@ function frame(f: Faces, tier: string, looks: Uint8Array[]): { uploads: AssetUpl
   return { uploads, drops, slots };
 }
 
-test("the shared head is made first, then one head a frame", () => {
+/** Frames of `looks` until nothing is read, made or put on the card for five frames; every frame's result, in order. */
+function settled(f: Faces, tier: string, looks: Uint8Array[], most = 2000): ReturnType<typeof frame>[] {
+  const out: ReturnType<typeof frame>[] = [];
+  for (let k = 0, quiet = 0; k < most; k++) {
+    const r = frame(f, tier, looks);
+    out.push(r);
+    quiet = !f.busy && r.uploads.length === 0 ? quiet + 1 : 0;
+    if (quiet >= 5) return out;
+  }
+  throw new Error("the faces never settled");
+}
+
+test("the shared head is made first, then one head at a time, nothing else made meanwhile", () => {
   const f = new Faces(fakeAssets());
   f.register(MESH, REST);
   const looks = [lookOf(1), lookOf(2), lookOf(3)];
-  // The first frame asks for the table and the level; the next two read them, a make each.
-  expect(frame(f, "high", looks).slots).toEqual([-1, -1, -1]);
-  for (let k = 0; k < 2; k++) {
-    const read = frame(f, "high", looks);
-    expect(read.uploads.length + read.slots.filter((s) => s >= 0).length).toBe(0);
-  }
-  const second = frame(f, "high", looks);
-  expect(second.uploads.length).toBe(2);
-  const shared = second.slots[0]!;
-  expect(second.slots).toEqual([shared, shared, shared]);
-  for (let k = 0; k < 3; k++) {
-    const { uploads } = frame(f, "high", looks);
-    expect(uploads.length).toBe(2);
-    expect(f.makes).toBe(2 + k);
-  }
+  const frames = settled(f, "high", looks);
+  // Each frame puts at most one head on the card, the shared head first and drawn by all until theirs comes.
+  const made = frames.filter((r) => r.uploads.length > 0);
+  expect(made.every((r) => r.uploads.length === 2)).toBe(true);
+  expect(made.length).toBe(4);
+  const shared = frames.find((r) => r.slots[0]! >= 0)!.slots[0]!;
+  expect(frames.find((r) => r.slots[0]! >= 0)!.slots).toEqual([shared, shared, shared]);
+  expect(f.makes).toBe(4);
   const done = frame(f, "high", looks);
-  expect(done.uploads.length).toBe(0);
   expect(new Set(done.slots).size).toBe(3);
   expect(done.slots).not.toContain(shared);
 });
@@ -125,7 +129,7 @@ test("the shared head is made first, then one head a frame", () => {
 test("a neutral face draws the shared head and is never made", () => {
   const f = new Faces(fakeAssets());
   f.register(MESH, REST);
-  for (let k = 0; k < 4; k++) frame(f, "ultra", [defaultLook()]);
+  settled(f, "ultra", [defaultLook()]);
   for (let k = 0; k < 4; k++) expect(frame(f, "ultra", [defaultLook()]).uploads.length).toBe(0);
   expect(f.count).toBe(0);
 });
@@ -135,9 +139,9 @@ test("each tier keeps no more unique heads than its cap", () => {
     const f = new Faces(fakeAssets());
     f.register(MESH, REST);
     let most = 0;
-    // A crowd of 40 own faces, a new one in front each frame, so old heads are let go.
-    for (let k = 0; k < 120; k++) {
-      frame(f, tier, Array.from({ length: 40 }, (_, n) => lookOf(k + n)));
+    // A crowd of 40 own faces, a new one in front every so often, so old heads are let go.
+    for (let k = 0; k < 2400; k++) {
+      frame(f, tier, Array.from({ length: 40 }, (_, n) => lookOf((k >> 4) + n)));
       most = Math.max(most, f.count);
     }
     expect(most).toBe(FACE_HEADS[tier]);
@@ -149,7 +153,7 @@ test("a head drawn last frame is not let go to make another", () => {
   f.register(MESH, REST);
   const cap = FACE_HEADS.medium;
   const kept = Array.from({ length: cap }, (_, n) => lookOf(n));
-  for (let k = 0; k < cap + 3; k++) frame(f, "medium", kept);
+  settled(f, "medium", kept);
   const slots = frame(f, "medium", kept).slots;
   // A nearer newcomer waits while every kept head is still drawn.
   for (let k = 0; k < 4; k++) {
@@ -161,13 +165,14 @@ test("a head drawn last frame is not let go to make another", () => {
   frame(f, "medium", [lookOf(99), ...kept.slice(1)]);
   const { drops } = frame(f, "medium", [lookOf(99), ...kept.slice(1)]);
   expect(drops.length).toBe(2);
+  expect(f.busy).toBe(true);
 });
 
 test("a steady frame makes, uploads and allocates nothing", () => {
   const f = new Faces(fakeAssets());
   f.register(MESH, REST);
   const looks = Array.from({ length: 6 }, (_, n) => lookOf(n));
-  for (let k = 0; k < 10; k++) frame(f, "high", looks);
+  settled(f, "high", looks);
   const uploads: AssetUpload[] = [], drops: number[] = [], tier = tierOf("high");
   const step = (): void => {
     f.begin(tier, uploads, drops);
@@ -189,8 +194,7 @@ test("a made head keeps every vertex inside the hit head and its slack", () => {
   f.register(MESH, REST);
   const look = defaultLook();
   for (let k = 0; k < FACE_COUNT; k++) look[LOOK_FACE + k] = 127;
-  for (let k = 0; k < 3; k++) frame(f, "high", [look]);
-  const made = frame(f, "high", [look]).uploads.find((u) => u.of === undefined);
+  const made = settled(f, "high", [look]).flatMap((r) => r.uploads).findLast((u) => u.of === undefined);
   expect(made).toBeDefined();
   const bound = headBound(REST), { level } = headLevel();
   const vertexAt = (made!.indexCount * 2 + 3) & ~3;
@@ -230,15 +234,15 @@ test("look bytes are read where the look sits in a longer array", () => {
   const many = new Uint8Array(LOOK_BYTES * 3);
   many.set(defaultLook(), 0);
   many.set(lookOf(5), LOOK_BYTES);
-  for (let k = 0; k < 3; k++) {
-    frame(f, "high", []);
-    f.ready(MESH);
-  }
-  frame(f, "high", []);
+  for (let k = 0; k < 200 && !f.ready(MESH); k++) frame(f, "high", []);
   expect(f.ready(MESH)).toBe(true);
-  f.head(MESH, many, LOOK_BYTES, ONES, 0, 0);
-  const { uploads } = frame(f, "high", []);
-  expect(uploads.length).toBe(2);
+  let uploads = 0;
+  for (let k = 0; k < 200; k++) {
+    f.head(MESH, many, LOOK_BYTES, ONES, 0, 0);
+    uploads += frame(f, "high", []).uploads.length;
+  }
+  expect(uploads).toBe(2);
+  expect(f.count).toBe(1);
 });
 
 test("a made head keeps its stored normals and tangents where the face barely moves it", () => {
@@ -246,8 +250,7 @@ test("a made head keeps its stored normals and tangents where the face barely mo
   f.register(MESH, REST);
   const look = defaultLook();
   setFace(look, 0, 1 / 127);
-  for (let k = 0; k < 3; k++) frame(f, "high", [look]);
-  const made = frame(f, "high", [look]).uploads.find((u) => u.of !== undefined)!;
+  const made = settled(f, "high", [look]).flatMap((r) => r.uploads).findLast((u) => u.of !== undefined)!;
   const { surface } = headLevel(), a = new DataView(surface.buffer), b = new DataView(made.data.buffer, made.data.byteOffset);
   const un = (w: number): number[] => [((w << 22) >> 22) / 511, ((w << 12) >> 22) / 511, ((w << 2) >> 22) / 511];
   for (let v = 0; v < N; v++) for (const at of [4, 8]) {
@@ -306,7 +309,7 @@ function pointsOf(u: AssetUpload, n: number): number[][] {
 /** Frames enough for the head, hair and beard to be read, their shared meshes made and `look`'s head; every upload, in order. */
 function wornFrames(f: Faces, look: Uint8Array, hair = HAIR, beard = BEARD): AssetUpload[] {
   const uploads: AssetUpload[] = [];
-  for (let k = 0; k < 16; k++) {
+  for (let k = 0; k < 200; k++) {
     f.begin(tierOf("high"), uploads, []);
     f.groomed(hair);
     if (f.ready(MESH)) f.head(MESH, look, 0, ONES, 0, 0, hair, beard);
@@ -368,7 +371,7 @@ test("a refused head lets go at once, is made again after a wait, and keeps its 
   const f = new Faces(fakeAssets());
   f.register(MESH, REST);
   const look = lookOf(9);
-  for (let k = 0; k < 5; k++) frame(f, "high", [look]);
+  settled(f, "high", [look]);
   const made = frame(f, "high", [look]).slots[0]!, shared = f.head(MESH, defaultLook(), 0, ONES, 0, 0).slot;
   expect(made).not.toBe(shared);
   const bytes = f.bytes;
@@ -380,10 +383,11 @@ test("a refused head lets go at once, is made again after a wait, and keeps its 
   expect(next.drops.sort()).toEqual([made, made + 1]);
   expect(next.slots[0]).toBe(shared);
   let back = -1;
-  for (let k = 0; k < 200 && back < 0; k++) {
+  for (let k = 0; k < 400 && back < 0; k++) {
     const { uploads, slots } = frame(f, "high", [look]);
     if (uploads.length > 0) back = k;
     else expect(slots[0]).toBe(shared);
+    if (k < 100) expect(f.busy).toBe(false);
   }
   expect(back).toBeGreaterThan(100);
   expect(frame(f, "high", [look]).slots[0]).not.toBe(shared);
@@ -392,4 +396,33 @@ test("a refused head lets go at once, is made again after a wait, and keeps its 
   for (let k = 0; k < 2000; k++) frame(f, "high", [look]);
   expect(f.ready(MESH)).toBe(false);
   expect(Number.isFinite(f.bytes)).toBe(true);
+});
+
+test("a body is short of its look until its own head, hair and beard are drawn", () => {
+  const f = new Faces(wornAssets());
+  f.register(MESH, REST);
+  f.wear(MESH, HAIR, false);
+  f.wear(MESH, BEARD, true);
+  const look = lookOf(7);
+  let shared = -1, frames = 0;
+  for (; frames < 400; frames++) {
+    f.begin(tierOf("high"), [], []);
+    f.groomed(HAIR);
+    const drawn = f.ready(MESH) ? f.head(MESH, look, 0, ONES, 0, 0, HAIR, BEARD) : null;
+    if (drawn && shared < 0) shared = drawn.slot;
+    // Drawn whole only on its own head with the hair and beard made on it.
+    const whole = drawn !== null && drawn.slot !== shared && drawn.hair === drawn.slot + 2 && drawn.beard === drawn.slot + 4;
+    expect(f.short, `frame ${frames}`).toBe(whole ? 0 : 1);
+    if (whole) break;
+  }
+  expect(frames).toBeGreaterThan(2);
+  expect(frames).toBeLessThan(400);
+  // A neutral face is whole on the shared head once its hair and beard are.
+  f.begin(tierOf("high"), [], []);
+  f.head(MESH, defaultLook(), 0, ONES, 0, 0, HAIR, BEARD);
+  expect(f.short).toBe(0);
+  // A tier that makes no heads is never short of one.
+  f.begin(tierOf("lowpoly"), [], []);
+  f.head(MESH, lookOf(9), 0, ONES, 0, 0, HAIR, BEARD);
+  expect(f.short).toBe(0);
 });

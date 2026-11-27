@@ -2,10 +2,13 @@
 // blends it, the two street materials, the draw's effect, and the texts that read it.
 
 import { expect, test } from "bun:test";
+import { Camera } from "../../client/core/render/camera.ts";
+import { SupplyBeacons } from "../../client/core/render/supply-beacon.ts";
 import { PROGRAMS } from "../../client/core/render/programs.ts";
-import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_TEXTURED, FramePacket, moved, texturedFlags } from "../../client/core/render/packet.ts";
+import { DETAIL, DETAIL_GLOW, DRAW_BLEND, DRAW_EMISSIVE, DRAW_TEXTURED, FramePacket, moved, texturedFlags } from "../../client/core/render/packet.ts";
 import { StreetDraws } from "../../client/core/render/street-draws.ts";
-import { DROP_GLSL, FLAT_STEPS, GLOW_FIGURE, GLOW_FOOT, GLOW_JET, GLOW_METRES, GLOW_SHAFT, GLOW_SHEATH, INBOUND_FADE, LAMP_BEAT, LAMP_PERIOD, LIGHT_LAMP, LIGHT_LANTERN, LIGHT_SEAM, PULSE_GAP, PULSE_REST, PULSE_SPEED, SHAFT_TOP, STANDING_FULL, dropGlow, dropLight, dropTint, lampBeat, packEffect, shaftPulse } from "../../client/core/render/supply-light.ts";
+import { DROP_GLSL, GLOW_JET, LAMP_BEAT, LAMP_PERIOD, LIGHT_LAMP, LIGHT_LANTERN, LIGHT_SEAM, dropGlow, dropLight, dropTint, lampBeat, packEffect } from "../../client/core/render/supply-light.ts";
+import { beaconLight } from "../../client/core/render/detailtext.ts";
 import { TIERS } from "../../client/core/assets/tiers.ts";
 import { CHANNEL, DROP_GLOW, DROP_LIGHT, INSTRUMENT, streetMaterial } from "../../content/street-finishes.ts";
 import { starterBook } from "../../content/supply/starter.ts";
@@ -24,12 +27,11 @@ const glow = (row: number, u: number, facing: number, e: readonly [number, numbe
 };
 const sum = (v: readonly number[]): number => v[0]! + v[1]! + v[2]!;
 
-test("a draw's effect packs the tier's count, ringed, its look and how flat it is lit in one number a float holds whole", () => {
-  for (const [count, ringed, look, flat] of [[1, false, 0, 0], [7, true, 255, 1], [15, true, 128, 3 / 7], [3, false, 1, 0]] as const) {
-    const w = packEffect(count, ringed, look, flat);
-    expect([Math.fround(w), w % 16, Math.floor(w / 16) % 2 === 1, Math.floor(w / 32) % 256, Math.floor(w / 8192)]).toEqual([w, count, ringed, look, Math.round(flat * FLAT_STEPS)]);
+test("a capsule keeps its tier, ring and seed and its light keeps its hue", () => {
+  for (const [count, ringed, look] of [[1, false, 0], [7, true, 255], [15, true, 128]] as const) {
+    const w = packEffect(count, ringed, look);
+    expect([Math.fround(w), w % 16, Math.floor(w / 16) % 2 === 1, Math.floor(w / 32)]).toEqual([w, count, ringed, look]);
   }
-  expect([packEffect(3, false, 9, 0.5), packEffect(3, false, 9, 2), packEffect(3, false, 9)]).toEqual([3 + 32 * 9 + 8192 * 4, 3 + 32 * 9 + 8192 * 7, 3 + 32 * 9]);
   // A tier's colour is light as it is: every tier of the starter book keeps its hue's order, and a float holds it whole.
   for (const tier of starterBook().tiers) {
     const t = [0, 0, 0];
@@ -62,32 +64,45 @@ test("the mast lamp flashes the tier's count and rests, and is never wholly out"
   expect(lampBeat(-LAMP_PERIOD + 0.1, 2)).toBeCloseTo(lampBeat(0.1, 2), 9);
 });
 
-test("the shaft's pulses come in groups of the tier's count, run down while it is coming and up once it stands, and never turn", () => {
-  for (const count of [1, 4, 7]) {
-    const span = count * PULSE_GAP + PULSE_REST;
-    let peaks = 0;
-    let was = 0;
-    let rising = false;
-    for (let m = 0; m < span; m += 0.05) {
-      const v = shaftPulse(m, 0, count, true);
-      if (v < was && rising && was > 0.9) peaks++;
-      rising = v > was;
-      was = v;
-    }
-    expect(peaks).toBe(count);
-    // The rest between groups is dark.
-    expect(shaftPulse(count * PULSE_GAP + PULSE_REST / 2, 0, count, true)).toBe(0);
+test("the mast glow faces an eye directly above or below the capsule", () => {
+  const beacons = new SupplyBeacons();
+  const frame = { cam: new Camera(), packet: new FramePacket(), viewHeight: 1080 };
+  for (const sign of [-1, 1]) {
+    frame.cam.pitch = sign * Math.PI / 2;
+    frame.cam.update();
+    frame.packet.beginFrame();
+    beacons.begin();
+    expect(beacons.add(frame, 0, sign * 20, 0, 0, 1, BLUE, false)).toBe(false);
+    beacons.write(frame.packet);
+    const p = frame.packet;
+    expect(p.detailCount).toBe(1);
+    expect((p.detailWords[DETAIL.misc]! >>> 8) & 255).toBe(DETAIL_GLOW);
+    expect(Math.abs(p.details[DETAIL.across]! * p.details[DETAIL.along + 2]!)).toBeGreaterThan(1);
   }
-  // Where one pulse's peak is a second later: up by its speed while standing, down by it while coming.
-  const peakNear = (seconds: number, standing: boolean, from: number): number => {
-    let best = from;
-    for (let m = from - 30; m < from + 30; m += 0.01) if (shaftPulse(m, seconds, 1, standing) > shaftPulse(best, seconds, 1, standing)) best = m;
-    return best;
+});
+
+test("the camera sees a growing shaft only when its tip reaches the view", () => {
+  const beacons = new SupplyBeacons();
+  const frame = { cam: new Camera(), packet: new FramePacket(), viewHeight: 1080 };
+  frame.cam.update();
+  expect(beacons.add(frame, 0, -150, 100, 0.05, 1, BLUE, false)).toBe(false);
+  expect(beacons.count).toBe(0);
+  expect(beacons.add(frame, 0, -150, 100, 0.5, 1, BLUE, false)).toBe(true);
+});
+
+test("the beam feathers at its sides and tip and carries a steady pale core", () => {
+  const shape = (x: number, y: number, core = 1) => {
+    const result = [0, 0];
+    beaconLight(x, y, core, result);
+    return result;
   };
-  const at = peakNear(0, true, 100);
-  expect(peakNear(1, true, at + PULSE_SPEED) - at).toBeCloseTo(PULSE_SPEED, 1);
-  const down = peakNear(0, false, 100);
-  expect(peakNear(1, false, down - PULSE_SPEED) - down).toBeCloseTo(-PULSE_SPEED, 1);
+  expect(shape(0, -1)).toEqual(shape(0, 0.6));
+  expect(shape(0, 0)).toEqual([1, 0.58]);
+  expect(shape(1, 0)).toEqual([0, 0]);
+  expect(shape(0, 1)[0]).toBeCloseTo(0);
+  expect(shape(-0.25, 0)).toEqual(shape(0.25, 0));
+  expect(shape(0.6, 0)[0]).toBeLessThan(shape(0.2, 0)[0]!);
+  expect(shape(0.3, 0, 0.6)[1]).toBeCloseTo(shape(0.5, 0)[1]!);
 });
 
 test("a lit strip is the tier's colour, brighter as the lantern opens and hottest along its middle; the lamp keeps its beat", () => {
@@ -100,49 +115,9 @@ test("a lit strip is the tier's colour, brighter as the lantern opens and hottes
   expect([sum(light(LIGHT_LAMP, 0, e(0.12, 0))) > 4 * sum(light(LIGHT_LAMP, 0, e(4, 0))), light(LIGHT_LAMP, 0, e(0.12, 0)), light(LIGHT_SEAM, 0, e(1, 0))]).toEqual([true, light(LIGHT_LAMP, 0, e(0.12, 1)), light(LIGHT_SEAM, 0, e(77, 1))]);
 });
 
-test("the light with no surface: nothing where it has no power, thickest through its middle, a sheath fainter than its shaft, a jet gone by its end", () => {
-  const e = (power: number, seconds = 3) => [seconds, BLUE, power, packEffect(4, true, 40)] as const;
-  for (const row of [GLOW_SHAFT, GLOW_SHEATH, GLOW_FIGURE, GLOW_JET]) {
-    expect(glow(row, 0.3, 0.8, e(0)).a).toBe(0);
-    for (const facing of [0, 0.3, 0.7, 1]) for (const u of [0, 0.2, 0.5, 0.9, 3.3]) {
-      const g = glow(row, u, facing, e(1));
-      expect([g.a >= 0, g.a <= 0.96, g.rgb.every((c) => c >= 0 && Number.isFinite(c))]).toEqual([true, true, true]);
-    }
-  }
-  // Through its middle against its edge, in a stretch of the shaft the standing pulses have not reached.
-  const rest = 400 / GLOW_METRES;
-  expect([glow(GLOW_SHAFT, rest, 1, e(1)).a > 3 * glow(GLOW_SHAFT, rest, 0.05, e(1)).a, glow(GLOW_SHAFT, rest, 1, e(0.5)).a]).toEqual([true, glow(GLOW_SHAFT, rest, 1, e(1)).a / 2]);
-  expect(glow(GLOW_SHEATH, rest, 0.6, e(1)).a).toBeLessThan(glow(GLOW_SHAFT, rest, 0.6, e(1)).a);
-  // Far off a tube is a few pixels wide and lit flat: its edge as its middle, the tier's colour kept (a fifth of the
-  // white heart), and the rows that are not tubes untouched.
-  const flat = [3, BLUE, 1, packEffect(4, true, 40, 1)] as const;
-  const [edge, middle, lit] = [glow(GLOW_SHAFT, rest, 0.05, flat), glow(GLOW_SHAFT, rest, 1, flat), glow(GLOW_SHAFT, rest, 1, e(1))];
-  expect([edge.a, edge.rgb, middle.a, middle.rgb[0]! < lit.rgb[0]! - 0.15, middle.rgb[2]! > 3 * middle.rgb[0]!]).toEqual([middle.a, middle.rgb, lit.a, true, true]);
-  expect([glow(GLOW_SHEATH, rest, 0.05, flat).a, glow(GLOW_FIGURE, 0.3, 0.3, flat), glow(GLOW_JET, 0.3, 0.3, flat)]).toEqual([glow(GLOW_SHEATH, rest, 1, flat).a, glow(GLOW_FIGURE, 0.3, 0.3, e(1)), glow(GLOW_JET, 0.3, 0.3, e(1))]);
-  // The white heart is the shaft's alone: the sheath stays the tier's colour.
-  const [shaft, sheath] = [glow(GLOW_SHAFT, rest, 1, e(1)).rgb, glow(GLOW_SHEATH, rest, 1, e(1)).rgb];
-  expect([shaft[0]! > sheath[0]! + 0.2, sheath[0]! < 0.2 * sheath[2]!, shaft[2]! > shaft[0]!]).toEqual([true, true, true]);
-  // Coming, its pulses run down it. Landed, they fade where they are while the standing set climbs from the foot:
-  // at no moment is the shaft without light, and nothing of it turns.
-  const pulseAt = (metres: number, seconds: number): number => glow(GLOW_SHAFT, metres / GLOW_METRES, 0.5, e(1, seconds)).a - glow(GLOW_SHAFT, rest, 0.5, e(1, -1000.123)).a;
-  const brightest = (seconds: number, from: number, to: number): number => {
-    let best = from;
-    for (let m = from; m < to; m += 0.05) if (glow(GLOW_SHAFT, m / GLOW_METRES, 0.5, e(1, seconds)).a > glow(GLOW_SHAFT, best / GLOW_METRES, 0.5, e(1, seconds)).a) best = m;
-    return best;
-  };
-  void pulseAt;
-  const before = brightest(-20, 200, 200 + 4 * PULSE_GAP + PULSE_REST);
-  expect(brightest(-19.5, before - 30, before + 5) - before).toBeCloseTo(-PULSE_SPEED / 2, 0);
-  // Two seconds after landing: no pulse 300 m up, where the climbing front has not come, and pulses near the foot that climb.
-  const high = (s: number): number => Math.max(...Array.from({ length: 400 }, (_, k) => glow(GLOW_SHAFT, (300 + k * 0.2) / GLOW_METRES, 0.5, e(1, s)).a));
-  const low = (s: number): number => Math.max(...Array.from({ length: 150 }, (_, k) => glow(GLOW_SHAFT, (k * 0.2) / GLOW_METRES, 0.5, e(1, s)).a));
-  const dark = glow(GLOW_SHAFT, rest, 0.5, e(1, STANDING_FULL + 1)).a;
-  expect([high(-5) > dark * 1.5, Math.abs(high(INBOUND_FADE + 0.5) - dark) < 1e-6, low(STANDING_FULL + 1) > dark * 1.5]).toEqual([true, true, true]);
-  const after = brightest(20, 100, 100 + 4 * PULSE_GAP + PULSE_REST);
-  expect(brightest(20.5, after - 5, after + 30) - after).toBeCloseTo(PULSE_SPEED / 2, 0);
-  // It fades into the sky over its last stretch, and the glow at its foot is strongest under the capsule and gone at its rim.
-  expect([glow(GLOW_SHAFT, 600 / GLOW_METRES, 1, e(1)).a, glow(GLOW_SHAFT, (600 - SHAFT_TOP / 2) / GLOW_METRES, 1, e(1)).a < glow(GLOW_SHAFT, rest, 1, e(1)).a]).toEqual([0, true]);
-  expect([glow(GLOW_FOOT, 0, 1, e(1)).a > glow(GLOW_FOOT, 0.5, 1, e(1)).a, glow(GLOW_FOOT, 1, 1, e(1)).a, glow(GLOW_FOOT, 0, 0.05, e(1)).a === glow(GLOW_FOOT, 0, 1, e(1)).a]).toEqual([true, 0, true]);
+test("the jet fades outward from its bell and follows the engine power", () => {
+  const e = (power: number) => [3, BLUE, power, packEffect(4, true, 40)] as const;
+  expect(glow(GLOW_JET, 0.1, 1, e(0)).a).toBe(0);
   // A jet: brightest at the bell, nothing at its end, and its bands travel outward.
   expect([glow(GLOW_JET, 0.05, 1, e(1)).a > 0.6, glow(GLOW_JET, 0.6, 1, e(1)).a < glow(GLOW_JET, 0.2, 1, e(1)).a, glow(GLOW_JET, 1, 1, e(1)).a, glow(GLOW_JET, 1.4, 1, e(1)).a]).toEqual([true, true, 0, 0]);
 });
@@ -190,7 +165,7 @@ test("a frame clears every draw's effect, and the programs that draw a drop's li
     expect([text.includes("uniform vec4 uEffect;"), text.includes("uEffect.y > 0. ? dropLight(")]).toEqual([true, true]);
   }
   // The text is the arithmetic the software renderer runs: each constant is written into it from the one it reads.
-  for (const v of [LAMP_PERIOD, LAMP_BEAT, PULSE_GAP, PULSE_REST, PULSE_SPEED, GLOW_METRES, INBOUND_FADE, STANDING_FULL, 600 - SHAFT_TOP]) expect(DROP_GLSL).toContain(Number.isInteger(v) ? `${v}.0` : String(v));
+  for (const v of [LAMP_PERIOD, LAMP_BEAT]) expect(DROP_GLSL).toContain(Number.isInteger(v) ? `${v}.0` : String(v));
 });
 
 test("a renderer sets a program's vector only when it has moved: the numbers it keeps are made the draw's as they are compared", () => {

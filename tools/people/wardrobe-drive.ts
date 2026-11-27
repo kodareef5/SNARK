@@ -1,7 +1,8 @@
 // The wardrobe admin page (client/admin/wardrobe.ts) worked in headless Chrome against a development world, as an admin
-// works it: a draft with text, a shape and an uploaded picture, seen on the person stage; published; a publish another
-// admin made first, answered 409 with the draft kept; a store too busy, answered 503 and tried again; a reload; a retire
-// and its undoing; and a big picture brought under the print cap. Each act is judged by what the store then holds.
+// works it: a draft with text, a shape and an uploaded picture, seen on the person stage; published; a copy given a
+// picture while its original's print is held back; a publish another admin made first, answered 409 with the draft
+// kept; Give pressed straight after a publish; a store too busy, answered 503 and tried again; a reload; a retire and
+// its undoing; and a big picture brought under the print cap. Each act is judged by what the store then holds.
 // Fails on any fault. --shots saves a picture of the page at each step under artifacts/people/wardrobe/.
 //
 //   bun tools/people/wardrobe-drive.ts [--dist var/people/dist] [--out artifacts/people/wardrobe] [--port 8793] [--shots] [--build]
@@ -167,7 +168,7 @@ try {
     await type('[data-lf="text"]', "MIAMI 26");
     await page.tab();
     await fileInto("#picture-file", picture);
-    if (!(await until(`${q("#layers")}.textContent.includes("Picture: snark-emblem.webp")`, "the picture's layer"))) return;
+    if (!(await until(`${q("#layers")}.textContent.includes("Picture: snark-emblem.webp") && !${q("#layers")}.textContent.includes("loading")`, "the picture's layer"))) return;
     // The picture is put below the text, and a star is added on top.
     await press('[data-layer-down]');
     await choose("#shape-kind", "star");
@@ -213,10 +214,28 @@ try {
     check("the new edition is picked and shown on the person", [await listed(), await run(`${q(".edition.picked")}?.dataset.edition`), await text("#showing")], [["1 Drive tee"], "1", "Wearing edition 1"]);
     await snap("published");
 
-    console.log("a publish another admin made first");
+    console.log("a copy given a picture before its original's print comes");
+    // The page's fetches: a print's held back until released, and each give's body kept.
+    await run(`(() => {
+      const real = window.fetch.bind(window);
+      window.gives = [];
+      const held = new Promise((r) => (window.releasePrint = r));
+      window.fetch = async (url, init) => {
+        if (String(url).startsWith("/media/")) await held;
+        if (String(url).endsWith("/admin/people/give")) window.gives.push(JSON.parse(init.body));
+        return real(url, init);
+      };
+    })()`);
     await press('[data-copy="1"]');
     if (!(await until(`${q("#name")}.value === "Drive tee copy"`, "a copy of edition 1"))) return;
-    await until(`${q("#layers")}.textContent.includes("edition 1's print")`, "edition 1's print as the copy's picture");
+    check("the original's print is loading", await layerNames(), ["Picture: edition 1's print, loading"]);
+    await fileInto("#picture-file", picture);
+    await until(`${q("#layers")}.textContent.includes("Picture: snark-emblem.webp") && !${q("#layers")}.textContent.includes("emblem.webp, loading")`, "the added picture");
+    await run("window.releasePrint()");
+    await until(`!${q("#layers")}.textContent.includes("loading")`, "edition 1's print as the copy's picture");
+    check("the copy keeps its original under the added picture", await layerNames(), ["Picture: snark-emblem.webp", "Picture: edition 1's print"]);
+
+    console.log("a publish another admin made first");
     await type("#name", "Drive tee two");
     await press('[data-colour="0"]');
     const outside = await fetch(`${base}/admin/people/publish`, {
@@ -228,7 +247,7 @@ try {
     await press("#publish");
     await said(`Not saved: Another admin published edition 2 "Outside trousers" since this page read it.`);
     check("the page lists the other admin's edition", await listed(), ["2 Outside trousers", "1 Drive tee"]);
-    check("and keeps the draft", [await run(`${q("#editor")}.hidden`), await run(`${q("#name")}.value`), await layerNames(), await run(`${q("#publish")}.disabled`)], [false, "Drive tee two", ["Picture: edition 1's print"], false]);
+    check("and keeps the draft", [await run(`${q("#editor")}.hidden`), await run(`${q("#name")}.value`), await layerNames(), await run(`${q("#publish")}.disabled`)], [false, "Drive tee two", ["Picture: snark-emblem.webp", "Picture: edition 1's print"], false]);
     check("the store did not take the stale publish", people.view().editions.length, 2);
     await stageTook("the kept draft");
     check("the person wears the draft", await text("#showing"), "Wearing the draft");
@@ -238,6 +257,14 @@ try {
     view = people.view();
     check("published over the newer revision", view.editions.map((e) => `${e.id} ${e.name} ${e.colours.join(",")}`), ["1 Drive tee 34,58,11", "2 Outside trousers 0,0,0", "3 Drive tee two 0,58,11"]);
     check("the copy kept edition 1's print size and place", [view.byId.get(3)?.print?.width, view.byId.get(3)?.print?.place.scale], [512, 1.2]);
+
+    console.log("Give pressed straight after a publish");
+    await stageTook("edition 3");
+    check("Give holds the edition on show", [await run(`${q("#give-edition")}.value`), await text("#showing")], ["3", "Wearing edition 3"]);
+    await type("#give-who", "nobody");
+    await press("#give");
+    await until(`${q("#give-note")}.textContent.startsWith("Not given")`, "the give's answer");
+    check("Give sent the edition on show", await run(`window.gives.map((b) => b.edition)`), [3]);
 
     console.log("a store too busy for a while");
     await press('[data-start="core:jeans"]');
@@ -305,8 +332,9 @@ try {
     await stageTook("the fitted edition");
     await snap("fitted");
 
-    // The publish another admin came before was refused with 409, and the busy store's with 503, which a browser logs.
-    const expected = (e: string): boolean => (e.includes("409") || e.includes("503")) && e.endsWith("/admin/people/publish");
+    // The publish another admin came before was refused with 409, the busy store's with 503, and the give to nobody with
+    // 404, which a browser logs.
+    const expected = (e: string): boolean => ((e.includes("409") || e.includes("503")) && e.endsWith("/admin/people/publish")) || (e.includes("404") && e.endsWith("/admin/people/give"));
     check("the page raised no error but the refused publishes", page.errors.filter((e) => !expected(e)), []);
   });
 } catch (err) {

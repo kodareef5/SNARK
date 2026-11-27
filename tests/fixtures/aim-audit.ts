@@ -110,8 +110,8 @@ export function aimAudit(view: ProvingView, look: Uint8Array | null, states: rea
       cam.pitch = -up;
       cam.fovY = 0.7;
       cam.aspect = 1;
-      // The first shot waits for the look's own head to be made (client/core/render/faces.ts), one a frame.
-      if (s === states[0] && v === sides[0]) for (let k = 0; k < 4; k++) view.render();
+      // The first shot waits for the look's own head to be made (client/core/render/faces.ts), a step a frame.
+      if (s === states[0] && v === sides[0]) for (let k = 0; k < 2000 && (k < 4 || !view.scene.characters.faces.idle); k++) view.render();
       view.render();
       // Posed once for the shot as rayBody poses it for each ray, which every 61st ray checks.
       humanHitPose(anim, st, tick, bx, by, bz, yawUnits, null, pose);

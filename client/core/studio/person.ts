@@ -7,6 +7,7 @@ import { EMOTE_NUMBER } from "../../../shared/anim/emotes.ts";
 import type { Clip } from "../../../shared/anim/clip.ts";
 import type { HumanAnim } from "../../../shared/anim/pose.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
+import type { Scene } from "../render/scene.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN, WORN_FIELDS } from "../../../shared/sim/entities.ts";
 import { printPath, type EditionPrint } from "../../../shared/people/doc.ts";
 import { STAGE_SLOTS, type StageCommand, type StageFraming, type StageGarment, type StagePose } from "../../../shared/people/stage.ts";
@@ -49,6 +50,16 @@ export function framingOf(framing: StageFraming, pose: StagePose): Framing {
   const f = FRAMINGS[framing];
   if (pose !== "seated") return f;
   return { ...f, y: f.y - (framing === "portrait" ? SEATED_DROP.head : SEATED_DROP.full), radius: framing === "portrait" ? f.radius : f.radius * 0.75 };
+}
+
+/**
+ * Whether the stage's last frame drew what it was asked for: nothing wanted, coming or waiting, every texture shown
+ * begun, the prints read, the person drawn and posed, and its face, hair and beard as made for its look.
+ */
+export function stageSettled(scene: Scene, drawn: boolean, posed: boolean): boolean {
+  const r = scene.assets.residency, prints = scene.prints.loads;
+  return r.flying === 0 && r.waiting === 0 && r.wanting() === 0 && r.bare() === 0 && prints.fetching === 0 && prints.waiting === 0 &&
+    drawn && posed && scene.characters.faces.short === 0;
 }
 
 export class PersonStage {

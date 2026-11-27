@@ -526,6 +526,8 @@ artTest("the face tab frames the head close enough that a small window draws the
     app.pointer(1, KEY_CREATOR_TAB + 2, n.x + n.w / 2, n.y + n.h / 2, 0);
     setFaces(ui.screen<CreatorScreen>("creator").look, FACE_PRESETS[1]!.values);
     run(700);
+    // The face is read and made a share a frame: on until nothing is left to do.
+    for (let k = 0; k < 40 && !app.scene!.characters.faces.idle; k++) run(100);
     const faces = app.scene!.characters.faces, session = app.session;
     expect(faces.count, `${w}x${ht}`).toBe(1);
     // The head fills a good part of the view's height, left of the panel.

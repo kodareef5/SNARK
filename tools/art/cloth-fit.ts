@@ -37,14 +37,19 @@ import { unpackMeshes, type SourceLod, type SourceMesh } from "../pack/write.ts"
 const BODIES = new URL("../../assets/source/core/humans/human-bodies/human-bodies.snpk", import.meta.url);
 const CLIPS = new URL("../../assets/source/core/humans/human-clips/human-clips.snpk", import.meta.url);
 
-/** How far out along its normal a point of skin looks for the piece over it, and in for one it has come through, in metres. */
+/**
+ * How far out along its normal a point of skin looks for the piece over it, and in for one it has come through, in
+ * metres. Inward it looks farther than any skin has come through: a reading at UNDER means at least that far (`capped`).
+ */
 const OVER = 0.05;
-const UNDER = 0.03;
+export const UNDER = 0.15;
 /**
  * Skin and cloth are compared only where they lay this near each other at rest, in metres: a hand on a thigh in a seat is
  * the pose's own contact, not a fit.
  */
 const LOCAL = 0.08;
+/** Skin this far from a point at rest is another side of the body, where a ray from the point leaves it. */
+const APART = 0.015;
 
 /** A pose of the motion set: its name and the solved bones. */
 export interface MotionPose {
@@ -377,6 +382,8 @@ export function auditClothFit(o: FitOptions = {}): PieceFit[] {
       return (p[idx[t * 3]! * 3 + a]! + p[idx[t * 3 + 1]! * 3 + a]! + p[idx[t * 3 + 2]! * 3 + a]!) / 3;
     });
     const bodyCentres = centres(bw.positions, bw.indices);
+    /** The skin as posed now, to know where a ray leaves the body. */
+    let bodyNow!: TriangleGrid;
     const local = (c: Float64Array, t: number, p: ArrayLike<number>, i: number): boolean =>
       (c[t * 3]! - p[i * 3]!) ** 2 + (c[t * 3 + 1]! - p[i * 3 + 1]!) ** 2 + (c[t * 3 + 2]! - p[i * 3 + 2]!) ** 2 < LOCAL * LOCAL;
     const pieceCentres = new Map<string, Float64Array>();
@@ -405,14 +412,22 @@ export function auditClothFit(o: FitOptions = {}): PieceFit[] {
       ray(piece.grid, p, n, OVER, (tri) => local(c, tri, bw.positions, i), rh, true);
       if (rh.tri >= 0) return 0;
       // Only a part of the piece that faces the way the skin does is one it came through.
-      ray(piece.grid, p, n.map((x) => -x), UNDER, (tri) => {
+      const back = n.map((x) => -x);
+      ray(piece.grid, p, back, UNDER, (tri) => {
         if (!local(c, tri, bw.positions, i)) return false;
         const f = faceNormal(piece.positions, idx, tri);
         return f[0]! * n[0]! + f[1]! * n[1]! + f[2]! * n[2]! > 0;
       }, rh);
-      return rh.tri >= 0 ? rh.t : Number.NaN;
+      if (rh.tri < 0) return Number.NaN;
+      // The piece is under the skin only where it is inside the body: a ray that leaves the body first found the piece
+      // past the body's other side.
+      const depth = rh.t;
+      const apart = (tri: number): boolean => (bodyCentres[tri * 3]! - bw.positions[i * 3]!) ** 2 + (bodyCentres[tri * 3 + 1]! - bw.positions[i * 3 + 1]!) ** 2 + (bodyCentres[tri * 3 + 2]! - bw.positions[i * 3 + 2]!) ** 2 > APART * APART;
+      ray(bodyNow, p, back, depth, apart, rh, true);
+      return rh.tri >= 0 ? Number.NaN : depth;
     };
     poseBody();
+    bodyNow = new TriangleGrid(bp, bw.indices, 0.02);
     for (const piece of pieces) {
       const lod = cloth.get(piece.id)!;
       const posed = posedPiece(lod);
@@ -481,7 +496,7 @@ export function auditClothFit(o: FitOptions = {}): PieceFit[] {
     for (const [p, pose] of poses.entries()) {
       writeBones(m, 0, pose.solved, rest, null, 0, 0, 0, 0);
       poseBody();
-      const bodyGrid = new TriangleGrid(bp, bw.indices, 0.02);
+      const bodyGrid = (bodyNow = new TriangleGrid(bp, bw.indices, 0.02));
       for (const piece of pieces) {
         const isDrawn = drawnPoints.get(piece.id)!, mine = clothVertex.get(piece.id)!;
         const drawn = (i: number): boolean => isDrawn[i] === 1;
@@ -539,14 +554,14 @@ export function auditClothFit(o: FitOptions = {}): PieceFit[] {
       const fit = fits.get(piece.id)!;
       fit.over2mm = ever.get(piece.id)!.reduce((s, v) => s + v, 0);
       const t = track.get(piece.id)!;
-      if (process.env.WORST === piece.id) {
+      if (process.env.WORST?.split(",").includes(piece.id)) {
         const list = [...covers.get(piece.id)!].filter((i) => t.depth[i]! > 0.002).sort((a, b) => t.depth[b]! - t.depth[a]!);
         const seen = new Set<string>();
         for (const i of list) {
           const key = `${SKIN_ZONE_NAMES[bzone[i]!]} ${poses[t.pose[i]!]!.name}`;
           if (seen.has(key)) continue;
           seen.add(key);
-          console.log(`worst ${(t.depth[i]! * 1000).toFixed(1)} mm ${key} gap at rest ${(gaps.get(piece.id)![i]! * 1000).toFixed(1)} mm at ${[...bw.positions.subarray(i * 3, i * 3 + 3)].map((x) => x.toFixed(3))} ${t.open[i] ? "open" : "closed"} (${list.filter((j) => bzone[j] === bzone[i]).length} points of the zone)`);
+          console.log(`worst ${piece.id.split("/").slice(-2).join("/")} ${(t.depth[i]! * 1000).toFixed(1)} mm ${key} gap at rest ${(gaps.get(piece.id)![i]! * 1000).toFixed(1)} mm at ${[...bw.positions.subarray(i * 3, i * 3 + 3)].map((x) => x.toFixed(3))} ${t.open[i] ? "open" : "closed"} (${list.filter((j) => bzone[j] === bzone[i]).length} points of the zone)`);
           if (seen.size >= 25) break;
         }
       }

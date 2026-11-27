@@ -9,7 +9,7 @@ import { HAIR_BASE, SKIN_BASE } from "../../shared/pack/palette.ts";
 import { STAGE_FRAMINGS, type StageFraming } from "../../shared/people/stage.ts";
 import { $, esc, palette } from "./dom.ts";
 import { FRAMING_WORDS, hexOf } from "../core/admin/wardrobe.ts";
-import { promoteHref, rebase, retireThing, saveText, saveThing, copyPopulation, stageWear, storeStateOf, wearPieces, type SaveIo, type StoreState } from "../core/admin/people.ts";
+import { Edits, promoteHref, rebase, retireThing, saveDraft, saveText, copyPopulation, stageWear, storeStateOf, wearPieces, type SaveIo, type StoreState } from "../core/admin/people.ts";
 import {
   SHEET_SIZE, SPANS, WEIGHT_LISTS, addOutfit, draftDef, draftOfBuiltIn, draftOfListed, pictureKey, populationFault, populationsHtml, promoteRef, removeOutfit, setLabel,
   setOutfitWeight, setPiece, setRegionSpan, setShare, setSpan, setWeight, sheetCaption, sheetChanges, sheetOf, sheetSeeds, weightsOf, type PopulationDraft, type SheetPerson,
@@ -25,7 +25,7 @@ const KEPT = 240;
 const S = {
   state: null as StoreState | null,
   draft: null as PopulationDraft | null,
-  edited: false,
+  edits: new Edits(),
   busy: false,
   base: 1,
   sheet: [] as SheetPerson[],
@@ -75,7 +75,7 @@ function drawEditor(): void {
   const ro = readOnly(), dis = ro ? " disabled" : "", doc = d.doc;
   $("read-only").hidden = !ro;
   const listed = d.id === null ? undefined : st.populations.find((p) => p.id === d.id);
-  $("editor-title").textContent = ro ? `${doc.label} (built in)` : `Population #${d.id}, revision ${d.rev}${S.edited ? ", edited" : ""}${listed?.retired ? " (retired)" : ""}`;
+  $("editor-title").textContent = ro ? `${doc.label} (built in)` : `Population #${d.id}, revision ${d.rev}${S.edits.unsaved ? ", edited" : ""}${listed?.retired ? " (retired)" : ""}`;
   const label = $<HTMLInputElement>("label");
   label.disabled = ro;
   if (document.activeElement !== label) label.value = doc.label;
@@ -117,19 +117,19 @@ function drawFault(): void {
   const fault = S.draft && S.state ? populationFault(S.draft.doc, S.state) : null;
   $("fault").textContent = fault ?? "";
   $<HTMLButtonElement>("save").hidden = readOnly();
-  $<HTMLButtonElement>("save").disabled = S.busy || !!fault || !S.edited;
+  $<HTMLButtonElement>("save").disabled = S.busy || !!fault || !S.edits.unsaved;
   $<HTMLButtonElement>("retire").disabled = S.busy;
 }
 
 function edited(): void {
-  S.edited = true;
+  S.edits.made++;
   drawEditor();
   sheetSoon(true);
 }
 
 function open(d: PopulationDraft | null): void {
   S.draft = d;
-  S.edited = false;
+  S.edits.open();
   S.previous = [];
   S.sheet = [];
   history.replaceState(null, "", !d ? location.pathname : d.builtIn ? `?built=${encodeURIComponent(d.builtIn)}` : `?id=${d.id}`);
@@ -175,7 +175,7 @@ function drawSheet(): void {
   marking = false;
   S.sheet = people;
   const changes = sheetChanges(S.previous, people), was = S.previous.length > 0;
-  const promotable = promoteRef(d, S.edited) !== null;
+  const promotable = promoteRef(d, S.edits.unsaved) !== null;
   $("sheet").innerHTML = people.map((p, k) => {
     const c = changes[k]!, key = keyOf(p), url = pictures.get(key);
     const marks = was ? `${c.parts.length ? `<span class="chip moved" title="Changed: ${c.parts.join(", ")}">${esc(c.parts.join(", "))}</span>` : ""}${c.wear ? `<span class="chip rewear">clothes</span>` : ""}` : "";
@@ -239,14 +239,9 @@ async function save(): Promise<void> {
   S.busy = true;
   drawFault();
   try {
-    const o = await saveThing(io, "population", d.id, d.rev, d.doc, (attempt, ms) => say(`The store is busy. Trying again in ${ms} ms (try ${attempt + 1}).`, "warn"));
+    const o = await saveDraft(io, "population", d, d.doc, S.edits, (attempt, ms) => say(`The store is busy. Trying again in ${ms} ms (try ${attempt + 1}).`, "warn"));
     if ((o.kind === "saved" || o.kind === "stale") && o.state) S.state = o.state;
-    if (o.kind === "saved") {
-      d.id = o.id;
-      d.rev = o.rev;
-      S.edited = false;
-      S.previous = [];
-    }
+    if (o.kind === "saved") S.previous = [];
     if (o.kind === "stale") rebase(d, S.state, (s) => s.populations);
     say(saveText(o, `population ${d.id}`), o.kind === "saved" ? "well" : o.kind === "stale" ? "warn" : "bad");
     drawList();
@@ -259,7 +254,7 @@ async function save(): Promise<void> {
 }
 
 async function copy(id: string): Promise<void> {
-  if (S.busy || (S.edited && !confirm("Copy another population? Your edits go."))) return;
+  if (S.busy || (S.edits.unsaved && !confirm("Copy another population? Your edits go."))) return;
   S.busy = true;
   try {
     const o = await copyPopulation(io, id, undefined);
@@ -296,7 +291,7 @@ document.addEventListener("click", (ev) => {
   const t = (ev.target as HTMLElement).closest<HTMLButtonElement>("button");
   if (!t || t.disabled || !S.state) return;
   const data = t.dataset, st = S.state, d = S.draft;
-  const leave = (): boolean => !S.edited || confirm("Open another population? Your edits go.");
+  const leave = (): boolean => !S.edits.unsaved || confirm("Open another population? Your edits go.");
   if (data.openBuilt) {
     const p = st.builtIns.find((x) => x.id === data.openBuilt);
     if (p && leave()) open(draftOfBuiltIn(p));
@@ -305,7 +300,7 @@ document.addEventListener("click", (ev) => {
     if (p && leave()) open(draftOfListed(p));
   } else if (data.copy) void copy(data.copy).catch(failed);
   else if (data.promote !== undefined && d) {
-    const p = S.sheet[Number(data.promote)], ref = promoteRef(d, S.edited);
+    const p = S.sheet[Number(data.promote)], ref = promoteRef(d, S.edits.unsaved);
     if (p && ref) location.assign(promoteHref(p.seed, ref.ref, ref.revision));
   } else if (data.pieceOff !== undefined && d) {
     setPiece(d.doc, Number(data.pieceOff), data.piece!, false);
@@ -352,7 +347,7 @@ document.addEventListener("change", (ev) => {
   edited();
 });
 addEventListener("beforeunload", (e) => {
-  if (S.edited) e.preventDefault();
+  if (S.edits.unsaved) e.preventDefault();
 });
 
 $("framing").innerHTML = STAGE_FRAMINGS.map((f) => `<option value="${f}"${f === "full" ? " selected" : ""}>${FRAMING_WORDS[f]}</option>`).join("");

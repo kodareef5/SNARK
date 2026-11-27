@@ -30,12 +30,12 @@ const STALE = 0.25;
 
 /**
  * Puts the guide rows into a hair mesh's skin in place of the upper chest, each vertex's share split between the two
- * guides on either side of it round the head. `rest` is its vertices at rest, (`cx`, `cz`) the head's middle seen from
- * above. False where no vertex follows the upper chest: such hair has no guides.
+ * guides on either side of it round the head, for vertices `from` to `n`. `rest` is its vertices at rest, (`cx`, `cz`) the
+ * head's middle seen from above. False where none of them follows the upper chest: such hair has no guides.
  */
-export function guideSkin(rest: Float32Array, skin: Uint8Array, n: number, cx: number, cz: number): boolean {
+export function guideSkin(rest: Float32Array, skin: Uint8Array, n: number, cx: number, cz: number, from = 0): boolean {
   let any = false;
-  for (let v = 0; v < n; v++) {
+  for (let v = from; v < n; v++) {
     const at = v * SKIN_BYTES;
     for (let j = 0; j < 4; j++) {
       const w = skin[at + 4 + j]!;

@@ -2,7 +2,7 @@
   "repository": "kodareef5/SNARK",
   "art": {
     "release": "art",
-    "id": "6de1ede04d6ca48f",
+    "id": "075c85ee5437e603",
     "files": [
       {"name": "core-creatures-allosaur", "file": "core-creatures-allosaur.5eb2682fdf0a.tar.zst", "bytes": 2833562, "sha256": "5eb2682fdf0abb902fa1807673cf9dc46c3111e728eda23299b3a910d74129e2"},
       {"name": "core-creatures-ankylo", "file": "core-creatures-ankylo.d19e9025be7c.tar.zst", "bytes": 1901178, "sha256": "d19e9025be7ccaeb84f4bf80f6554f9e9a6a2971b062a6666ab9f50e8901146b"},
@@ -54,7 +54,7 @@
       {"name": "core-facades-elements", "file": "core-facades-elements.30d14a75d440.tar.zst", "bytes": 62650318, "sha256": "30d14a75d4407066f86c307495a8319f94b6d8955945e7c1995cef4ce28b7bc0"},
       {"name": "core-facades-marks", "file": "core-facades-marks.82c6ccff0e47.tar.zst", "bytes": 4200746, "sha256": "82c6ccff0e474bb95cb48b1222f707cddfe91ea3cbb31e7ef04a45114b432496"},
       {"name": "core-facades-rooms", "file": "core-facades-rooms.5ae7f3051d60.tar.zst", "bytes": 23895371, "sha256": "5ae7f3051d602a4c997270d49ed9c69954171c661ae3e77f86bbb11cbf041834"},
-      {"name": "core-humans-human-bodies", "file": "core-humans-human-bodies.08ff2e07348b.tar.zst", "bytes": 42682326, "sha256": "08ff2e07348b9754b289701103e5c628258983ae6eda6e54799cdd924c2772bf"},
+      {"name": "core-humans-human-bodies", "file": "core-humans-human-bodies.7e49979cb0b2.tar.zst", "bytes": 42746456, "sha256": "7e49979cb0b2fbbaecaecb72dbb7edc20adca8f48584750467721dc7813f79b9"},
       {"name": "core-humans-human-clips", "file": "core-humans-human-clips.20a98a447d46.tar.zst", "bytes": 23882, "sha256": "20a98a447d463106d83038cd080a71f43e15e0bc49e97c97241904cec6faa3e0"},
       {"name": "core-humans-survivor", "file": "core-humans-survivor.8a07f7a455e2.tar.zst", "bytes": 8378528, "sha256": "8a07f7a455e20ceaecf8f7a6a8c3a739a791148a9a600c0050a0d60f30443b1d"},
       {"name": "core-items-droppings", "file": "core-items-droppings.5805695235e3.tar.zst", "bytes": 80366, "sha256": "5805695235e34ca2d19e41a79502d85bb11aa0471441515dc5ec355c77bd3868"},

@@ -4,9 +4,10 @@
 //
 // The shaft hums where it stands, nearest the ear along its height. The sender's strike is heard as late as its
 // distance makes it. The capsule is heard passing, its jets light, burn and cut, it lands, its louvres open, and a
-// chime sounds for each step of its tier: the count a collar and a pulse say, said once more.
+// chime sounds for each step of its tier: the same count the collars show.
 
-import { POSE_BRAKING, POSE_FLYING, POSE_LANDED, POSE_LEAVING, SHUTTERS_AFTER, SHUTTERS_TAKE, newPose, supplyPose, type SupplyList } from "../../../shared/sim/supply.ts";
+import { POSE_BRAKING, POSE_FLYING, POSE_LANDED, POSE_LEAVING, SHAFT_HEIGHT, SHUTTERS_AFTER, SHUTTERS_TAKE, newPose, supplyPose, type SupplyList } from "../../../shared/sim/supply.ts";
+import capsule from "../../../shared/world/supply-capsule.json" with { type: "json" };
 import { cueKey } from "../../../shared/sound/cues.ts";
 import type { Hear } from "./bodies.ts";
 
@@ -84,8 +85,9 @@ export class SupplySounds {
       if (was.state !== POSE_LEAVING && was.state <= POSE_LANDED && pose.state === POSE_LEAVING) hear(owner, K.gone, -1, row.x, row.y + 1, row.z, 0, 1, false);
       was.state = pose.state;
       was.opened = row.opened;
-      // The shaft hums nearest the ear along its height; the jets burn where the capsule is.
-      loop(SUPPLY_LOOPS + row.id * 2, K.shaft, row.x, Math.max(row.y + 1, Math.min(row.y + 400, ey)), row.z, 0.9 * pose.shaft, pose.shaft > 0.1);
+      const mast = row.y + capsule.mast.lamp;
+      const hum = Math.max(mast, Math.min(mast + SHAFT_HEIGHT * pose.shaftHeight, ey));
+      loop(SUPPLY_LOOPS + row.id * 2, K.shaft, row.x, hum, row.z, 0.9 * pose.shaft, pose.shaft > 0.1);
       loop(SUPPLY_LOOPS + row.id * 2 + 1, K.jet, pose.x, pose.y, pose.z, pose.thrust, pose.thrust > 0.03);
     }
   }

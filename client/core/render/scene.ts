@@ -855,6 +855,7 @@ export class Scene {
   private begin(cam: Camera, remote: RemoteSample | null, focus: readonly number[] | undefined, loadTime: number): Frame {
     const p = this.packet;
     p.beginFrame();
+    this.supplyDrops.beacons.begin();
     this.put.begin();
     this.hiding.on = false;
     this.nearStore.begin();
@@ -1078,10 +1079,13 @@ export class Scene {
     this.dust.build(cam, this.now);
     this.blasts.viewHeight = this.viewHeight;
     this.blasts.cards(cam, this.now, this.own?.firstPerson);
-    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count + wreckFires.count + this.dust.count + this.blasts.count + (orbCards?.count ?? 0) + (fields?.count ?? 0));
+    const beacons = this.supplyDrops.beacons;
+    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, beacons.count + tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count + wreckFires.count + this.dust.count + this.blasts.count + (orbCards?.count ?? 0) + (fields?.count ?? 0));
     const particles = p.detailCount;
     // An orb's halo first of the cards, so what is nearer is drawn over it.
     orbCards?.write(p);
+    const shafts = p.detailCount;
+    beacons.write(p);
     const blurs = p.detailCount;
     rotorBlur.write(p);
     const lamps = p.detailCount;
@@ -1114,7 +1118,8 @@ export class Scene {
     const far = seen < p.detailCount ? cam.passesOf(this.cloudRange[0]!, this.cloudRange[1]!) : NEAR;
     this.put.drawDetails(0, cut, DRAW_CUTOUT, NEAR);
     this.put.drawDetails(cut, particles - cut, DRAW_BLEND, NEAR);
-    if (orbCards) this.put.drawDetails(particles, blurs - particles, DRAW_BLEND, orbCards.passes(cam));
+    if (orbCards) this.put.drawDetails(particles, shafts - particles, DRAW_BLEND, orbCards.passes(cam));
+    if (beacons.count) this.put.drawDetails(shafts, blurs - shafts, DRAW_BLEND, beacons.passes(cam));
     this.put.drawDetails(blurs, lamps - blurs, DRAW_BLEND, rotorBlur.passes(cam));
     this.put.drawDetails(lamps, plumes - lamps, DRAW_BLEND, patrolLights.passes(cam));
     this.put.drawDetails(plumes, wires - plumes, DRAW_BLEND, thrusterPlumes.passes(cam));

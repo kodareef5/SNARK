@@ -65,6 +65,8 @@ function bootError(message: string): void {
   root.textContent = message;
 }
 if (selfcheck || bench || device || params.has("look") || params.has("trip")) splash.hidden = true;
+/** The longest the first frame waits for the warm draws (gl.ts prewarm); what is left is drawn a frame at a time. */
+const WARM_MOST_MS = 30000;
 /** The GPU's times of a frame where nothing times it. */
 const UNTIMED: readonly number[][] = [];
 /** A survivor arriving from another server of the cluster, with its ticket (client/core/travel.ts). */
@@ -239,10 +241,16 @@ async function boot(): Promise<void> {
   app.dpr = devicePixelRatio;
   app.tierReady = (tier) => renderer.ready(tier);
   app.address((name) => params.get(name), measured, orders);
+  // Each program is drawn once under the states play draws it in while the world loads; ?nowarm measures play without.
+  renderer.warmOn = !params.has("nowarm");
+  // Asking for an error waits for the card's process to have done every command before it (WebGL's finish does not).
+  const firsts = params.has("firsts") ? renderer.noteFirsts(() => renderer.gl.getError()) : null;
+  const warm = renderer.prewarm(app.firstTier());
   // The people bench's crowd (tools/bench/people.ts) comes only to a bench page that asks for one.
   const crowd = bench ? (await import("../core/people-crowd.ts")) : null;
   const asked = crowd?.crowdAsked((name) => params.get(name));
-  const people = crowd && asked ? new crowd.Crowd(session, hf, reg, asked.scene, asked.looks) : null;
+  const people = crowd && asked ? new crowd.Crowd(session, hf, reg, asked.scene, asked.looks, asked.arrival) : null;
+  if (people && bench) people.clock = () => bench.clock(performance.now());
   let crowdPrinted = false;
   // A trip's page is a tool's too: nobody is at it to unmute, and its pictures are of the world.
   if (params.has("trip")) app.ui.settings.muted = false;
@@ -323,6 +331,9 @@ async function boot(): Promise<void> {
   let savedTemplates = -1;
   // Where each frame was, for the debug bar's chart of it (App.shellMarks).
   const marks = app.shellMarks;
+  // When the first frame began and ended, which a bench reads beside the warm draws (tools/bench/people-arrive.ts).
+  let firstFrame: number[] | null = null;
+  if (bench) Object.assign(globalThis, { snarkWarm: () => ({ firstFrame, warmedAt: renderer.warmedAt, warmDraws: renderer.warmDraws, errors: renderer.errors, firsts }) });
   const frame = (now: number): void => {
     if(launch && (session.state==="closed" || createFailed)){showEntryProblem();return;}
     if(launch && session.state==="active" && session.sessionState!==SESSION_CREATING){
@@ -379,6 +390,7 @@ async function boot(): Promise<void> {
     }
     if (packet.lit) surfaces?.start();
     renderer.draw(packet);
+    firstFrame ??= [t0, performance.now()];
     if (now >= nextCityLoad) {
       nextCityLoad = Infinity;
       void import("../core/render/city-late.ts").catch(() => { nextCityLoad = performance.now() + 5000; });
@@ -434,6 +446,8 @@ async function boot(): Promise<void> {
   showStage(3);
   await loader.follow(() => session.mapFocus, { say: (line) => app.ui.console.print(line), arriving: () => session.staticsSteps(), want: () => pageWant(app), held: () => session.behind });
   showStage(4);
+  // The first frame waits for the warm draws, so the driver's first draws with each program come before play.
+  await Promise.race([warm, new Promise((go) => setTimeout(go, WARM_MOST_MS))]);
   // The interface takes the page's line from here.
   const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button, finger) => app.pointer(kind, key, x, y, button, finger), typing: () => app.ui.typing });
   requestAnimationFrame(frame);

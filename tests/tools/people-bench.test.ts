@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { CROWD_LOOKS, CROWD_SCENES, CROWD_SHAPES, CROWD_SPACING, CROWD_VIEWER, CROWD_WEDGE, Crowd, DRESSES, OUTFITS, crowdAsked, crowdGear, crowdLooks, crowdSpots, crowdView, crowdWardrobes, distinctLooks } from "../../client/core/people-crowd.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
-import { LOOK_BYTES, LOOK_SEX, validLook } from "../../shared/anim/look.ts";
+import { HAIR_STYLES, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, validLook } from "../../shared/anim/look.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN, WORN_FIELDS, WORN_LENGTH } from "../../shared/sim/entities.ts";
 import { WARDROBE_NAMES, WARDROBE_SLOTS } from "../../shared/sim/items.ts";
@@ -82,10 +82,11 @@ describe("the crowd", () => {
     expect(mixed.size).toBeGreaterThan(5);
   });
 
-  test("the address asks for a crowd only by its scene and looks", () => {
+  test("the address asks for a crowd by its scene and looks, and a close one by when it comes", () => {
     const get = (q: Record<string, string>) => (name: string) => q[name] ?? null;
-    expect(crowdAsked(get({ people: "far", looks: "gear" }))).toEqual({ scene: "far", looks: "gear" });
-    expect(crowdAsked(get({ people: "near" }))).toEqual({ scene: "near", looks: "shared" });
+    expect(crowdAsked(get({ people: "far", looks: "gear" }))).toEqual({ scene: "far", looks: "gear", arrival: null });
+    expect(crowdAsked(get({ people: "near" }))).toEqual({ scene: "near", looks: "shared", arrival: null });
+    expect(crowdAsked(get({ people: "near", looks: "unique", close: "8", arrive: "1500" }))).toEqual({ scene: "near", looks: "unique", arrival: { close: 8, arrive: 1500 } });
     expect(crowdAsked(get({ people: "all" }))).toBeNull();
     expect(crowdAsked(get({}))).toBeNull();
   });
@@ -103,6 +104,24 @@ describe("the crowd", () => {
     expect([...out.gear.subarray(at * GEAR_COUNT, (at + 1) * GEAR_COUNT)]).toEqual([...crowd.gear.subarray(k * GEAR_COUNT, (k + 1) * GEAR_COUNT)]);
     session.sampleRemote(out);
     expect(out.count).toBe(43);
+  });
+
+  test("a close crowd stands far off in long hair until it arrives, then 2.5 to 6 m ahead", () => {
+    const session = { sampleRemote: (out: RemoteSample) => void (out.count = 0) };
+    const crowd = new Crowd(session, buildProvingHeightfield(), reg, "near", "unique", { close: 8, arrive: 1500 });
+    let now = -1;
+    crowd.clock = () => now;
+    const out = new RemoteSample(), far = (k: number): number => Math.hypot(out.x[k]! - CROWD_VIEWER.x, out.z[k]! - CROWD_VIEWER.z);
+    session.sampleRemote(out);
+    expect(out.count).toBe(8);
+    for (let k = 0; k < 8; k++) expect(far(k)).toBeGreaterThan(290);
+    now = 1500;
+    session.sampleRemote(out);
+    for (let k = 0; k < 8; k++) {
+      expect(far(k)).toBeGreaterThanOrEqual(2.5);
+      expect(far(k)).toBeLessThanOrEqual(6);
+      expect(HAIR_STYLES[out.look[k * LOOK_BYTES + LOOK_HAIR]!]!.id).toBe(k % 2 === 0 ? "long" : "tied");
+    }
   });
 });
 

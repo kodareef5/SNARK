@@ -143,74 +143,139 @@ export function encodeFaces(table: FaceTable): Uint8Array {
 }
 
 export function decodeFaces(bytes: Uint8Array): FaceTable {
-  if (bytes.length < 12 || MAGIC.some((b, i) => bytes[i] !== b)) throw new Error("not a face table");
-  if (bytes[4] !== FACES_VERSION) throw new Error(`face table version ${bytes[4]}, not ${FACES_VERSION}`);
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const count = bytes[5]!;
-  const flags = bytes[6]!;
-  if ((flags & ~FLAG_ROWS) !== 0 || bytes[7] !== 0) throw new Error("a face table has flags this client does not know");
-  const vertexCount = view.getUint32(8, true);
-  let at = 12;
-  const need = (n: number): void => {
-    if (at + n > bytes.length) throw new Error("the face table is cut short");
-  };
-  const indices = (n: number): Uint32Array => {
-    const vertices = new Uint32Array(n);
-    let last = -1;
-    for (let i = 0; i < n; i++) {
-      let gap = 0;
-      let scale = 1;
-      for (;;) {
-        need(1);
-        const b = bytes[at++]!;
-        gap += (b & 127) * scale;
-        if (b < 128) break;
-        scale *= 128;
-      }
-      last += gap + 1;
-      if (last >= vertexCount) throw new Error(`a face side names vertex ${last} of ${vertexCount}`);
-      vertices[i] = last;
-    }
-    return vertices;
-  };
-  const floats = (n: number): Float32Array => {
-    need(n * 4);
-    const out = new Float32Array(n);
-    for (let i = 0; i < n; i++) out[i] = view.getFloat32(at + i * 4, true);
-    at += n * 4;
-    return out;
-  };
-  const side = (): FaceSide => {
-    need(8);
-    const step = view.getFloat32(at, true);
-    const n = view.getUint32(at + 4, true);
-    at += 8;
-    const vertices = indices(n);
-    need(n * 3);
-    const deltas = new Float32Array(n * 3);
-    for (let i = 0; i < n * 3; i++) deltas[i] = view.getInt8(at + i) * step;
-    at += n * 3;
-    return { vertices, deltas };
-  };
-  const modifiers: FaceModifierDeltas[] = [];
-  for (let m = 0; m < count; m++) modifiers.push({ minus: side(), plus: side() });
-  if ((flags & FLAG_ROWS) === 0) {
-    if (at !== bytes.length) throw new Error("the face table runs on past its modifiers");
-    return { vertexCount, modifiers };
+  const r = new FaceReader(bytes);
+  for (;;) {
+    const t = r.step(Infinity);
+    if (t) return t;
   }
-  need(4);
-  const n = view.getUint32(at, true);
-  at += 4;
-  const vertices = indices(n);
-  need(n * 2);
-  const row = bytes.slice(at, at + n);
-  if (row.some((r) => r >= FACE_ROWS)) throw new Error("a face row is past the rows a body takes");
-  const share = Float32Array.from(bytes.subarray(at + n, at + n * 2), (b) => b / 255);
-  at += n * 2;
-  const pivots = floats(FACE_PIVOTS * 3);
-  const pivotMoves = floats(count * 2 * FACE_PIVOTS * 3);
-  if (at !== bytes.length) throw new Error("the face table runs on past its pivots");
-  return { vertexCount, modifiers, rows: { vertices, row, share }, pivots, pivotMoves };
+}
+
+/**
+ * Reads a face table (encodeFaces) a share at a time: each `step` reads at most so many entries of its sides and
+ * returns the table once it is whole, so a client spreads the work over frames. A table read all at once is decodeFaces.
+ */
+export class FaceReader {
+  private readonly bytes: Uint8Array;
+  private readonly view: DataView;
+  private readonly count: number;
+  private readonly flags: number;
+  readonly vertexCount: number;
+  private at = 12;
+  private readonly modifiers: FaceModifierDeltas[] = [];
+  private minus: FaceSide | null = null;
+  /** The side being read: its entries, its step, and how many of its vertices and deltas are read. */
+  private vertices: Uint32Array | null = null;
+  private deltas: Float32Array | null = null;
+  private sideStep = 0;
+  private read = 0;
+  private last = -1;
+  private gapsAt = 0;
+
+  constructor(bytes: Uint8Array) {
+    if (bytes.length < 12 || MAGIC.some((b, i) => bytes[i] !== b)) throw new Error("not a face table");
+    if (bytes[4] !== FACES_VERSION) throw new Error(`face table version ${bytes[4]}, not ${FACES_VERSION}`);
+    this.bytes = bytes;
+    this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    this.count = bytes[5]!;
+    this.flags = bytes[6]!;
+    if ((this.flags & ~FLAG_ROWS) !== 0 || bytes[7] !== 0) throw new Error("a face table has flags this client does not know");
+    this.vertexCount = this.view.getUint32(8, true);
+  }
+
+  private need(n: number): void {
+    if (this.at + n > this.bytes.length) throw new Error("the face table is cut short");
+  }
+
+  /** The next gap-coded vertex past `last`. */
+  private vertex(): number {
+    let gap = 0, scale = 1;
+    for (;;) {
+      this.need(1);
+      const b = this.bytes[this.at++]!;
+      gap += (b & 127) * scale;
+      if (b < 128) break;
+      scale *= 128;
+    }
+    this.last += gap + 1;
+    if (this.last >= this.vertexCount) throw new Error(`a face side names vertex ${this.last} of ${this.vertexCount}`);
+    return this.last;
+  }
+
+  /** Reads at most `most` entries more; the table once all of it is read, else null. */
+  step(most: number): FaceTable | null {
+    let left = most;
+    while (this.modifiers.length < this.count) {
+      if (left <= 0) return null;
+      if (!this.vertices) {
+        // A side's head: its step and count, then its vertices, then three signed bytes each.
+        this.need(8);
+        this.sideStep = this.view.getFloat32(this.at, true);
+        const n = this.view.getUint32(this.at + 4, true);
+        this.at += 8;
+        this.vertices = new Uint32Array(n);
+        this.deltas = new Float32Array(n * 3);
+        this.read = 0;
+        this.last = -1;
+        this.gapsAt = -1;
+      }
+      const vertices = this.vertices, deltas = this.deltas!, n = vertices.length;
+      if (this.gapsAt < 0) {
+        const to = Math.min(n, this.read + left);
+        for (let i = this.read; i < to; i++) vertices[i] = this.vertex();
+        left -= to - this.read;
+        this.read = to;
+        if (to < n) return null;
+        this.need(n * 3);
+        this.gapsAt = this.at;
+        this.read = 0;
+        this.at += n * 3;
+      }
+      const to = Math.min(n, this.read + left), view = this.view, step = this.sideStep;
+      for (let i = this.read * 3; i < to * 3; i++) deltas[i] = view.getInt8(this.gapsAt + i) * step;
+      left -= to - this.read;
+      this.read = to;
+      if (to < n) return null;
+      const side = { vertices, deltas };
+      this.vertices = this.deltas = null;
+      if (!this.minus) this.minus = side;
+      else {
+        this.modifiers.push({ minus: this.minus, plus: side });
+        this.minus = null;
+      }
+    }
+    return this.rest();
+  }
+
+  /** The rows and pivots after the sides, read whole. */
+  private rest(): FaceTable {
+    const { bytes, view, count, vertexCount, modifiers } = this;
+    if ((this.flags & FLAG_ROWS) === 0) {
+      if (this.at !== bytes.length) throw new Error("the face table runs on past its modifiers");
+      return { vertexCount, modifiers };
+    }
+    this.need(4);
+    const n = view.getUint32(this.at, true);
+    this.at += 4;
+    this.last = -1;
+    const vertices = new Uint32Array(n);
+    for (let i = 0; i < n; i++) vertices[i] = this.vertex();
+    this.need(n * 2);
+    const row = bytes.slice(this.at, this.at + n);
+    if (row.some((r) => r >= FACE_ROWS)) throw new Error("a face row is past the rows a body takes");
+    const share = Float32Array.from(bytes.subarray(this.at + n, this.at + n * 2), (b) => b / 255);
+    this.at += n * 2;
+    const floats = (k: number): Float32Array => {
+      this.need(k * 4);
+      const out = new Float32Array(k);
+      for (let i = 0; i < k; i++) out[i] = view.getFloat32(this.at + i * 4, true);
+      this.at += k * 4;
+      return out;
+    };
+    const pivots = floats(FACE_PIVOTS * 3);
+    const pivotMoves = floats(count * 2 * FACE_PIVOTS * 3);
+    if (this.at !== bytes.length) throw new Error("the face table runs on past its pivots");
+    return { vertexCount, modifiers, rows: { vertices, row, share }, pivots, pivotMoves };
+  }
 }
 
 /** The face bytes of a look as modifier values in -1..1, as look.ts reads them. */
@@ -225,20 +290,36 @@ export function faceValues(look: Uint8Array, out: Float32Array = new Float32Arra
 /** Writes `base` (x, y, z a vertex) plus each modifier's side at its value's size to `out`, which may be `base`. */
 export function blendFace(table: FaceTable, values: ArrayLike<number>, base: ArrayLike<number>, out: Float32Array): Float32Array {
   if (out !== base) for (let i = 0; i < table.vertexCount * 3; i++) out[i] = base[i]!;
-  for (let m = 0; m < table.modifiers.length; m++) {
+  blendSome(table, values, out, Int32Array.of(0, 0), Infinity);
+  return out;
+}
+
+/**
+ * Adds to `out` at most `most` entries more of `blendFace`'s sides, from where `at` says (a modifier, an entry of its
+ * side), and moves `at` on. True once every side is added. Spread over calls, the sum is blendFace's to the bit.
+ */
+export function blendSome(table: FaceTable, values: ArrayLike<number>, out: Float32Array, at: Int32Array, most: number): boolean {
+  let left = most;
+  for (let m = at[0]!; m < table.modifiers.length; m++, at[1] = 0) {
+    at[0] = m;
     const v = values[m] ?? 0;
     if (v === 0) continue;
     const side = v > 0 ? table.modifiers[m]!.plus : table.modifiers[m]!.minus;
     const w = v > 0 ? v : -v;
     const { vertices, deltas } = side;
-    for (let i = 0; i < vertices.length; i++) {
-      const at = vertices[i]! * 3;
-      out[at] += w * deltas[i * 3]!;
-      out[at + 1] += w * deltas[i * 3 + 1]!;
-      out[at + 2] += w * deltas[i * 3 + 2]!;
+    const to = Math.min(vertices.length, at[1]! + left);
+    for (let i = at[1]!; i < to; i++) {
+      const p = vertices[i]! * 3;
+      out[p] += w * deltas[i * 3]!;
+      out[p + 1] += w * deltas[i * 3 + 1]!;
+      out[p + 2] += w * deltas[i * 3 + 2]!;
     }
+    left -= to - at[1]!;
+    at[1] = to;
+    if (to < vertices.length) return false;
   }
-  return out;
+  at[0] = table.modifiers.length;
+  return true;
 }
 
 /**
@@ -354,13 +435,14 @@ export function axisDistanceAt(bound: HeadBound, x: number, y: number, z: number
 /**
  * Holds each listed vertex of `face` (x, y, z a vertex, the head's rest) inside the bound, its head stretched by `grow`:
  * one farther from the capsule's axis than it may be (allowed, from where `neutral` puts it) is drawn in toward the axis
- * until it is not. `only` lists the vertices to hold, increasing. Returns how many it moved.
+ * until it is not. `only` lists the vertices to hold, increasing; those from `from` to `to` of it are. Returns how many it
+ * moved.
  */
-export function clampFace(bound: HeadBound, grow: ArrayLike<number>, neutral: ArrayLike<number>, face: Float32Array, only: ArrayLike<number>): number {
+export function clampFace(bound: HeadBound, grow: ArrayLike<number>, neutral: ArrayLike<number>, face: Float32Array, only: ArrayLike<number>, from = 0, to = only.length): number {
   let moved = 0;
   const ax = bound.a[0]!, ay = bound.a[1]!, az = bound.a[2]!;
   const sx = bound.b[0]! - ax, sy = bound.b[1]! - ay, sz = bound.b[2]! - az;
-  for (let i = 0; i < only.length; i++) {
+  for (let i = from; i < to; i++) {
     const v = only[i]! * 3;
     const qx = bound.drawn[0]! + grow[0]! * (face[v]! - bound.rig[0]!);
     const qy = bound.drawn[1]! + grow[1]! * (face[v + 1]! - bound.rig[1]!);
