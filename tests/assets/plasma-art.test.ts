@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
+import { PLASMA } from "../../content/items/plasma.ts";
 import { B_PROP_R, HUMAN } from "../../shared/anim/human.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { findAssets } from "../../tools/art/assets.ts";
@@ -25,6 +26,28 @@ test("each plasma gun is held on the right prop bone, muzzle forward of its grip
     expect(header.center[2]).toBeGreaterThan(0);
     expect(header.half[2]).toBeGreaterThan(header.half[1]);
     expect(meshes.some((m) => m.id === `${id}/dropped`)).toBe(true);
+  }
+});
+
+test("the plasma muzzle sockets sit inside the front rim of each cooked gun", () => {
+  for (const id of GUNS) {
+    const gun = PLASMA.find(d => d.id === id);
+    if (gun?.type !== "item" || !gun.weapon?.muzzle) throw Error("missing muzzle " + id);
+    const [x, y, z] = gun.weapon.muzzle;
+    const pos = meshes.find(m => m.id === id)!.lods[0]!.positions;
+    let front = -Infinity, left = Infinity, right = -Infinity, low = Infinity, high = -Infinity;
+    for (let i = 0; i < pos.length; i += 3) {
+      front = Math.max(front, pos[i + 2]!);
+      if (Math.abs(pos[i + 2]! - z) > .006) continue;
+      left = Math.min(left, pos[i]!); right = Math.max(right, pos[i]!);
+      low = Math.min(low, pos[i + 1]!); high = Math.max(high, pos[i + 1]!);
+    }
+    // The rifle's top rail overhangs its sleeve.
+    expect(Math.abs(front - z)).toBeLessThan(.025);
+    expect(x).toBeGreaterThan(left);
+    expect(x).toBeLessThan(right);
+    expect(y).toBeGreaterThan(low);
+    expect(y).toBeLessThan(high);
   }
 });
 
