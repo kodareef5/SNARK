@@ -2020,7 +2020,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   creatures.mind.decide = decide;
   const nav = addNav(decide, world, creatures.mind, game.players.blocking);
   // Objectives pick by `nav.pick` (server/decide/nav-pick.ts), and a leg `nav.reach` doubts is given up early.
-  addPick(decide, world, creatures.mind, courses, (team) => pins.of(team));
+  addPick(decide, world, creatures.mind, courses, (team) => pins.of(team), lane);
   nav.rings.pullOf = (e, x, z, out) => void (world.ents.team[e] !== 0 && pullToward(pins.of(world.ents.team[e]!), x, z, out));
   const reacher = creatures.mind.reacher;
   if (reacher instanceof Reach) {

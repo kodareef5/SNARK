@@ -41,6 +41,8 @@ export interface Picker {
   on(): boolean;
   acts(): boolean;
   ask(e: number): void;
+  /** Its own work for the tick, after the movers are stepped. */
+  step?(tick: number): void;
 }
 
 /** Whoever set a course hears of it here. `at` is the point of the course, or the choice of the objective. */
@@ -256,7 +258,8 @@ export class Courses {
       let n = 0;
       for (const m of this.list) if (m.live) this.list[n++] = m;
       this.list.length = n;
-    }
+    }    // Pricing for a pick asked in this step is done in it, so the question is answered this tick.
+    this.pick?.step?.(tick);
   }
 
   private add(e: number, owner: CourseOwner, pace: number): Mover {
