@@ -108,8 +108,8 @@ export function backupsToRemove(files: readonly BackupFile[], made: string, keep
 }
 
 /** Which backups to give up, in order, for room on a disk that has none: any but the newest KEEP_NEWEST. */
-export function backupsForRoom(files: readonly BackupFile[], keep: BackupKeep): string[] {
-  return givenUp(files, "", keep).filter((f) => f.hold !== NEWEST).map((f) => f.name);
+export function backupsForRoom(files: readonly BackupFile[]): string[] {
+  return files.map((f) => f.name).filter((name) => NAME.test(name)).sort().slice(0, -KEEP_NEWEST);
 }
 
 /**
@@ -204,7 +204,7 @@ export function takeBackup(db: Database, dbPath: string, at: Date, keep: BackupK
     mkdirSync(folder, { recursive: true });
     const size = statSync(dbPath).size;
     if (free(folder) < size * 2) {
-      for (const name of backupsForRoom(filesIn(folder), keep)) {
+      for (const name of backupsForRoom(filesIn(folder))) {
         if (removed === REMOVE_MOST) break;
         remove([name]);
         if (free(folder) >= size * 2) break;

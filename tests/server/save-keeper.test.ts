@@ -127,11 +127,11 @@ test("the worlds of a machine take different shares of the backup period", () =>
   }
 });
 
-/** Backup folders made by hand, an hour apart ending two days ago, each holding `bytes`. */
+/** Backup folders made by hand, an hour apart across midnight, each holding `bytes`. */
 function oldBackups(db: string, count: number, bytes = 64): string[] {
   const names: string[] = [];
   for (let k = count; k >= 1; k--) {
-    const name = backupName(new Date(Date.now() - 2 * 86_400_000 - k * 3_600_000), k);
+    const name = backupName(new Date(Date.UTC(2000, 0, 2, 13 - k)), k);
     mkdirSync(join(backupsFolder(db), name), { recursive: true });
     writeFileSync(join(backupsFolder(db), name, "world.db"), new Uint8Array(bytes));
     names.push(name);
@@ -142,7 +142,7 @@ function oldBackups(db: string, count: number, bytes = 64): string[] {
 test("a disk short of room gives up its oldest backups for a new one, down to the newest dozen, and the clean-up runs all the same", () => {
   const { db, h, p } = world("room");
   const names = oldBackups(db, 20);
-  expect(backupsForRoom(names.map((name) => ({ name, bytes: 64 })), KEEP)).toEqual(names.slice(0, 8));
+  expect(backupsForRoom(names.map((name) => ({ name, bytes: 64 })))).toEqual(names.slice(0, 8));
   // Room comes once three are gone.
   const roomy = takeBackup(p.store.db, db, new Date(), extended, { free: () => (listBackups(db).length <= 17 ? 1e12 : 0) });
   expect([roomy.why, roomy.removed, roomy.kept]).toEqual(["", 3, 18]);

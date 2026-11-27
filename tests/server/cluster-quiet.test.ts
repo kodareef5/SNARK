@@ -143,9 +143,11 @@ test("a ticket whose file has gone from the folder, or cannot be read, is settle
   expect(files.length).toBe(2);
   const fileOf = (name: string): string => join(folder.root, "parcels", files.find((p) => openParcel(folder.read(p)!).head.name === name)!.file);
   // Ada's file is taken out by hand. Bo's is cut short, and is read when its ticket ends.
-  rmSync(fileOf("ada"));
-  const whole = readFileSync(fileOf("bo"));
-  writeFileSync(fileOf("bo"), whole.subarray(0, whole.length - 9));
+  const adaFile = fileOf("ada");
+  const boFile = fileOf("bo");
+  rmSync(adaFile);
+  const whole = readFileSync(boFile);
+  writeFileSync(boFile, whole.subarray(0, whole.length - 9));
   expect(looks(a, () => beat(a))).toEqual({ listed: 1, read: 0 });
   clock.ms += TICKET_SECONDS * 1000 + 1000;
   expect(looks(a, () => beat(a))).toEqual({ listed: 0, read: 1 });
