@@ -1,4 +1,4 @@
-![An armoured survivor rides a pteranodon over Miami at sunrise while the red obelisk fires its beam](docs/media/hero.webp)
+![A rider flies over Biscayne Bay at twilight beneath the blue Tide Eye, with the live desktop HUD visible](docs/media/hero.webp)
 
 # SNARK · Miami Devolved
 
@@ -13,39 +13,18 @@ ARK-style dinosaur survival and GTA-style vehicles in a persistent multiplayer b
 
 **Run locally** `bun install --frozen-lockfile && bun run dev` → `localhost:8787`
 
-## The cities
-
-<a href="docs/media/map-size.webp"><img src="docs/media/map-size.webp" width="100%" alt="Miami seen from the air, with a scale comparison for the 266 km² SNARK map"></a>
-
-<a href="docs/media/tide-chase.webp"><img src="docs/media/tide-chase.webp" width="100%" alt="A Rex chases two armoured survivors across Virginia Key beneath the Tide Eye"></a>
-
-<a href="docs/media/zephyr.mp4"><img src="docs/media/zephyr.webp" width="100%" alt="An ice-blue Zephyr rolls over a semi cab beside a mounted Rex in Los Angeles"></a>
-
-[Watch the four-second Zephyr kickflip (MP4)](docs/media/zephyr.mp4)
-
-## Wiki and server tools
-
-Run `bun run wiki` to build the creature dossiers, item index and city maps from the game data.
-
-<a href="docs/media/wiki.webp"><img src="docs/media/wiki.webp" width="100%" alt="The wiki’s Rex dossier, item index and home page beside three riders flying past the Lantern at daybreak"></a>
-
-The cluster admin at `/admin` includes the map replay, supply drop settings and Vegas ball controls.
-
-<a href="docs/media/admin-views.webp"><img src="docs/media/admin-views.webp" width="100%" alt="The admin map and replay, supply drop tiers and Vegas ball monitors overlooking the Tide Eye"></a>
-
-## Gallery
-
-<p align="center">
-  <img src="docs/media/roster.webp" width="32%" alt="The ten creatures on South Beach with a survivor for scale">
-  <img src="docs/media/rex.webp" width="32%" alt="A survivor rides a Tyrannosaurus through Bayfront Park">
-  <img src="docs/media/herd.webp" width="32%" alt="Triceratops, Stegosaurus and Parasaurolophus on a Wynwood street">
-  <img src="docs/media/boats.webp" width="32%" alt="Eleven boats on the bay off downtown">
-  <img src="docs/media/cruise.webp" width="32%" alt="The cruise ship at the port">
-  <img src="docs/media/koru.webp" width="32%" alt="The sailing yacht moored off downtown">
-  <img src="docs/media/obelisk.webp" width="32%" alt="The blue obelisk at dusk">
-  <img src="docs/media/sunset.webp" width="32%" alt="The pteranodon and the red obelisk at sunset">
-</p>
-
-The gallery shows frames from the game's own renderer.
-
 [Map pipeline](tools/maps/README.md) · [Art & downloads](distribution/README.md) · [Agent setup](agent/README.md#run-it) · [Benchmarks](planning/quality/performance.md) · [Code license](LICENSE)
+
+[![The wiki’s Rex dossier, item index and home page with three mounted flyers at daybreak](docs/media/wiki.webp)](docs/media/wiki.webp)
+
+[![The cluster admin’s map replay, supply drops and Vegas ball screens](docs/media/admin-views.webp)](docs/media/admin-views.webp)
+
+[![Play the four-second clip of a Zephyr kickflipping over a semi beside a ridden Rex](docs/media/zephyr.webp)](docs/media/zephyr.mp4 "Play the four-second Zephyr kickflip")
+
+[![Six mobile gameplay screens surrounding the SNARK emblem on the Miami waterfront](docs/media/mobile.webp)](docs/media/mobile.webp)
+
+[![A Wraith banks over the Vegas ball as its screen changes from lava to ocean at sunset](docs/media/vegas-jet.webp)](docs/media/vegas-jet.webp)
+
+[![At the Lookout, a plasma bolt leaves a survivor’s rifle as a damage number hangs over a red-lit raptor](docs/media/lookout.webp)](docs/media/lookout.webp)
+
+[![One SNARK city compared with Miami, GTA V, GTA VI and The Island at the same scale](docs/media/map-size.webp)](docs/media/map-size.webp)
