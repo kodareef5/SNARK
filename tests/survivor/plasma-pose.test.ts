@@ -41,7 +41,7 @@ function cast(firstPerson: boolean, yaw: number, pitch: number, gun: string, hol
     rem.gear[i * GEAR_COUNT + GEAR_HELD] = gear[GEAR_HELD]!;
   }
   const packet = scene.build(cam, rem);
-  return { ch: scene.characters, packet };
+  return { ch: scene.characters, packet, scene, cam, rem };
 }
 
 for (const [gun, ammo, hold] of guns) {
@@ -88,4 +88,19 @@ test("a passing player's plasma round selects the correct nearby gun and body", 
   expect(ch.plasmaBore(100, 1.62, 100, item("plasma_charge"), false, tip, dir)).toBe(false);
   expect(ch.heldNear(100, 1.62, 100, HELD_MUZZLE, tip, item("rocket"))).toBe(false);
   expect(ch.plasmaBore(114, 1.62, 100, item("plasma_cell"), false, tip, dir)).toBe(false);
+});
+
+test("a delayed shot follows its named moving shooter past another rifle", () => {
+  const { ch, scene, cam, rem } = cast(false, 0, 0, guns[0][0], HOLD_RIFLE);
+  const oldX = rem.x[1]!, oldZ = rem.z[1]!, ammo = item("plasma_cell");
+  rem.x[1]! += 3;
+  rem.tick += 6;
+  scene.build(cam, rem);
+  const tip = [0, 0, 0], dir = [0, 0, 0], held = [0, 0, 0];
+  expect(ch.plasmaBore(oldX, 1.62, oldZ, ammo, false, tip, dir, rem.id[1])).toBe(true);
+  expect(ch.heldPoint(rem.id[1]!, HELD_MUZZLE, held)).toBe(true);
+  expect(tip).toEqual(held);
+  expect(ch.plasmaBore(oldX, 1.62, oldZ, ammo, false, tip, dir)).toBe(true);
+  expect(ch.heldPoint(rem.id[0]!, HELD_MUZZLE, held)).toBe(true);
+  expect(tip).toEqual(held);
 });
