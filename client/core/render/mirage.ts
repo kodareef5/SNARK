@@ -6,7 +6,7 @@
 // shifts under it cleared. Nothing is shifted from where there is no hot air, so nothing before it smears into it.
 
 import type { Tier } from "../assets/tiers.ts";
-import { DETAIL, DETAIL_FLOATS, FRAME_BLOCK, MIRAGE_AT, type FramePacket } from "./packet.ts";
+import { DETAIL, DETAIL_FLOATS, FRAME_BLOCK, MAX_DETAILS, MIRAGE_AT, type FramePacket } from "./packet.ts";
 import { VehicleCards } from "./vehicle-cards.ts";
 
 /** Cards a frame holds at the most. */
@@ -72,7 +72,8 @@ export class Mirage extends VehicleCards {
    * pixels high, and the phase of their waves at the scene's clock `now` ms. With none, the lane says none.
    */
   frame(p: FramePacket, tier: Tier, now: number, viewHeight: number): void {
-    const drawn = this.on && tier.post?.mirage === true && this.count > 0;
+    // With no room left for them none is drawn: a packet never names a card past its end.
+    const drawn = this.on && tier.post?.mirage === true && this.count > 0 && p.detailCount + this.count <= MAX_DETAILS;
     p.mirageFirst = p.detailCount;
     p.mirageCount = drawn ? this.count : 0;
     if (drawn) this.write(p);

@@ -23,6 +23,7 @@ import { TICK_RATE } from "../../shared/coords.ts";
 import { SURFACE_AIR, SURFACE_BODY, SURFACE_BUILT, SURFACE_GROUND, SURFACE_VEHICLE, SURFACE_WATER, blastSeed } from "../../shared/net/rockets.ts";
 import { INSTANCE_BYTES } from "../../shared/pack/pack.ts";
 import { effectOf } from "../../shared/pack/details.ts";
+import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { buildProvingHeightfield } from "../../shared/world/proving.ts";
 import { provingView } from "../../tools/snap.ts";
 import { corePack } from "../fixtures/pack.ts";
@@ -247,6 +248,80 @@ test("a blast on the ground leaves a few small fires burning for some seconds, b
   // With what burns switched off there are none.
   scene.bursts = false;
   expect(leftBurning(frame("high", 14, clock + 1600)).length).toBe(0);
+  scene.bursts = true;
+  clock += 60000;
+});
+
+test("a fire a blast leaves stands on the ground under it: on a slope at the slope's height, and none over water or past a drop", () => {
+  const left = (ground: (x: number, z: number) => number, water: number): number[][] => {
+    const a = alone(tierOf("high"));
+    a.blasts.hf = { heightAt: ground, waterAt: () => water } as unknown as Heightfield;
+    const out: number[][] = [];
+    for (let seed = 1; seed <= 12; seed++) a.blasts.burst(ROCKET, X, ground(X, Z), Z, 0, 1, 0, 7.5, SURFACE_GROUND, 0, seed, 0);
+    const kept = a.blasts as unknown as { lAt: Float64Array; lBorn: Float64Array };
+    for (let k = 0; k < MAX_LEFT; k++) if (kept.lBorn[k]! > -Infinity) out.push([kept.lAt[k * 3]!, kept.lAt[k * 3 + 1]!, kept.lAt[k * 3 + 2]!]);
+    return out;
+  };
+  // A slope of twenty degrees: each stands at the ground's height where it is, some of them well off the blast's own.
+  const slope = (x: number): number => 30 + Math.tan((20 * Math.PI) / 180) * (x - X);
+  const on = left(slope, -1e6);
+  expect(on.length).toBe(MAX_LEFT);
+  for (const [x, y] of on) expect(Math.abs(y! - slope(x!))).toBeLessThan(1e-6);
+  expect(Math.max(...on.map(([, y]) => Math.abs(y! - 30)))).toBeGreaterThan(0.4);
+  // Over water there is none, and none past a drop of more than a metre and a half: only the side that is level keeps its fires.
+  expect(left(slope, 1e6).length).toBe(0);
+  const edge = left((x) => (x > X ? 24 : 30), -1e6);
+  expect([edge.length > 0, edge.every(([x, y]) => x! <= X && y === 30)]).toEqual([true, true]);
+});
+
+test("the smoke nearer than a blast's fire is drawn after the fire and the rest before it; with no fire it is one draw", () => {
+  const { scene, cam } = view;
+  clock += 60000;
+  frame("high", 14, clock);
+  const y = hf.heightAt(X, Z);
+  scene.blasts.burst(ROCKET, X, y, Z, 0, 1, 0, 7.5, SURFACE_GROUND, 0, 7, clock);
+  // The draws of the details' own see-through particles.
+  const own = (p: FramePacket): number[] => [...Array(p.drawCount).keys()].filter((d) => (p.drawFlags[d]! & (DRAW_DETAILS | DRAW_BLEND)) === (DRAW_DETAILS | DRAW_BLEND) && p.drawFirst[d]! < p.detailOwn);
+  // Its flash is seen bare: nothing is parted in its first tenth of a second.
+  expect(own(frame("high", 14, clock + 100)).length).toBe(1);
+  const p = frame("high", 14, clock + 400);
+  const far = Math.hypot(X - cam.x, y - cam.y, Z - cam.z), lobes = fires(p), draws = own(p);
+  expect([lobes.length > 0, draws.length]).toEqual([true, 2]);
+  const [behind, before] = draws as [number, number];
+  expect([behind < lobes[0]!, before > lobes[lobes.length - 1]!]).toEqual([true, true]);
+  // Between them they are every particle once, parted at the fire's distance: a blast shakes the eye a little.
+  expect([p.drawInstances[behind]! > 0, p.drawInstances[before]! > 0]).toEqual([true, true]);
+  expect([p.drawFirst[behind]! + p.drawInstances[behind]!, p.drawFirst[before]! + p.drawInstances[before]!]).toEqual([p.drawFirst[before]!, p.detailOwn]);
+  const away = (n: number): number => Math.hypot(p.details[n * DETAIL_FLOATS]!, p.details[n * DETAIL_FLOATS + 1]!, p.details[n * DETAIL_FLOATS + 2]!);
+  for (let n = p.drawFirst[behind]!; n < p.drawFirst[before]!; n++) expect(away(n)).toBeGreaterThan(far - 0.5);
+  for (let n = p.drawFirst[before]!; n < p.detailOwn; n++) expect(away(n)).toBeLessThan(far + 0.5);
+  // Its fire over, the smoke that hangs is one draw again, and with what burns switched off it is never parted.
+  expect(own(frame("high", 14, clock + 2600)).length).toBe(1);
+  // A blast behind the eye decides nothing: the smoke is parted at the one in view, 50 m off, not at the one 15 m back.
+  clock += 60000;
+  frame("high", 50, clock);
+  scene.blasts.burst(ROCKET, X, y, Z, 0, 1, 0, 7.5, SURFACE_GROUND, 0, 7, clock);
+  scene.blasts.burst(ROCKET, X, hf.heightAt(X, Z - 65), Z - 65, 0, 1, 0, 7.5, SURFACE_GROUND, 0, 9, clock);
+  const two = frame("high", 50, clock + 400), parts = own(two);
+  expect([fires(two).length, parts.length]).toEqual([1, 2]);
+  const ahead = Math.hypot(X - cam.x, y - cam.y, Z - cam.z), off = (n: number): number => Math.hypot(two.details[n * DETAIL_FLOATS]!, two.details[n * DETAIL_FLOATS + 1]!, two.details[n * DETAIL_FLOATS + 2]!);
+  expect([ahead > 45, two.drawInstances[parts[0]!]! > 0, two.drawInstances[parts[1]!]! > 0]).toEqual([true, true, true]);
+  for (let n = two.drawFirst[parts[0]!]!; n < two.drawFirst[parts[1]!]!; n++) expect(off(n)).toBeGreaterThan(ahead - 0.5);
+  for (let n = two.drawFirst[parts[1]!]!; n < two.detailOwn; n++) expect(off(n)).toBeLessThan(ahead + 0.5);
+  // Two in view, one behind the other: the smoke behind each goes before its fire, so the draws go smoke, the far fire, smoke, the near fire, smoke.
+  clock += 60000;
+  frame("high", 14, clock);
+  scene.blasts.burst(ROCKET, X, y, Z, 0, 1, 0, 7.5, SURFACE_GROUND, 0, 7, clock);
+  scene.blasts.burst(ROCKET, X, hf.heightAt(X, Z + 26), Z + 26, 0, 1, 0, 7.5, SURFACE_GROUND, 0, 9, clock);
+  const both = frame("high", 14, clock + 400), runs = own(both), balls = fires(both);
+  expect([balls.length, runs.length]).toEqual([2, 3]);
+  expect([runs[0]! < balls[0]!, balls[0]! < runs[1]!, runs[1]! < balls[1]!, balls[1]! < runs[2]!]).toEqual([true, true, true, true]);
+  expect(runs.map((d) => both.drawFirst[d]! + both.drawInstances[d]!)).toEqual([both.drawFirst[runs[1]!]!, both.drawFirst[runs[2]!]!, both.detailOwn]);
+  clock += 60000;
+  frame("high", 14, clock);
+  scene.blasts.burst(ROCKET, X, y, Z, 0, 1, 0, 7.5, SURFACE_GROUND, 0, 7, clock);
+  scene.bursts = false;
+  expect(own(frame("high", 14, clock + 400)).length).toBeLessThanOrEqual(1);
   scene.bursts = true;
   clock += 60000;
 });

@@ -311,6 +311,20 @@ export class Scene {
   readonly fireLights = new FireLights();
   /** The air's waver over fires and blasts near the eye (mirage.ts). */
   readonly mirage = new Mirage();
+  // The particles held back to go between the cooling fires of blasts and before them (showDetails): the next card and
+  // the end of them, and the damage numbers' run and depth ranges, which then go over them.
+  private readonly veil = { held: false, next: 0, end: 0, numbers: 0, count: 0, passes: 0 };
+  /** Draws the particles held back that are `far` metres off or farther, and with `far` 0 the rest of them and the damage numbers. */
+  private readonly veiled = (far: number): void => {
+    const v = this.veil;
+    if (!v.held) return;
+    const to = far > 0 ? Math.max(v.next, v.end - this.details.nearer(far)) : v.end;
+    this.put.drawDetails(v.next, to - v.next, DRAW_BLEND, NEAR);
+    v.next = to;
+    if (far > 0) return;
+    this.put.drawDetails(v.numbers, v.count, DRAW_BLEND, v.passes);
+    v.held = false;
+  };
   /** The wires between the utility poles still standing (street-wires.ts). */
   readonly streetWires: StreetWires;
   /** What hides what this frame. */
@@ -709,6 +723,7 @@ export class Scene {
     this.supplyDrops = new SupplyDrops(reg, this.assets, pack.palette, this.details);
     this.palette = pack.palette;
     this.blasts = new Blasts(reg, this.assets, this.put, this.details);
+    this.blasts.hf = this.world.hf;
     this.fires = new Fires(reg, this.assets, this.put);
     this.screens = new Screens(reg.screenFace);
     this.prints = new Prints(pack.palette);
@@ -1022,7 +1037,7 @@ export class Scene {
       // After the details, so a fire's flames are drawn over its own smoke and what lies round it.
       ["fires", { draw: (f) => this.fires.draw(p, f.cam, f.now) }],
       // After the details, so fire is drawn over the dust and smoke round it.
-      ["blasts", { draw: (f) => this.blasts.draw(p, f.cam, f.now) }],
+      ["blasts", { draw: (f) => { this.blasts.draw(p, f.cam, f.now, this.veiled); this.veiled(0); } }],
       // Last but the viewer's own body: screens are the least of a frame.
       ["screens", this.screens],
       [
@@ -1131,12 +1146,20 @@ export class Scene {
     const numbers = p.detailCount;
     this.damage.write(p);
     const glassAndNumbers = p.detailCount;
+    // The hot air, in no draw: a shell with a light target draws it apart (mirage.ts). Before the clouds, which take
+    // every card that is left, so its cards are within the room kept for them above.
+    mirage.frame(p, p.tier, this.now, this.viewHeight);
     // The clouds' puffs after them, in the depth ranges they reach, as they may be seen from far off (clouds.ts).
     const seen = p.detailCount;
     const solid = this.clouds.write(p, cam, remote, this.cloudRange);
     const far = seen < p.detailCount ? cam.passesOf(this.cloudRange[0]!, this.cloudRange[1]!) : NEAR;
     this.put.drawDetails(0, cut, DRAW_CUTOUT, NEAR);
-    this.put.drawDetails(cut, particles - cut, DRAW_BLEND, NEAR);
+    // The smoke nearer than a cooling fire of a blast is held back for the blasts' draws, so a fire is seen in its smoke.
+    const veil = this.veil;
+    veil.end = particles;
+    veil.next = particles - this.details.nearer(this.blasts.veilFrom(cam, this.now));
+    veil.held = veil.next < particles;
+    this.put.drawDetails(cut, veil.next - cut, DRAW_BLEND, NEAR);
     if (orbCards) this.put.drawDetails(particles, shafts - particles, DRAW_BLEND, orbCards.passes(cam));
     if (beacons.count) this.put.drawDetails(shafts, blurs - shafts, DRAW_BLEND, beacons.passes(cam));
     this.put.drawDetails(blurs, lamps - blurs, DRAW_BLEND, rotorBlur.passes(cam));
@@ -1150,9 +1173,10 @@ export class Scene {
     this.put.drawDetails(wheelsAndGlass, numbers - wheelsAndGlass, DRAW_BLEND, tireContacts.passes(cam) | windscreens.passes(cam) | (fields?.count ? fields.passes(cam) : 0));
     this.put.drawDetails(seen, solid, DRAW_CUTOUT, far);
     this.put.drawDetails(seen + solid, p.detailCount - seen - solid, DRAW_BLEND, far);
-    this.put.drawDetails(numbers, glassAndNumbers - numbers, DRAW_BLEND, this.damage.passes(cam));
-    // Last of the cards, and in no draw: the hot air, which a shell with a light target draws apart (mirage.ts).
-    mirage.frame(p, p.tier, this.now, this.viewHeight);
+    veil.numbers = numbers;
+    veil.count = glassAndNumbers - numbers;
+    veil.passes = this.damage.passes(cam);
+    if (!veil.held) this.put.drawDetails(numbers, veil.count, DRAW_BLEND, veil.passes);
   }
 
   /**

@@ -126,6 +126,8 @@ export class Details {
   private readonly at = [0, 0, 0];
   private readonly colour = [0, 0, 0];
   private readonly order = new Uint32Array(MAX_DETAILS);
+  /** The see-through particles of the last frame written, which `order` holds far to near. */
+  private blended = 0;
   /** Per particle as written, 1 where its effect is one a page may leave out (`muted`). */
   private readonly tagged = new Uint8Array(MAX_DETAILS);
   /** The see-through particles as written, while they are put far to near: words, so that every bit is kept. */
@@ -1018,7 +1020,22 @@ export class Details {
     }
     p.detailCount = p.detailOwn = cut + blended;
     p.detailFill = this.fill = this.own = fill;
+    this.blended = blended;
     return cut;
+  }
+
+  /** How many of the last frame's see-through particles are nearer the eye than `far` metres: the last of them, as they lie far to near. */
+  nearer(far: number): number {
+    if (!(far < Infinity)) return 0;
+    // A key is a distance turned over, in 64ths of a metre, above a row: the least key of what is nearer.
+    const least = (0x80000 - Math.min(0x7ffff, Math.floor(far * 64))) * MAX_DETAILS;
+    let from = 0, to = this.blended;
+    while (from < to) {
+      const mid = (from + to) >> 1;
+      if (this.order[mid]! < least) from = mid + 1;
+      else to = mid;
+    }
+    return this.blended - from;
   }
 }
 

@@ -6,7 +6,7 @@ import { expect, test } from "bun:test";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { effectsOff, tierWithout } from "../../client/core/passes.ts";
 import { MIRAGE_FRAGMENT, MIRAGE_GLSL, MIRAGE_MOST, MIRAGE_NONE, MIRAGE_PIXELS, MIRAGE_REACH, MIRAGE_TURN_MS, MIRAGE_VERTEX, Mirage } from "../../client/core/render/mirage.ts";
-import { DETAIL, DETAIL_FLOATS, DRAW_DETAILS, FRAME_FLOATS, FramePacket, MIRAGE_AT } from "../../client/core/render/packet.ts";
+import { DETAIL, DETAIL_FLOATS, DRAW_DETAILS, FRAME_FLOATS, FramePacket, MAX_DETAILS, MIRAGE_AT } from "../../client/core/render/packet.ts";
 import { FINISH } from "../../client/core/render/post.ts";
 import { PROGRAM, PROGRAMS, UNIT, tierPrograms } from "../../client/core/render/programs.ts";
 import { burningKind } from "../../content/docks.ts";
@@ -54,6 +54,22 @@ test("hot air is a card square to the eye, weaker far off and gone by its reach,
   m.begin();
   for (let k = 0; k < MIRAGE_MOST + 9; k++) m.over(k, 2, 10, 1, 2, 1, 0.1);
   expect(m.count).toBe(MIRAGE_MOST);
+});
+
+test("with no room left in the packet the hot air is left out, and the packet names no card past its end", () => {
+  const air = new Mirage(), p = new FramePacket();
+  p.tier = high;
+  air.begin();
+  air.over(0, 1, 6, 1, 2, 1, 0.3);
+  air.over(2, 1, 6, 1, 2, 1, 0.6);
+  p.beginFrame();
+  p.detailCount = MAX_DETAILS - 1;
+  air.frame(p, high, 0, 1080);
+  expect([p.detailCount, p.mirageCount, p.frame[MIRAGE_AT]]).toEqual([MAX_DETAILS - 1, 0, 0]);
+  p.beginFrame();
+  p.detailCount = MAX_DETAILS - 2;
+  air.frame(p, high, 0, 1080);
+  expect([p.detailCount, p.mirageFirst, p.mirageCount, p.frame[MIRAGE_AT]]).toEqual([MAX_DETAILS, MAX_DETAILS - 2, 2, 1]);
 });
 
 test("a tier whose finish does not read it holds none: no cards, no run, and its lane says so", () => {
@@ -115,8 +131,17 @@ test("a fire near the eye wavers the air over it and a blast throws a ring, on h
   expect([hot.length >= 1, hot.every((c) => c.kind === 0 && c.strength > 0.2), p.frame[MIRAGE_AT]]).toEqual([true, true, 1]);
   // It stands over the hull, about 7 m ahead, and no draw of the frame names its cards.
   expect([Math.abs(hot[0]!.at[0]!) < 3, Math.abs(hot[0]!.at[2]! - 7) < 3, hot[0]!.at[1]! > 0]).toEqual([true, true, true]);
-  expect(p.mirageFirst + p.mirageCount).toBe(p.detailCount);
-  for (let d = 0; d < p.drawCount; d++) if ((p.drawFlags[d]! & DRAW_DETAILS) !== 0) expect(p.drawFirst[d]! + p.drawInstances[d]!).toBeLessThanOrEqual(p.mirageFirst);
+  expect(p.mirageFirst + p.mirageCount).toBeLessThanOrEqual(p.detailCount);
+  for (let d = 0; d < p.drawCount; d++) if ((p.drawFlags[d]! & DRAW_DETAILS) !== 0) expect(p.drawFirst[d]! + p.drawInstances[d]! <= p.mirageFirst || p.drawFirst[d]! >= p.mirageFirst + p.mirageCount).toBe(true);
+  // A sky of clouds takes every card that is left: the hot air's are written before them, and the packet names none past its end.
+  const clouds = (scene as unknown as { clouds: { write: (p: FramePacket, ...rest: unknown[]) => number } }).clouds, write = clouds.write;
+  clouds.write = (to) => {
+    to.detailCount = MAX_DETAILS;
+    return 0;
+  };
+  p = frame("high", 1050);
+  clouds.write = write;
+  expect([p.detailCount, p.mirageCount > 0, p.mirageFirst + p.mirageCount <= MAX_DETAILS]).toEqual([MAX_DETAILS, true, true]);
   expect(frame("medium", 1100).mirageCount).toBe(0);
   // A blast: a ring that grows and weakens for a fifth of a second, and hot air over its fireball while it burns.
   scene.blasts.burst(2, x + 3, hf.heightAt(x + 3, z - 2), z - 2, 0, 1, 0, 7.5, SURFACE_GROUND, 0, 99, 2000);
