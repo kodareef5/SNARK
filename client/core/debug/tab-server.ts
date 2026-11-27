@@ -1,11 +1,13 @@
 // The Server tab, an admin's: the server's ticks over the last two minutes, where its ticks went since the bar last
-// asked, its long ticks and whose time they took, its bodies and memory, and this connection's bytes. The bar asks the
-// server once a second while the tab shows (debug.ts poll).
+// asked, its long ticks and whose time they took, its bodies and memory, this connection's bytes, and the decider
+// (decide.ts). The bar asks the server once a second while the tab shows (debug.ts poll).
 
+import { lineHeight } from "../ui/nodes.ts";
+import { DECIDE_LINE, decideLines, layDecide } from "./decide.ts";
 import type { DebugBar } from "./debug.ts";
 import type { Draw } from "./draw.ts";
 import { Paint } from "./paint.ts";
-import { ACCENT, BAD, D_DIM, D_FAINT, D_MONO, D_MONO_DIM, D_WARN, D_WELL, FILL_RULE, WARN, colourOf, opaque, WELL } from "./styles.ts";
+import { ACCENT, BAD, D_DIM, D_HEAD, D_FAINT, D_MONO, D_MONO_DIM, D_WARN, D_WELL, FILL_RULE, WARN, colourOf, opaque, WELL } from "./styles.ts";
 import type { Tab } from "./tab.ts";
 import { ago, bytes, count, ms, share } from "./words.ts";
 
@@ -54,8 +56,11 @@ export class ServerTab implements Tab {
     const each = parts.names.map((name, i) => ({ name, i, ms: ticks > 0 ? (parts.all[i]! - (before?.parts.all[i] ?? 0)) / ticks : 0 })).filter((p) => p.ms >= 0.005).sort((a, b) => b.ms - a.ms);
     const inTick = each.filter((p) => between < 0 || p.i < between), outside = each.filter((p) => between >= 0 && p.i >= between && p.name !== "idle");
     const total = inTick.reduce((t, p) => t + p.ms, 0), barW = Math.round(half * 0.3), valueW = 110;
+    // The decider's lines stand at the foot of this column, in at most half of what is left of it.
+    const decide = decideLines(s, d.serverBefore), head = lineHeight(D_HEAD) + 2;
+    const rows = Math.min(decide.length, Math.floor(((y + h - at) / 2 - 6 - head) / DECIDE_LINE)), room = rows > 0 ? 6 + head + rows * DECIDE_LINE : 0;
     for (const p of inTick) {
-      if (at + 34 > y + h) break;
+      if (at + 34 + room > y + h) break;
       const bw = Math.max(1, (p.ms / Math.max(total, 0.001)) * barW);
       draw.box(x, at + 4, bw, 9, D_WELL, colourOf(p.name));
       draw.text(x + barW + 8, at, half - barW - valueW - 12, D_MONO, p.name);
@@ -63,7 +68,11 @@ export class ServerTab implements Tab {
       at += 17;
     }
     if (inTick.length === 0) at += draw.text(x, at, half, D_FAINT, "No ticks between the last two asks.");
-    if (outside.length > 0 && at + 17 <= y + h) draw.text(x, at, half, D_FAINT, `between ticks: ${outside.map((p) => `${p.name} ${ms(p.ms)}`).join(", ")}`);
+    if (outside.length > 0 && at + 17 + room <= y + h) draw.text(x, at, half, D_FAINT, `between ticks: ${outside.map((p) => `${p.name} ${ms(p.ms)}`).join(", ")}`);
+    if (rows > 0) {
+      const top = y + h - room + 6;
+      layDecide(draw, decide, x, top + draw.heading(x, top, half, "DECIDE"), half, rows);
+    }
 
     // Long ticks, newest first, then the world's bodies, memory and this connection.
     const rx = x + half + 16;

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Decider · SNARK Admin</title>
+    <link rel="stylesheet" href="/admin/ui/admin.css">
+    <style>
+      .decide-page { grid-template-columns: minmax(0,1fr) }
+      .decide-page .tiles { display: grid; grid-template-columns: repeat(auto-fit,minmax(130px,1fr)); gap: 10px }
+      .decide-page .tile b { display: block; font-size: 1.1rem }
+      .decide-page .tile span { font-size: .8rem; color: var(--dim) }
+      .decide-page td select { min-width: 9em }
+      .decide-page .answer { border-top: 1px solid var(--edge); padding-block: 8px }
+      .decide-page .rings { display: flex; flex-wrap: wrap; gap: 10px }
+      .decide-page figure { margin: 0; text-align: center; font-size: .78rem; color: var(--dim) }
+      .decide-page .candidates { width: auto; margin-block: 6px }
+      .decide-page caption { text-align: left; font-size: .8rem; color: var(--dim) }
+      .decide-page svg.where { display: block; width: 100%; max-width: 420px; height: auto }
+      .decide-page .key i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin: 0 4px 0 8px }
+      .decide-page .columns { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(320px,100%),1fr)); gap: 18px; align-items: start }
+    </style>
+  </head>
+  <body>
+    <main class="tool-page decide-page">
+      <header class="tool-intro"><h1>Decider</h1><p>Choose who makes the movers' small choices at each point, watch what they choose, and read what the lab says of its scorers.</p></header>
+      <section class="glass"><div class="tiles" id="tiles"></div></section>
+      <section class="glass">
+        <h2>Points</h2>
+        <div class="scroll" id="points"></div>
+        <p><button id="reload">Read weights again</button> <button id="clone">Copy these settings to every world in this cluster</button></p>
+        <p id="msg" class="dim" role="status"></p>
+      </section>
+      <section class="glass"><h2>Scorers</h2><div class="scroll" id="scorers"></div></section>
+      <div class="columns">
+        <section class="glass"><h2>Recent answers</h2><div id="recent"></div></section>
+        <section class="glass"><h2>Where they were</h2><div id="map"></div></section>
+      </div>
+      <section class="glass"><h2>The lab</h2><p id="status" class="dim"></p><div id="lab"></div></section>
+    </main>
+    <script type="module" src="/admin/ui/decide.js"></script>
+  </body>
+</html>

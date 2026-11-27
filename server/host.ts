@@ -26,6 +26,7 @@ import { Beds, type Place } from "./beds.ts";
 import { CastHost } from "./cast/host.ts";
 import { Decide } from "./decide/decide.ts";
 import { LineLog } from "./decide/log.ts";
+import { DecideCopy, settingsOf } from "./decide/shared.ts";
 import type { CastSettings } from "../shared/cast/state.ts";
 import { Taming } from "./taming.ts";
 import { Riding } from "./riding.ts";
@@ -287,6 +288,8 @@ export interface Host {
   readonly cast: CastHost;
   /** Small choices for movers (server/decide): every point off unless DecidePolicy names it. */
   readonly decide: Decide;
+  /** The cluster's copy of the Decide settings this world takes part in (server/decide/shared.ts); null for a world alone. */
+  readonly decideCopy: DecideCopy | null;
   readonly vehicles: VehicleService;
   readonly entangle: Entangle;
   readonly breeding: Breeding;
@@ -1952,6 +1955,17 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     log: opts.dbPath ? new LineLog(join(dirname(resolve(opts.dbPath)), "decide"), `decide-w${records.worldId}`) : null,
   });
   decide.sinks.push(castHost.log.lines);
+  // A cluster's worlds take the Decide settings one of them copies to its folder (server/decide/shared.ts).
+  const decideCopy = cluster ? new DecideCopy({
+    root: cluster.folder.root, world: cluster.world, now: () => cluster.now(), say,
+    settings: () => settingsOf(rules),
+    set: (name, words, by) => host.pageSetting(name, words, by).why,
+    keep: () => persistence?.writeSidecar("decideCopy"),
+  }) : null;
+  if (decideCopy) {
+    decideCopy.restore(persistence && !loaded!.fresh ? (persistence.store.meta("decideCopy") as string | null) : null);
+    persistence?.sidecar("decideCopy", decideCopy.saved);
+  }
   // A car door held open strikes whoever stands where it swings (server/urban.ts doorStrikes): a blow by the car's
   // driver, by its speed, told to everyone near as a car's (EVENT_IMPACT), and a creature it kills tumbles.
   // A survivor knocked off their feet (Knockdowns) goes limp as its ragdoll, thrown as the blow left it moving, and gets
@@ -2428,6 +2442,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     creatures,
     mark(PART.creatures),
     decide,
+    ...(decideCopy ? [decideCopy] : []),
     mark(PART.decide),
     physics({ step: contacts }, LANE_ROW.contacts),
     mark(PART.contacts),
@@ -2502,6 +2517,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     urban,
     cast: castHost,
     decide,
+    decideCopy,
     vehicles,
     entangle,
     breeding,

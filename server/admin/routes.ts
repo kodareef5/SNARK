@@ -16,6 +16,7 @@
 //   /admin/log/...          the survivor log's reads (log-routes.ts)
 //   /admin/cast.html        Cast's page (client/admin/cast.ts), /admin/cast.json what Cast is doing, POST /admin/cast
 //                           an admin's action on it (cast.ts)
+//   /admin/decide.json      the Decider page's state, POST /admin/decide an admin's action on it (decide.ts)
 //   /admin/settings.html    the settings page (client/admin/settings.ts), /admin/settings.json every setting, POST
 //                           /admin/settings an admin's change to one (settings.ts)
 //   POST /admin/stop        the server stops for an update after a countdown, or a stop is taken back (stop.ts)
@@ -41,6 +42,7 @@ import type { Host } from "../host.ts";
 import { boardAsked } from "../sound-board.ts";
 import { basesOf, basesVersion } from "./bases.ts";
 import { castAct, castState } from "./cast.ts";
+import { DecideAdmin } from "./decide.ts";
 import { settingsAnswer } from "./settings.ts";
 import { stopAnswer } from "./stop.ts";
 import { originAllowed } from "../origin.ts";
@@ -183,6 +185,8 @@ export class AdminPages {
   private readonly loadouts: LoadoutRoutes;
   /** The map events' page, which also calls and ends events (event-routes.ts). */
   readonly events: EventRoutes;
+  /** The Decider page (decide.ts). */
+  readonly decide: DecideAdmin;
 
   constructor(o: AdminOptions) {
     this.o = o;
@@ -207,6 +211,7 @@ export class AdminPages {
     this.supply = new SupplyRoutes(o.host, this.now);
     this.loadouts = new LoadoutRoutes(o.host);
     this.events = new EventRoutes(o.host, this.now);
+    this.decide = new DecideAdmin(o.host, { now: this.now });
   }
 
   /**
@@ -268,7 +273,7 @@ export class AdminPages {
       return new Response(this.basesAt(level, now), { headers: { ...FRESH, "content-type": "application/octet-stream" } });
     }
     return this.log.answer(at, url) ?? settingsAnswer(this.o.host, req, at) ?? stopAnswer(this.o.host, req, at) ?? this.supply.answer(req, at, url) ?? this.loadouts.answer(req, at, url) ??
-      this.events.answer(req, at, url) ?? permissionsAdmin(req, at, this.o.host) ?? new Response("not found", { status: 404 });
+      this.events.answer(req, at, url) ?? this.decide.answer(req, at, url) ?? permissionsAdmin(req, at, this.o.host) ?? new Response("not found", { status: 404 });
   }
 
   private terrainImage(req: Request): Response {

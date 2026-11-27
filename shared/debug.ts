@@ -53,6 +53,23 @@ export interface ServerState {
   /** Bytes sent to the asker since it connected, messages skipped for its backlog, and bytes waiting to go. */
   connection: { sent: number; skipped: number; waiting: number };
   survivor: { x: number; y: number; z: number; tick: number } | null;
+  /** The decider, only where the bar asked for it (`decide=1`): its Decide tab is open. */
+  decide?: DecideState;
+}
+
+/**
+ * The decider as the bar's Decide tab shows it. Each point's counts are since the start, so two answers apart say what it
+ * did between them. `mover` is what the decider knows of the mover the survivor looks at or stands nearest.
+ */
+export interface DecideState {
+  points: { name: string; policy: string; put: number; answered: number; cut: number; backPut: number; backCut: number }[];
+  caps: number[];
+  overflow: number;
+  most: number;
+  backMost: number;
+  /** The most ms the decide part took in one tick. */
+  worst: number;
+  mover: { e: number; metres: number; about: Record<string, unknown> } | null;
 }
 
 /** What `POST __debug` answers an admin: the log's lines after the asked `since`, the `since` to ask next, and the server. */

@@ -208,6 +208,7 @@ test("every admin POST the front passes is judged again once its body is in", as
   /** What each route is sent, and whether it changes anything: a pasted override is only read into the page's draft. */
   const sent: Record<string, { body: Uint8Array | string; headers?: Record<string, string>; reads?: true }> = {
     "/admin/cast": { body: JSON.stringify({ op: "set", name: "CastActivity", value: "1.5" }) },
+    "/admin/decide": { body: JSON.stringify({ op: "set", name: "DecideSample", value: "64" }) },
     "/admin/settings": { body: JSON.stringify({ op: "set", name: "XPMultiplier", value: "7" }) },
     "/admin/stop": { body: JSON.stringify({ seconds: 60 }) },
     "/admin/loadouts/book": { body: JSON.stringify({ expected: 0, book: {} }) },
