@@ -1,5 +1,5 @@
-import type { ReportBuild } from "../../shared/report.ts";
 import { logTo } from "./early-log.ts";
+import type { ReportBuild } from "../../shared/report.ts";
 import { launchKey, readLaunch } from "../core/entry-state.ts";
 import { SETTLED_MS, backAddress, readComeback, readReady, waitKey, waitOut, type Comeback } from "../core/waiting.ts";
 import type { Ready } from "../../shared/ready.ts";
