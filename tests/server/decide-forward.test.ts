@@ -1,6 +1,10 @@
 // The decision engine (shared/decide): a table in, a probability for each candidate out.
 import { expect, test } from "bun:test";
-import { addPass, stick } from "../../shared/decide/combine.ts";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { hashString as ownHash } from "../../shared/decide/hash.ts";
+import { hashString } from "../../shared/hash.ts";
+import { addPass, combine, stick } from "../../shared/decide/combine.ts";
 import { answer, decide, inputsAt, linear, scoreTable, type Model } from "../../shared/decide/forward.ts";
 import { inputsOf, profile, profileHash } from "../../shared/decide/profile.ts";
 import { PICK, PROFILES, RING_MID, SNAG } from "../../shared/decide/profiles.ts";
@@ -105,6 +109,27 @@ test("turning a ring turns its answer the same way", () => {
   const pa = decide(m, RING, a), pb = decide(m, RING, b);
   expect(pb).toBe((pa + 6 - 2) % 6);
   for (let i = 0; i < 6; i++) expect(b.out[i]).toBeCloseTo(a.out[(i + 2) % 6]!, 6);
+});
+
+test("combining passes adds each by its weight, favours the heading held, and answers", () => {
+  const far = tableFor(RING, 4), near = tableFor(RING, 4), all = tableFor(RING, 4), by = tableFor(RING, 4);
+  far.clear(4);
+  near.clear(4);
+  far.score.set([2, 1, 0, 1]);
+  near.score.set([0, 2, 0, 0]);
+  near.mask[3] = 1;
+  // Weights of a mix over each scorer's temperature: the near pass's scorer runs hot and counts half.
+  const pick = combine(all, [{ table: far, weight: 1 }, { table: near, weight: 0.5 }], 2, 0.5);
+  expect([pick, Array.from(all.score.subarray(0, 4)), Array.from(all.bias.subarray(0, 4)), all.mask[3]]).toEqual([0, [2, 2, 0, 1], [0, 0, 0.5, 0], 1]);
+  // The same by hand gives the same table, so a lab and a game that both call it cannot differ.
+  by.clear(4);
+  addPass(by, far, 1);
+  addPass(by, near, 0.5);
+  stick(by, 2, 0.5);
+  expect(answer("choice", by, 1)).toBe(pick);
+  expect(Array.from(by.out.subarray(0, 4))).toEqual(Array.from(all.out.subarray(0, 4)));
+  // Held strongly enough, the heading held wins a tie it would lose.
+  expect(combine(all, [{ table: far, weight: 1 }, { table: near, weight: 0.5 }], 1, 0.5)).toBe(1);
 });
 
 test("the state changes nothing through a line of weights, and a cross lets it reverse the choice", () => {
@@ -235,6 +260,16 @@ test("the snag rule is surer the slower a mover gains and nearly sure once it is
   expect(slowing).toBeGreaterThan(moving);
   expect(stuck).toBeGreaterThan(slowing);
   expect(stuck).toBeGreaterThan(0.7);
+});
+
+test("the engine names nothing outside its own folder", () => {
+  const dir = join(import.meta.dir, "../../shared/decide");
+  for (const file of readdirSync(dir)) {
+    const outside = [...readFileSync(join(dir, file), "utf8").matchAll(/from "([^"]+)"/g)].map((m) => m[1]!).filter((from) => !/^\.\/[a-z-]+\.ts$/.test(from));
+    expect([file, outside]).toEqual([file, []]);
+  }
+  // Its own hash is the game's, so a profile's hash is the same wherever the engine is lifted to.
+  for (const s of ["", "ring.mid|choice", "né 日本"]) expect(ownHash(s)).toBe(hashString(s));
 });
 
 test("a span is never under the world's grain nor under a reaction's run", () => {

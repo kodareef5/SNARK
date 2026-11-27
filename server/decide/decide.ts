@@ -22,6 +22,8 @@ import type { LineLog } from "./log.ts";
 
 export const OFF = 0, WATCH = 1, RULE = 2, MODEL = 3;
 export const POLICIES = ["off", "watch", "rule", "model"] as const;
+/** What the lab's `force` may answer besides a candidate: act on the one chosen, or on none. */
+export const LEAVE = -1, SPARE = -2;
 
 /** What a question costs to answer: a yes or no from numbers already held, a few probes, or a full ring of them. */
 export const COST_YES = 0, COST_PROBE = 1, COST_RING = 2;
@@ -54,8 +56,13 @@ export interface Point {
   readonly cost: number;
   /** Ticks after a logged answer at which `outcome` is read; 0 for never. */
   readonly horizon: number;
-  /** The tables its last answer filled, for the log. */
-  readonly tables: readonly { profile: Profile; table: Table }[];
+  /**
+   * The tables its last answer filled, for the log. A pass added into the answer says what its scores counted for
+   * (`weight`, its mix over its scorer's temperature), so its share of the answer can be read back.
+   */
+  readonly tables: readonly { profile: Profile; table: Table; weight?: number }[];
+  /** The table whose probabilities are the answer, where it is made of the others (shared/decide/combine.ts). */
+  readonly final?: Table;
   /** Whether mover `e` is still in the state that put the question. */
   still(e: number, rung: number): boolean;
   /**
@@ -68,6 +75,11 @@ export interface Point {
   apply(e: number, tick: number, rung: number, pick: number): void;
   /** Writes a few numbers of what became of `e` since its answer to `out`, and returns how many. */
   outcome?(e: number, tick: number, out: Float32Array): number;
+  /**
+   * Its answers are no longer acted on (turned off or only watched): it lets go of all it had set going in movers, so
+   * they go back to today's code at once.
+   */
+  release?(): void;
 }
 
 export interface Counts {
@@ -131,7 +143,9 @@ export interface Answered {
   other?: number;
   x?: number;
   z?: number;
-  tables: { profile: string; k: number; state: number[]; rows: number[]; score: number[]; bias: number[]; mask: number[]; out: number[] }[];
+  tables: { profile: string; k: number; weight?: number; state: number[]; rows: number[]; score: number[]; bias: number[]; mask: number[]; out: number[] }[];
+  /** The answer as the server made it, where a point adds passes together: what each candidate scored in all, and its probability. */
+  final?: { k: number; score: number[]; bias: number[]; mask: number[]; out: number[] };
 }
 
 export interface DecideCtx {
@@ -191,7 +205,8 @@ export class Decide {
   overflow = 0;
   /**
    * The lab's two hooks (tools/decide), never set in a game. `force` may name the candidate to act on in place of the one
-   * chosen (-1 leaves it). `tap` sees every answer while its tables are still filled.
+   * chosen, leave it (LEAVE), or have nothing done at all so today's code stands for this one answer (SPARE). `tap` sees
+   * every answer while its tables are still filled.
    */
   force: ((point: number, e: number, pick: number) => number) | null = null;
   tap: ((point: number, e: number, tick: number, rung: number, pick: number) => void) | null = null;
@@ -293,7 +308,12 @@ export class Decide {
       if (name === "*") this.fallback = policy;
       else named.set(name, policy);
     }
-    for (let i = 0; i < this.points.length; i++) this.policyOf[i] = named.get(this.points[i]!.name) ?? this.fallback;
+    for (let i = 0; i < this.points.length; i++) {
+      const was = this.policyOf[i]!, now = named.get(this.points[i]!.name) ?? this.fallback;
+      this.policyOf[i] = now;
+      // What its answers set going must not outlive them: a point no longer acted on lets go of its movers.
+      if (was >= RULE && now < RULE) this.points[i]!.release?.();
+    }
   }
 
   step(tick: number): void {
@@ -357,7 +377,8 @@ export class Decide {
       this.sample = s.sample;
       if (this.ctx.log) this.ctx.log.cap = s.megabytes * 1024 * 1024;
     }
-    void this.flush();
+    // Only with something to write: a promise made every five seconds for nothing would hold a world a lab has done with.
+    if (this.ctx.log?.busy || this.sinks.some((s) => s.busy)) void this.flush();
   }
 
   private answerAll(q: Asked, tick: number, back: number): void {
@@ -401,9 +422,11 @@ export class Decide {
       return;
     }
     c.answered++;
+    let spared = false;
     if (this.force) {
       const forced = this.force(id, e, pick);
       if (forced >= 0) pick = forced;
+      else spared = forced === SPARE;
     }
     this.tap?.(id, e, tick, rung, pick);
     const looked = tick < this.lookUntil;
@@ -413,10 +436,11 @@ export class Decide {
         id: sampled ? this.nextId++ : 0, t: tick, point: point.name, rung, policy: POLICIES[policy]!, pick,
         ...(other > -2 ? { other } : {}),
         ...(ents.x && ents.z ? { x: Math.round(ents.x[e]! * 10) / 10, z: Math.round(ents.z[e]! * 10) / 10 } : {}),
-        tables: point.tables.map(({ profile, table: t }) => ({
-          profile: profile.name, k: t.k, state: list(t.state, t.stateWidth), rows: list(t.rows, t.k * t.width),
+        tables: point.tables.map(({ profile, table: t, weight }) => ({
+          profile: profile.name, k: t.k, ...(weight !== undefined ? { weight: round(weight) } : {}), state: list(t.state, t.stateWidth), rows: list(t.rows, t.k * t.width),
           score: list(t.score, t.k), bias: list(t.bias, t.k), mask: Array.from(t.mask.subarray(0, t.k)), out: list(t.out, t.k),
         })),
+        ...(point.final ? { final: { k: point.final.k, score: list(point.final.score, point.final.k), bias: list(point.final.bias, point.final.k), mask: Array.from(point.final.mask.subarray(0, point.final.k)), out: list(point.final.out, point.final.k) } } : {}),
       };
       if (looked) {
         this.recent.push(row);
@@ -428,7 +452,7 @@ export class Decide {
         if (point.horizon > 0 && point.outcome) this.wait(id, e, tick + point.horizon, row.id);
       }
     }
-    if (policy !== WATCH) {
+    if (policy !== WATCH && !spared) {
       point.apply(e, tick, rung, pick);
       c.applied++;
     }
