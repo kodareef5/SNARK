@@ -1,7 +1,7 @@
 // The compass: a heading tape at the top of the screen, in the middle. Ticks and letters slide by as the view turns, and the
 // heading they show follows the true one on a light spring, so a quick turn swings a degree or two past and settles, as a
-// needle in oil does; N brightens a moment as it crosses the mark. Friends, tames, a body and the places to rise show as pips
-// at their bearings, pinned to the nearer end when behind. Nothing here rotates: the tape is panels and text that move
+// needle in oil does; N brightens a moment as it crosses the mark. Friends, tames, pins, a body and the places to rise show as
+// pips at their bearings, pinned to the nearer end when behind. Nothing here rotates: the tape is panels and text that move
 // sideways. The degrees show while H is held, as the HUD's other numbers do (planning/reference/ui-hud-art-direction.md).
 
 import type { HudModel, MarkerKind } from "../hud.ts";
@@ -86,6 +86,8 @@ const PIP: Partial<Record<MarkerKind, { style: number; tint: number }>> = {
   // A supply drop's pip is its tier's colour, which the marker carries.
   drop: { style: S_MARK_SELF, tint: 0xffffff },
   dropPip: { style: S_MARK_SELF, tint: 0xffffff },
+  // A pin's pip is its kind's colour, which the marker carries.
+  pin: { style: S_MARK_SELF, tint: 0xffffff },
 };
 
 /** Bearing in degrees clockwise from north from the map place (u0, v0) to (u, v), on a map `sizeX` by `sizeZ` metres. */

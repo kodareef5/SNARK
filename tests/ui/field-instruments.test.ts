@@ -14,13 +14,14 @@ import { buildProvingHeightfield } from "../../shared/world/proving.ts";
 import { StreetSectors, heldSide } from "../../shared/world/streets.ts";
 import { ChatState } from "../../client/core/ui/chat.ts";
 import { KEY_MINIMAP } from "../../client/core/ui/hud.ts";
-import { KEY_MAP_CLOSE, KEY_MAP_IMAGE, KEY_MAP_MARK_TOOL, KEY_MAP_PRIVATE, KEY_MAP_SAVE, KEY_MAP_SURFACE, KEY_MAP_TOOLS } from "../../client/core/ui/screens.ts";
+import { KEY_MAP_CLOSE, KEY_MAP_IMAGE, KEY_MAP_MARK_TOOL, KEY_MAP_SAVE, KEY_MAP_SURFACE, KEY_MAP_TOOLS } from "../../client/core/ui/screens.ts";
+import { mapU } from "../../shared/world/coords.ts";
 import { TEXT_GLOBAL, TEXT_LOCAL } from "../../shared/net/protocol.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { Harness } from "../fixtures/net.ts";
 
-test("A corner chart owns its gestures and saves only a confirmed private pin", () => {
+test("A corner chart owns its gestures and sends a pin only once it is confirmed", () => {
   const game = new Harness({}, 1, 60, { dev: true });
   const app = new App(game.join("Chart", {}, { manual: true }), game.reg, parsePack(corePackBytes()));
   const step = (ms = 64) => game.run(ms, now => app.frame(now, 1440, 810));
@@ -47,7 +48,8 @@ test("A corner chart owns its gestures and saves only a confirmed private pin", 
   app.key("KeyW", false);
   expect(app.session.own.z).toBeGreaterThan(start);
   click(KEY_MAP_SURFACE);
-  expect(app.hud.privateU).toBe(-1);
+  step(200);
+  expect(app.session.pins).toEqual([]);
   click(KEY_MAP_TOOLS);
   click(KEY_MAP_MARK_TOOL);
   expect(frame.find(KEY_MAP_SAVE)?.interactive).toBe(false);
@@ -59,16 +61,18 @@ test("A corner chart owns its gestures and saves only a confirmed private pin", 
   step();
   expect(frame.find(KEY_MAP_SAVE)?.interactive).toBe(false);
   click(KEY_MAP_SURFACE);
-  expect(app.hud.privateU).toBe(-1);
+  step(200);
+  expect(app.session.pins).toEqual([]);
   click(KEY_MAP_SAVE);
-  expect(app.hud.privateU).toBeCloseTo(.5, 1);
-  expect(frame.find(KEY_MAP_PRIVATE)).not.toBeNull();
+  step(300);
+  expect(app.session.pins.length).toBe(1);
+  expect(mapU(app.session.world!.hf, app.session.pins[0]!.x)).toBeCloseTo(.5, 1);
   click(KEY_MAP_CLOSE);
   expect(frame.find(KEY_MAP_SURFACE)).toBeNull();
   expect(app.ui.wantsPointerLock).toBe(true);
   app.key("KeyM", true);
   step();
-  expect(frame.find(KEY_MAP_PRIVATE)).not.toBeNull();
+  expect(app.hud.markers.some((k) => k.kind === "pin")).toBe(true);
 });
 
 test("Radio recalls each channel’s own messages and keeps its unfinished draft", () => {

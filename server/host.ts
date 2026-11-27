@@ -20,6 +20,7 @@ import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { Build } from "./build.ts";
 import { Plans } from "./plans.ts";
+import { PINS_SAVE_TICKS, Pins } from "./pins.ts";
 import { Motion } from "./motion.ts";
 import { Fixtures } from "./fixtures.ts";
 import { Beds, type Place } from "./beds.ts";
@@ -277,6 +278,7 @@ export interface Host {
   readonly voice: Voice;
   readonly build: Build;
   readonly plans: Plans;
+  readonly pins: Pins;
   readonly fixtures: Fixtures;
   readonly motion: Motion;
   readonly stations: Stations;
@@ -1160,8 +1162,18 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // Templates set down and not yet built: they follow their team, and go with it.
   const plans = new Plans({ world, game, records, items, tribes, rules });
   build.plans = plans;
-  tribes.onMerged = (from, to) => plans.moved(from, to);
-  tribes.onGone = (team) => plans.dropTeam(team);
+  // Pins on the map follow their team and go with it, as plans do.
+  const pins = new Pins({ world, game, records, tribes, deadlines, reach: (c) => gaze.lookReach(c) });
+  if (persistence && !loaded!.fresh) pins.restore(persistence.store.meta("pins"));
+  persistence?.sidecar("pins", pins, PINS_SAVE_TICKS);
+  tribes.onMerged = (from, to) => {
+    plans.moved(from, to);
+    pins.merge(from, to);
+  };
+  tribes.onGone = (team) => {
+    plans.dropTeam(team);
+    pins.drop(team);
+  };
   if (persistence) {
     if (!loaded!.fresh) plans.load(persistence.store.loadPlans());
     persistence.plans = plans;
@@ -2494,6 +2506,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     voice,
     build,
     plans,
+    pins,
     fixtures,
     motion,
     stations,
