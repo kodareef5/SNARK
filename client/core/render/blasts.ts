@@ -890,7 +890,7 @@ export class Blasts {
       const ball = this.bBall[b]!, area = ball * ball;
       const flash = FLASH_LIGHT * area * Math.max(0, 1 - age / FLASH_SECONDS) ** 3, fire = BALL_LIGHT * area * (1 - age / life) ** 2, all = flash + fire;
       const white = flash / Math.max(all, 1e-6);
-      lights.add(this.bAt[b * 3]! - cam.x, this.bAt[b * 3 + 1]! + 0.6 * ball - cam.y, this.bAt[b * 3 + 2]! - cam.z, all, 1, 0.42 + 0.38 * white, 0.12 + 0.43 * white, BLAST_BY_DAY);
+      lights.add(this.bAt[b * 3]! - cam.x, this.bAt[b * 3 + 1]! + 0.6 * ball - cam.y, this.bAt[b * 3 + 2]! - cam.z, all, 1, 0.42 + 0.38 * white, 0.12 + 0.43 * white, BLAST_BY_DAY, 0, 0, true);
     }
     // And each fire it left burning, as a small fire that stands gives its own.
     const [r, g, bl] = FIRE_COLOUR;

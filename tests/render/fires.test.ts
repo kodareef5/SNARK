@@ -73,6 +73,60 @@ test("a burning wreck in view smokes, and one out of view, far off or not burnin
   expect(cards(fires, far, looking(20, 3, 20, 400, 2, 20), 1000, medium).detailCount).toBe(0);
 });
 
+test("looking up past a wreck, its column is drawn while any of its smoke is in view", () => {
+  const fires = new Fires(reg), s = store();
+  s.add(id(burningKind("core:needle")), 220, 1, 220, 0, 0, 1);
+  // From one place, every tilt from level to nearly straight up: the hull leaves the bottom of the view long before the smoke over it does.
+  const whole = cards(fires, s, looking(206, 3, 206, 220, 2, 220), 1000);
+  const middles = Array.from({ length: whole.detailCount }, (_, n) => [...whole.details.subarray(n * DETAIL_FLOATS, n * DETAIL_FLOATS + 3)]);
+  let hullOut = 0;
+  for (let up = 0; up <= 85; up += 5) {
+    const reach = 19.8 * Math.cos((up * Math.PI) / 180), cam = looking(206, 3, 206, 206 + reach * Math.SQRT1_2, 3 + 19.8 * Math.sin((up * Math.PI) / 180), 206 + reach * Math.SQRT1_2);
+    const inView = middles.filter(([x, y, z]) => cam.boxVisible(x!, y!, z!, x!, y!, z!)).length;
+    const drawn = cards(fires, s, cam, 1000).detailCount;
+    if (inView > 0) expect([up, drawn]).toEqual([up, whole.detailCount]);
+    if (inView > 0 && !cam.boxVisible(14 - 5, -3, 14 - 5, 14 + 5, 2, 14 + 5)) hullOut++;
+  }
+  // Some of those views held smoke and no hull at all.
+  expect(hullOut).toBeGreaterThan(1);
+});
+
+test("a puff of a column is where it was at every detail: a pixel more of height moves none, and brings the rest in by degrees", () => {
+  const fires = new Fires(reg), s = store();
+  s.add(id(burningKind("core:needle")), 220, 1, 220, 0, 0, 1);
+  const cam = looking(150, 3, 150, 220, 2, 220);
+  // Each smoke card of a frame: its middle, its half width and how much of it shows, by its seed.
+  const puffs = (viewHeight: number): Map<number, number[]> => {
+    const p = cards(fires, s, cam, 1000, high, viewHeight), out = new Map<number, number[]>();
+    for (let n = 0; n < p.detailCount; n++) {
+      const o = n * DETAIL_FLOATS, misc = p.detailWords[o + DETAIL.misc]!;
+      if (((misc >>> 8) & 255) !== DETAIL_SMOKE) continue;
+      out.set(p.detailWords[o + DETAIL.colourB]! & 255, [p.details[o]!, p.details[o + 1]!, p.details[o + 2]!, Math.hypot(p.details[o + DETAIL.across]!, p.details[o + DETAIL.across + 1]!, p.details[o + DETAIL.across + 2]!), ((misc >>> 16) & 255) / 255]);
+    }
+    return out;
+  };
+  let fewest = Infinity, most = 0, came = 0;
+  let last = puffs(200);
+  for (let view = 201; view <= 2400; view++) {
+    const now = puffs(view);
+    fewest = Math.min(fewest, now.size);
+    most = Math.max(most, now.size);
+    for (const [seed, was] of last) {
+      const is = now.get(seed);
+      // One that leaves was all but gone; one that stays has not moved, and has grown or shrunk by a hair.
+      if (!is) expect(was[4]).toBeLessThan(0.08);
+      else expect([Math.hypot(is[0]! - was[0]!, is[1]! - was[1]!, is[2]! - was[2]!) < 1e-4, Math.abs(is[3]! / was[3]! - 1) < 0.02, Math.abs(is[4]! - was[4]!) < 0.08]).toEqual([true, true, true]);
+    }
+    for (const [seed, is] of now) if (!last.has(seed)) {
+      expect(is[4]).toBeLessThan(0.08);
+      came++;
+    }
+    last = now;
+  }
+  // The sweep went from a quarter of the column to all of it.
+  expect([fewest <= 6, most >= 15, came >= 10]).toEqual([true, true, true]);
+});
+
 test("a lit campfire, torch, pot, hearth and forge burn; the same out, or a lit fabricator, do not", () => {
   for (const [name, lit] of [["campfire", true], ["standing_torch", true], ["cooking_pot", true], ["fireplace", true], ["forge", true], ["fabricator", false], ["preserving_bin", false]] as const) {
     for (const on of [false, true]) {

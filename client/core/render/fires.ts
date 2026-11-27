@@ -25,11 +25,13 @@ export const FIRE_REACH = 320;
 const FADE_FROM = 260;
 /** Fires drawn at once at the most whatever the tier, tongues of one flame, puffs of one fire's smoke, and embers of one fire. */
 export const MOST_FIRES = 16;
-const TONGUES = 4, PUFFS = 20, THIN_PUFFS = 7, EMBERS = 8;
+const TONGUES = 4, PUFFS = 20, THIN_PUFFS = 8, EMBERS = 8;
+/** Flames a fire has at the most. */
+const FLAMES = 3;
 /** Fires that throw embers at once. */
 const EMBER_FIRES = 2;
-/** Cards held at the most: each fire's puffs, a glow and a pool for each of two flames, and the embers. */
-const CARDS = MOST_FIRES * (PUFFS + 4) + EMBER_FIRES * EMBERS;
+/** Cards held at the most: each fire's puffs, a glow and a pool for each of its flames, and the embers. */
+const CARDS = MOST_FIRES * (PUFFS + 2 * FLAMES) + EMBER_FIRES * EMBERS;
 /** Pixels high on the screen past which each tongue in turn is drawn, and the share either side over which it comes in. */
 export const TONGUE_AT = [40, 90, 160, 230] as const;
 const TONGUE_BAND = 0.25;
@@ -57,7 +59,9 @@ const HELD = 5;
 const FLAME_FLOATS = 5;
 /** Floats a blaze is held in for `draw`: its foot from the eye, height, width, lean, power, pace, seed and distance. */
 const BLAZE = 11;
-const MAX_BLAZES = MOST_FIRES * 2 * (TONGUES + 1);
+const MAX_BLAZES = MOST_FIRES * FLAMES * (TONGUES + 1);
+/** The share of the screen one puff of smoke may cover whole: past it it thins, and at three times it the eye is in it and it is not drawn. */
+const PUFF_SHARE = 0.5;
 
 /** Where a kind's fire stands, worked out once. */
 interface Layout {
@@ -75,6 +79,21 @@ interface Layout {
   spread: number;
   /** The square metres of its flames, which its light is by. */
   area: number;
+  /**
+   * Its smoke: the metres a second a puff leaves at, the seconds that takes to slow, the metres a second it rises
+   * after, the seconds it lives, and how many there are; then how high the last of it is over where it leaves, the
+   * metres it is carried for each metre a second of wind, and the widest a puff grows.
+   */
+  v0: number;
+  slows: number;
+  still: number;
+  life: number;
+  many: number;
+  rise: number;
+  carry: number;
+  girth: number;
+  /** How far from its middle its smoke may leave, at the most. */
+  off: number;
 }
 
 interface Held { version: number; at: Float32Array }
@@ -85,6 +104,12 @@ function smooth(a: number, b: number, v: number): number {
   return t * t * (3 - 2 * t);
 }
 const fract = (v: number): number => v - Math.floor(v);
+
+/**
+ * The share of a column's `many` puffs drawn for a fire `px` pixels high on the screen: all of them near, half and then
+ * a quarter far off, coming in by degrees, and four at the least.
+ */
+const puffLevel = (px: number, many: number): number => Math.max(4 / many, 0.25 + 0.25 * smooth(16, 26, px) + 0.5 * smooth(48, 76, px));
 
 /** A blaze's clock's pace for its height: a small flame rises and sways faster for its size, as a real one does. */
 export const blazePace = (high: number): number => Math.max(1, Math.min(4, Math.round(2.2 / Math.sqrt(Math.max(high, 0.05)))));
@@ -172,6 +197,9 @@ export class Fires extends VehicleCards {
     const c0 = Math.max(0, Math.floor((cam.x - reach) / CHUNK_SIZE)), c1 = Math.min(chunksX - 1, Math.floor((cam.x + reach) / CHUNK_SIZE));
     const r0 = Math.max(0, Math.floor((cam.z - reach) / CHUNK_SIZE)), r1 = Math.min(chunksZ - 1, Math.floor((cam.z + reach) / CHUNK_SIZE));
     const pixels = viewHeight / (2 * Math.tan(cam.fovY / 2));
+    const t = now / 1000;
+    const gust = 1 + GUST * Math.sin(t * 0.7) * Math.sin(t * 0.23 + 1);
+    const wx = LOW.wind[0] * WIND_SHARE * gust, wz = LOW.wind[1] * WIND_SHARE * gust;
     for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
       const at = this.firesOf(structs, r * chunksX + c);
       for (let i = 0; i < at.length; i += HELD) {
@@ -180,11 +208,10 @@ export class Fires extends VehicleCards {
         const d = Math.hypot(x, bottom + 0.5 * lay.tip, z);
         if (d >= reach) continue;
         if (lights && d < FIRE_REACH) this.light(lights, at, i, lay, x, bottom, z, d);
-        // Seen by a box round its flames and the first of its smoke.
-        const s = lay.spread + Math.hypot(lay.slideX, lay.slideZ) + lay.wide, top = bottom + Math.max(lay.tip, lay.smoke) + 4 * lay.wide;
-        if (!cam.boxVisible(x - s, bottom, z - s, x + s, top, z + s)) continue;
+        const px = (lay.tip / Math.max(d, 0.5)) * pixels;
+        if (!this.seen(cam, lay, x, bottom, z, wx, wz, px)) continue;
         found.push(at[i]!, at[i + 1]!, at[i + 2]!, at[i + 3]!, kind);
-        near.push(found.length / HELD - 1, d, (lay.tip / Math.max(d, 0.5)) * pixels);
+        near.push(found.length / HELD - 1, d, px);
       }
     }
     const count = near.length / 3;
@@ -194,9 +221,6 @@ export class Fires extends VehicleCards {
     order.length = 0;
     for (let k = 0; k < count; k++) order.push(k);
     order.sort(this.bySize);
-    const t = now / 1000;
-    const gust = 1 + GUST * Math.sin(t * 0.7) * Math.sin(t * 0.23 + 1);
-    const wx = LOW.wind[0] * WIND_SHARE * gust, wz = LOW.wind[1] * WIND_SHARE * gust;
     this.screen = 4 * Math.tan(cam.fovY / 2) ** 2 * cam.aspect;
     const room = FIRE_SHARE * tier.details.fill;
     // Where the tier carries no light from fire, a warm pool on what a fire stands on stands in for it by night.
@@ -208,9 +232,9 @@ export class Fires extends VehicleCards {
       const fade = Math.min(1, Math.max(0, (FIRE_REACH - d) / (FIRE_REACH - FADE_FROM))), fades = Math.min(1, Math.max(0, (reach - d) / (0.2 * reach)));
       // A seed of its own from where it stands, so no two fires flicker, lean or puff together.
       const seed = fract(Math.abs(Math.sin(found[f]! * 12.9898 + found[f + 2]! * 78.233)) * 43758.5453);
-      // Past their share of the screen the rest are drawn plainer: a bed alone and half the smoke.
-      const plain = this.spent > room;
-      this.fire(cam, f, lay, seed, px, fade, fades, plain ? 0 : Math.min(TONGUES, tier.fires.tongues), t, wx, wz, plain);
+      // Past their share of the screen the rest are drawn plainer: half the smoke, by degrees, and then a bed alone.
+      const over = smooth(room, 1.5 * room, this.spent), plain = over >= 1;
+      this.fire(cam, f, lay, seed, px, fade, fades, plain ? 0 : Math.min(TONGUES, tier.fires.tongues), t, wx, wz, plain, 1 - 0.5 * over);
       if (px > EMBERS_OVER && embers < EMBER_FIRES && !plain) {
         this.embers(cam, f, lay, seed, t, wx, wz, fade * smooth(EMBERS_OVER, 1.5 * EMBERS_OVER, px));
         embers++;
@@ -220,8 +244,29 @@ export class Fires extends VehicleCards {
     this.fill = this.spent;
   }
 
+  /**
+   * Whether any of a fire may be seen from `cam`: its flames, or its smoke, which is tried in three lengths of its
+   * column, each as high as it rises there, as far downwind as it is carried, and as wide as its puffs have grown. The
+   * fire's bottom is at (x, bottom, z) from the eye, and it is `px` pixels high.
+   */
+  private seen(cam: Camera, lay: Layout, x: number, bottom: number, z: number, wx: number, wz: number, px: number): boolean {
+    const s = lay.spread + Math.hypot(lay.slideX, lay.slideZ) + lay.wide, top = bottom + Math.max(lay.tip, lay.smoke);
+    if (cam.boxVisible(x - s, bottom, z - s, x + s, top + lay.wide, z + s)) return true;
+    const girth = lay.girth * Math.sqrt(1 / puffLevel(px, lay.many));
+    for (let k = 0, up0 = 0, out0 = 0; k < 3; k++) {
+      const a = ((k + 1) * lay.life) / 3, up = lay.v0 * lay.slows * (1 - Math.exp(-a / lay.slows)) + lay.still * a, out = a * (0.6 + 0.06 * up);
+      // A puff sways a fifth of its width to either side.
+      const r = lay.off + 1.2 * girth * (lay.sooty ? (0.8 + 1.5 * Math.sqrt((k + 1) / 3)) / 2.3 : (0.35 + 0.8 * Math.sqrt((k + 1) / 3)) / 1.15);
+      const x0 = x + wx * Math.min(out0, out), x1 = x + wx * Math.max(out0, out), z0 = z + wz * Math.min(out0, out), z1 = z + wz * Math.max(out0, out);
+      if (cam.boxVisible(Math.min(x0, x1) - r, bottom + up0 - r, Math.min(z0, z1) - r, Math.max(x0, x1) + r, top + up + r, Math.max(z0, z1) + r)) return true;
+      up0 = up;
+      out0 = out;
+    }
+    return false;
+  }
+
   /** Holds one fire's blazes and writes its glows and smoke, its flames shown `fade` of themselves and its smoke `fades`. */
-  private fire(cam: Camera, f: number, lay: Layout, seed: number, px: number, fade: number, fades: number, tongues: number, t: number, wx: number, wz: number, plain: boolean): void {
+  private fire(cam: Camera, f: number, lay: Layout, seed: number, px: number, fade: number, fades: number, tongues: number, t: number, wx: number, wz: number, plain: boolean, thin: number): void {
     const found = this.found, yaw = found[f + 3]!, co = Math.cos(yaw), si = Math.sin(yaw);
     const bottom = found[f + 1]! + this.low![found[f + 4]!]! - cam.y;
     const flames = lay.flames, slide = seed - 0.5;
@@ -238,7 +283,7 @@ export class Fires extends VehicleCards {
       if (cross < 0.99) this.glow(x, y + 0.45 * high, z, 0.5 * wide + 0.2 * high, 0.55 * high, FLAME, 2.4, (1 - cross) * fade);
       if (this.pools > 0.01) this.pool(x, y + 0.03, z, wide + 1.5 * high, this.pools * fade);
     }
-    this.smoke(cam, f, lay, seed, bottom, t, wx, wz, fades, px, plain);
+    this.smoke(cam, f, lay, seed, bottom, t, wx, wz, fades, px, thin);
   }
 
   /** How much a pool of light stands in for a fire's own this frame: 0 where the tier carries its light, or by day. */
@@ -296,30 +341,35 @@ export class Fires extends VehicleCards {
   /**
    * A fire's smoke: a column of puffs born in its flames, or at a hearth's chimney, each rising fast and then slower,
    * growing, greying and thinning as it goes, and carried downwind more the higher it is. They follow close enough that
-   * the column has no gaps; fewer and larger far off, so it keeps its outline.
+   * the column has no gaps; fewer and larger far off, so it keeps its outline. A puff is where it is at every detail:
+   * a far column keeps every fourth and then every second of them, and the rest come in by degrees, so nothing jumps
+   * as a fire grows on the screen. `thin` of them are kept where the fires are past their share of the screen.
    */
-  private smoke(cam: Camera, f: number, lay: Layout, seed: number, bottom: number, t: number, wx: number, wz: number, fade: number, px: number, plain: boolean): void {
+  private smoke(cam: Camera, f: number, lay: Layout, seed: number, bottom: number, t: number, wx: number, wz: number, fade: number, px: number, thin: number): void {
     const found = this.found, yaw = found[f + 3]!, co = Math.cos(yaw), si = Math.sin(yaw), fl = lay.flames, slide = seed - 0.5;
     const chimney = lay.smoke > lay.tip;
     const fx = chimney ? 0 : fl[0]! + slide * lay.slideX, fz = chimney ? 0 : fl[2]! + slide * lay.slideZ;
     const x0 = found[f]! - cam.x + co * fx + si * fz, z0 = found[f + 2]! - cam.z + co * fz - si * fx;
     const y0 = bottom + (chimney ? lay.smoke : fl[1]! + 0.55 * fl[3]!);
-    const big = lay.wide, sooty = lay.sooty;
-    // A wreck's hot column climbs fast and high; a hearth's wisp slowly, and not far. Seconds its first rise takes to slow.
-    const v0 = sooty ? 1.2 + 0.4 * big : 0.4 + 0.5 * big, slows = sooty ? 4 : 2.5, still = sooty ? 0.45 : 0.2, life = sooty ? 13 : 7;
-    const many = sooty ? PUFFS : THIN_PUFFS, level = px > 60 ? 1 : px > 20 ? 0.6 : 0.35;
-    const puffs = Math.max(4, Math.round(many * level * (plain ? 0.5 : 1))), swell = Math.sqrt(many / puffs);
-    for (let q = 0; q < puffs; q++) {
-      const u = fract(t / life + q / puffs + seed), a = u * life;
+    const big = lay.wide, sooty = lay.sooty, { v0, slows, still, life, many } = lay;
+    const level = puffLevel(px, many), swell = Math.sqrt(1 / level);
+    for (let q = 0; q < many; q++) {
+      const part = Math.min(1, (level * thin - (q % 4 === 0 ? 0 : q % 2 === 0 ? 0.25 : 0.5)) / 0.125);
+      if (part <= 0) continue;
+      const u = fract(t / life + q / many + seed), a = u * life;
       const up = v0 * slows * (1 - Math.exp(-a / slows)) + still * a;
       // Wind's metres a second times these seconds: the higher, the farther it is carried.
       const out = a * (0.6 + 0.06 * up);
       const size = big * swell * (sooty ? 0.8 + 1.5 * Math.sqrt(u) : 0.35 + 0.8 * Math.sqrt(u));
-      const shows = (sooty ? 0.9 : 0.35) * fade * smooth(0, 0.06, u) * (1 - smooth(0.5, 1, u)) * (1 - 0.3 * u);
-      const wob = Math.sin(6.2831853 * (u * 1.3 + seed + q * 0.37)) * 0.2 * size;
+      // Its sway is by its own width, not by what a far column swells it to, so it is in one place at every detail.
+      const wob = (Math.sin(6.2831853 * (u * 1.3 + seed + q * 0.37)) * 0.2 * size) / swell;
+      const x = x0 + wx * out + wob, y = y0 + up, z = z0 + wz * out - wob;
+      // One the eye is coming into thins and is gone: the eye in a column is not shown a screen of it for each puff.
+      const near = 1 - smooth(PUFF_SHARE, 3 * PUFF_SHARE, (2.6 * size * size) / (Math.max(x * x + y * y + z * z, 0.25) * this.screen));
+      const shows = (sooty ? 0.9 : 0.35) * fade * part * near * smooth(0, 0.06, u) * (1 - smooth(0.5, 1, u)) * (1 - 0.3 * u);
       // Black where it leaves a wreck, greying as it thins.
       const grey = sooty ? Math.round(40 + 55 * u) : 122;
-      this.puff(x0 + wx * out + wob, y0 + up, z0 + wz * out - wob, size, shows, Math.floor(fract(seed + q / puffs) * 255), Math.round(200 * u), sooty ? word(grey, grey - 2, grey - 4) : WOODSMOKE);
+      this.puff(x, y, z, size, shows, Math.floor(fract(seed + q / many) * 255), Math.round(200 * u), sooty ? word(grey, grey - 2, grey - 4) : WOODSMOKE);
     }
   }
 
@@ -434,15 +484,13 @@ export class Fires extends VehicleCards {
     let flames: Float32Array, slideX = 0, slideZ = 0;
     if (listed) flames = listed;
     else {
-      // A wreck's: over its deck toward one end of its hull, as wide as most of its beam, and a smaller one forward on a
-      // long hull; each hull's seed slides it along, so no two of a kind burn in the same place.
+      // A wreck's burns along its deck: the tallest toward one end of its hull, as wide as its beam, a lower one forward
+      // of it, and on a long hull a low one aft; each hull's seed slides them along, so no two of a kind burn alike.
       const hx = reg.halfX[kind]!, hy = reg.halfY[kind]!, hz = reg.halfZ[kind]!;
       const alongX = hx > hz, long = Math.max(hx, hz), beam = 2 * Math.min(hx, hz);
-      const high = Math.min(7, Math.max(1.6, 1.3 * beam)), wide = Math.min(5, 0.75 * beam, long), up = hy * (1 + DECK);
-      const a = -0.25 * long, b = 0.4 * long;
-      flames = Float32Array.from(long > 2.2 * beam
-        ? [alongX ? a : 0, up, alongX ? 0 : a, high, wide, alongX ? b : 0, up, alongX ? 0 : b, 0.6 * high, 0.7 * wide]
-        : [alongX ? a : 0, up, alongX ? 0 : a, high, wide]);
+      const high = Math.min(7, Math.max(1.6, 1.15 * beam)), wide = Math.min(6, 0.95 * beam, long), up = hy * (1 + DECK);
+      const at = (along: number, tall: number, across: number): number[] => [alongX ? along * long : 0, up, alongX ? 0 : along * long, tall * high, across * wide];
+      flames = Float32Array.from(long > 2.2 * beam ? [...at(-0.15, 1, 1), ...at(0.3, 0.62, 0.85), ...at(-0.52, 0.45, 0.8)] : [...at(-0.12, 1, 1), ...at(0.36, 0.55, 0.8)]);
       slideX = alongX ? 0.4 * long : 0;
       slideZ = alongX ? 0 : 0.4 * long;
     }
@@ -456,7 +504,12 @@ export class Fires extends VehicleCards {
     // A hearth's smoke leaves by its chimney, the top of its box; a wreck's and an open fire's off its tips.
     const height = structs.top[kind]! - structs.low[kind]!;
     const smoke = listed && height > tip ? height : tip;
-    return (this.layouts[kind] = { flames, smoke, tip, wide, slideX, slideZ, sooty: ablaze, spread, area });
+    // A wreck's hot column climbs fast and high; a hearth's wisp slowly, and not far.
+    const v0 = ablaze ? 1.2 + 0.4 * wide : 0.4 + 0.5 * wide, slows = ablaze ? 4 : 2.5, still = ablaze ? 0.45 : 0.2, life = ablaze ? 13 : 7;
+    const rise = v0 * slows * (1 - Math.exp(-life / slows)) + still * life;
+    // The widest a puff grows where every one is drawn; fewer are larger (puffLevel).
+    const girth = wide * (ablaze ? 2.3 : 1.15), carry = life * (0.6 + 0.06 * rise);
+    return (this.layouts[kind] = { flames, smoke, tip, wide, slideX, slideZ, sooty: ablaze, spread, area, v0, slows, still, life, many: ablaze ? PUFFS : THIN_PUFFS, rise, carry, girth, off: smoke > tip ? 0 : Math.hypot(flames[0]!, flames[2]!) + 0.5 * Math.hypot(slideX, slideZ) });
   }
 
   /** A chunk's burning things, HELD numbers each: where its box's middle is, its yaw in radians and its kind. Read again only when its table has changed. */

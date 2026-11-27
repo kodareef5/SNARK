@@ -1095,7 +1095,7 @@ export class Scene {
     const p = this.packet;
     const { rotorBlur, patrolLights, thrusterPlumes, windscreens, tireContacts } = this.characters;
     const { streetLamps, streetWires, fires, fireLights } = this;
-    fireLights.begin();
+    fireLights.begin(cam.x, cam.y, cam.z);
     fires.hour = this.hour;
     const mirage = this.mirage;
     mirage.begin();

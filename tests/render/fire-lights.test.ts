@@ -5,7 +5,7 @@
 import { expect, test } from "bun:test";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { effectsOff, packetWithout } from "../../client/core/passes.ts";
-import { FIRE_COLOUR, FIRE_GLINT, FIRE_NEAREST, FIRE_REACH_PER, FIRE_SEES_GLSL, FireLights, fireCast, fireReach, fireSees } from "../../client/core/render/fire-lights.ts";
+import { FIRE_COLOUR, FIRE_FALLS, FIRE_GLINT, FIRE_HOLDS, FIRE_NEAREST, FIRE_REACH_PER, FIRE_SEES_GLSL, FireLights, fireCast, fireReach, fireSees } from "../../client/core/render/fire-lights.ts";
 import { DETAIL, DETAIL_FLOATS, DETAIL_GLOW, FIRES_AT, FIRE_LIGHTS, FRAME, FRAME_FLOATS, FramePacket } from "../../client/core/render/packet.ts";
 import { PROGRAMS, withDefines } from "../../client/core/render/programs.ts";
 import { seaPixel } from "../../client/core/render/water.ts";
@@ -45,20 +45,80 @@ test("the strongest lights round the eye are written first, as many as asked, an
   expect(Array.from(frame.subarray(FIRES_AT, FIRES_AT + FIRE_LIGHTS * 8)).every((v) => v === 0)).toBe(true);
 });
 
-test("a light nearing the last of the few fades as it nears it, so two changing places never pop", () => {
+test("the few shine whole however many more are as strong, and a strong light handed in last is not lost to weak ones", () => {
   const lights = new FireLights(), frame = new Float32Array(FRAME_FLOATS);
-  // One light asked for; a second as strong walks in from 20 m to 4 m. The first's written light never steps.
-  let last = -1, most = 0;
-  for (let d = 20; d >= 4; d -= 0.05) {
+  frame[FRAME.exposure] = 1;
+  // Five as strong and as far, four asked for: four are written, each whole.
+  lights.begin();
+  for (let k = 0; k < 5; k++) lights.add(6 * Math.cos(k), 0, 6 * Math.sin(k), 10, R, G, B, 1);
+  lights.write(frame, 4, 0);
+  expect(written(frame).map((l) => Math.round(l[4]! * 1000) / 1000)).toEqual([10 * R, 10 * R, 10 * R, 10 * R].map((v) => Math.round(v * 1000) / 1000));
+  // More weak lights than a frame holds, and then a strong one beside the eye: it is the first written.
+  lights.begin();
+  for (let k = 0; k < 80; k++) lights.add(40 + k, 0, 0, 1, R, G, B, 1);
+  lights.add(0, 0, 3, 50, R, G, B, 1);
+  lights.write(frame, 4, 1000);
+  expect([written(frame).length, written(frame)[0]!.slice(0, 3), Math.round(written(frame)[0]![4]! * 100) / 100]).toEqual([4, [0, 0, 3], Math.round(50 * R * 100) / 100]);
+});
+
+test("near equals do not trade places; one that takes a place comes in as the other goes out, and the rest shine on", () => {
+  const lights = new FireLights(), frame = new Float32Array(FRAME_FLOATS);
+  frame[FRAME.exposure] = 1;
+  // Two asked for. A strong light stays; a second holds the other place while a third walks in from 20 m to 4 m.
+  let now = 0, stays = 0, most = 0, last: number[] = [];
+  const seen: number[][] = [];
+  for (let d = 20; d >= 4; d -= 0.02, now += 16) {
     lights.begin();
-    lights.add(0, 0, 8, 10, R, G, B, 1);
+    lights.add(0, 0, 3, 40, R, G, B, 1);
+    lights.add(0, 0, -8, 10, R, G, B, 1);
     lights.add(d, 0, 0, 10, R, G, B, 1);
-    lights.write(frame, 1, 0);
-    const shown = frame[FIRES_AT + 3]! > 0 && frame[FIRES_AT] === 0 ? frame[FIRES_AT + 4]! : -frame[FIRES_AT + 4]!;
-    if (last !== -1) most = Math.max(most, Math.abs(shown - last));
+    lights.write(frame, 2, now);
+    const w = written(frame), by = (x: number, z: number): number => w.find((l) => Math.abs(l[0]! - x) < 1e-3 && Math.abs(l[2]! - z) < 1e-3)?.[4] ?? 0;
+    const shown = [by(0, 3), by(0, -8), by(d, 0)];
+    expect(w.length).toBeLessThanOrEqual(2);
+    if (last.length) for (let k = 0; k < 3; k++) most = Math.max(most, Math.abs(shown[k]! - last[k]!));
     last = shown;
+    stays = Math.max(stays, Math.abs(shown[0]! - 40 * R));
+    seen.push([d, shown[1]!, shown[2]!]);
   }
-  expect(most).toBeLessThan(0.5);
+  // The strong one never changes, and no light steps by more than a frame's share of its fade.
+  expect([stays < 1e-3, most < 10 * R * (0.016 / FIRE_FALLS) * 1.05]).toEqual([true, true]);
+  // As strong and as far, at 8 m, the one that held the place keeps it; it goes only when the other is FIRE_HOLDS as strong.
+  const at = (d: number): number[] => seen.find((row) => Math.abs(row[0]! - d) < 0.011)!;
+  expect([at(8)[1]! > 9.9 * R, at(8)[2]]).toEqual([true, 0]);
+  const gone = seen.find((row) => row[1]! < 10 * R - 1e-3)![0]!;
+  expect(Math.abs(gone - 8 / Math.sqrt(FIRE_HOLDS))).toBeLessThan(0.05);
+  // The newcomer shows only once the other is out, and is whole in the end.
+  expect(seen.every((row) => row[1] === 0 || row[2] === 0)).toBe(true);
+  expect([at(4)[1], at(4)[2]! > 9.9 * R]).toEqual([0, true]);
+});
+
+test("a blast's light is whole at once and takes the place of the least of the few; with time stood still the few are as they come to rest", () => {
+  const lights = new FireLights(), frame = new Float32Array(FRAME_FLOATS);
+  frame[FRAME.exposure] = 1;
+  const fires = (): void => {
+    lights.begin();
+    lights.add(0, 0, 3, 40, R, G, B, 1);
+    lights.add(0, 0, -8, 10, R, G, B, 1);
+  };
+  fires();
+  lights.write(frame, 2, 0);
+  fires();
+  lights.add(5, 0, 0, 600, 1, 0.8, 0.55, 1, 0, 0, true);
+  lights.write(frame, 2, 16);
+  let w = written(frame);
+  expect([w.length, w[0]!.slice(0, 3), Math.round(w[0]![4]!), w[1]!.slice(0, 3)]).toEqual([2, [5, 0, 0], 600, [0, 0, 3]]);
+  // A fire that is no blast waits for a place, and is whole at once when no time passes between frames.
+  fires();
+  lights.add(1, 0, 0, 30, R, G, B, 1);
+  lights.write(frame, 2, 32);
+  w = written(frame);
+  expect(w.some((l) => l[0] === 1)).toBe(false);
+  fires();
+  lights.add(1, 0, 0, 30, R, G, B, 1);
+  lights.write(frame, 2, 32);
+  w = written(frame);
+  expect([w.length, w[0]!.slice(0, 3), Math.round(w[0]![4]! * 100) / 100]).toEqual([2, [1, 0, 0], Math.round(30 * R * 100) / 100]);
 });
 
 test("a fire lights a face turned to it by the square of the distance, a little turned away, and nothing past its reach", () => {
