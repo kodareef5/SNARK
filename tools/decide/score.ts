@@ -18,7 +18,7 @@ import type { EpisodeScore, PointScores, Scoreboard } from "../../shared/decide/
 import { Table } from "../../shared/decide/table.ts";
 import { readModel, writeModel } from "../../shared/decide/weights.ts";
 import { boardHtml } from "./board.ts";
-import { FAMILIES, catalog } from "./catalog.ts";
+import { FAMILIES, SITUATIONS, catalog } from "./catalog.ts";
 import { READINGS, dataDir, readData, revision, type Decision, type Manifest } from "./dataset.ts";
 import { examples, type Catalog } from "./fit.ts";
 import { Workers, loadModels, status, type Job } from "./generate.ts";
@@ -170,7 +170,7 @@ export async function scorePoint(point: string, o: { layouts: number; workers: n
   // The held-out layouts: seeds 1 to `layouts` of the split's held families, or that many of the families named from `first`.
   const fixed = o.held ? scenes(o.held.families, o.layouts, o.held.first) : layouts(cat, o.layouts);
   const episodes = game ? await play(point, policies, fixed, o.workers) : [];
-  const fresh = game && o.fresh ? await play(point, policies, scenes([...FAMILIES, "miami"], o.fresh, FRESH_FIRST), o.workers) : [];
+  const fresh = game && o.fresh ? await play(point, policies, scenes([...FAMILIES, "miami", ...SITUATIONS], o.fresh, FRESH_FIRST), o.workers) : [];
   const out: PointScores[] = [];
   for (const p of profiles) {
     const mine = found.get(p.name)!;
