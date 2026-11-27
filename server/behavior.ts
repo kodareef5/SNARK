@@ -894,7 +894,7 @@ export class Behavior {
 
   /**
    * The ladder's choice for `e`: it goes `yaw` (65536ths of a turn) until tick `until`, as if it had met nothing. One that
-   * wanders walks it; one with a goal deep in trouble also asks for a way.
+   * wanders walks it; one with a goal also asks for a way, which it follows once found.
    */
   hold(e: number, yaw: number, until: number, tick: number): void {
     // Asked while on a way, it was stuck there: the way did not hold.
@@ -907,7 +907,7 @@ export class Behavior {
       this.move[e] = 127;
       this.buttons[e] = 0;
       this.until[e] = until;
-    } else if (this.rung[e]! >= 2 && this.way[e] === WAY_STRAIGHT) this.ask(e, tick, ASK_LATER);
+    } else if (this.way[e] === WAY_STRAIGHT) this.ask(e, tick, ASK_LATER);
   }
 
   /** What `e` moves by: a tame by its tamed numbers. */

@@ -81,6 +81,9 @@ export class Rings {
   private sp = 1;
   private mode = 0;
   private deep = 0;
+  /** The knee ray's free run along each heading, from the body's edge, while the mid pass filled this answer. */
+  private readonly knee: Float64Array;
+  private kneeFresh = false;
 
   constructor(world: ServerWorld, mind: Behavior, blocking: BodyBlocking, n: number, k: number, dx: Float64Array, dz: Float64Array) {
     this.world = world;
@@ -103,6 +106,7 @@ export class Rings {
     this.trailZ = new Float32Array(n * TRAIL);
     this.trailAt = new Int32Array(n).fill(NEVER);
     this.trailN = new Uint8Array(n);
+    this.knee = new Float64Array(k);
   }
 
   /** Empties slot `s` for a mover standing at (x, z). */
@@ -152,6 +156,7 @@ export class Rings {
     this.sp = span(p.radius, GRAIN, pace, REACT);
     this.mode = mode;
     this.deep = deep;
+    this.kneeFresh = false;
   }
 
   /** The far pass: the cosine of each heading with the goal, the way, the prey's path and, deep in trouble, the trail back. */
@@ -213,7 +218,7 @@ export class Rings {
     for (let i = 0; i < k; i++) {
       const at = (s * k + i) * MK, dx = this.dx[i]!, dz = this.dz[i]!, ox = x + dx * r, oz = z + dz * r;
       castWorld(world, ox, knee, oz, dx, 0, dz, run, true);
-      const low = rayHit.t;
+      const low = (this.knee[i] = rayHit.t);
       castWorld(world, ox, chest, oz, dx, 0, dz, run, true);
       const high = rayHit.t;
       // The ground and the water as far as its knee runs free, and a span at least.
@@ -242,6 +247,7 @@ export class Rings {
       this.midC[at + 6] = q(unit(crowd, 4));
     }
     this.midAt[s] = tick;
+    this.kneeFresh = true;
   }
 
   /** The near pass: a heading solid within contact reach is masked; how open each is within NEAR_SPANS, and bodies in it. */
@@ -257,8 +263,9 @@ export class Rings {
       const at = (s * k + i) * 2, dx = this.dx[i]!, dz = this.dz[i]!;
       const ground = groundAt(world, p, x + dx * contact, z + dz * contact, tight);
       const mask = ground === GROUND_SOLID || ground === GROUND_OFF ? 1 : 0;
-      castWorld(world, x, knee, z, dx, 0, dz, r + reach, true);
-      const open = unit(rayHit.t - r, reach);
+      // The mid pass's knee ray, where it ran this answer, is this one from the body's edge.
+      if (!this.kneeFresh) castWorld(world, x + dx * r, knee, z + dz * r, dx, 0, dz, reach, true);
+      const open = unit(this.kneeFresh ? this.knee[i]! : rayHit.t, reach);
       let body = 0;
       for (let b = 0; bodies !== null && b < bodies.count && body === 0; b++) {
         const bx = (bodies.ax[b]! + bodies.bx[b]!) / 2 - x, bz = (bodies.az[b]! + bodies.bz[b]!) / 2 - z;
