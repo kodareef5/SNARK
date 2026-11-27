@@ -2152,6 +2152,8 @@ export class Behavior {
     } else return -1;
     const f = this.finder;
     f.budget = this.rung[e]! >= 3 && this.game.lane.may() ? LONG_SEARCH : SEARCH_CELLS;
+    // On the patient rung the search crosses water it would swim, priced at its walk over its swim, never under dry ground's.
+    f.swim = this.rung[e]! >= 3 && p.swimSpeed > 0 ? Math.max(1, p.walkSpeed / p.swimSpeed) : 0;
     // The search freezes a slightly wider/taller footprint, capped at adult size. Its step capability and water
     // tolerance remain the young's actual ones: padding must not invent a climb or make deep water walkable.
     this.searchGrowing = ents.grown[e]! > this.world.tick;

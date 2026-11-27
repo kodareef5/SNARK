@@ -5,6 +5,7 @@ import { MIND_FLEE, MIND_HUNT } from "../../server/behavior.ts";
 import type { Nav } from "../../server/decide/nav.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { scoreTable } from "../../shared/decide/forward.ts";
+import { RING_MID } from "../../shared/decide/profiles.ts";
 import { RULES } from "../../shared/decide/rules.ts";
 import { SCENES, blockerLeaves, decideBy, hashes, type Scene } from "../fixtures/decide-scenes.ts";
 
@@ -87,6 +88,28 @@ test("a stuck raptor keeps dry until the patient rung, then soon wades out", () 
   // It backs out the way it came in, which leads into the water, rather than circling the pen.
   expect(rule.wet - rule.patient).toBeLessThan(5 * TICK_RATE);
   expect(rule.arrived).toBeGreaterThan(rule.wet);
+});
+
+test("the mid pass marks water a raptor would swim, and the raptor as a slow swimmer", () => {
+  // The pond is 1.2 m deep; a raptor swims in water over 1.05 m.
+  let swum = 0, wet = 0, swim = -1;
+  const seen = run("wet", RULE, (s) => {
+    const d = s.w.host.decide, ring = d.points.find((p) => p.name === "nav.ring")!;
+    d.tap ??= (p, e) => {
+      if (d.points[p] !== ring || e !== s.movers[0]) return;
+      const mid = ring.tables.find((t) => t.profile === RING_MID)!.table, W = RING_MID.columns.length;
+      for (let i = 0; i < mid.k; i++) {
+        swum = Math.max(swum, mid.rows[i * W + RING_MID.c.swum]!);
+        wet = Math.max(wet, mid.rows[i * W + RING_MID.c.wet]!);
+      }
+      swim = mid.state[RING_MID.s.swim]!;
+    };
+  });
+  seen.s.w.host.shutdown();
+  expect(swum).toBeGreaterThan(0);
+  expect(wet).toBeGreaterThanOrEqual(swum);
+  // It swims at 1.92 m/s and walks at 3.2: under a half.
+  expect(swim).toBeCloseTo(1.92 / 3.2 / (1 + 1.92 / 3.2), 3);
 });
 
 test("wanderers in a pen are stuck less often, and far less long", () => {

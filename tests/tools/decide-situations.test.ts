@@ -1,10 +1,10 @@
 // The lab's made situations (tools/decide/random.ts): pairs whose two sides differ in one fact, so the right way flips,
 // and the oracle that prices each leg of a way at the pace it takes.
 import { expect, test } from "bun:test";
+import { PathFinder, PATH_FOUND } from "../../shared/world/path.ts";
 import { pairsOf, see } from "../../tools/decide/audit.ts";
 import { draw } from "../../tools/decide/random.ts";
-import { PathFinder, PATH_FOUND } from "../../shared/world/path.ts";
-import { build } from "../../tools/decide/setups.ts";
+import { build, play } from "../../tools/decide/setups.ts";
 
 test("both sides of a body pair share their walls and water and differ in the body", () => {
   let id = 1;
@@ -55,4 +55,16 @@ test("a pair is kept only where the oracle's way differs between its sides", () 
   expect(pairsOf(seen).length).toBe(2);
   // The same side twice is no pair.
   expect(pairsOf([seen[0]!, { ...seen[0]!, pair: { ...seen[0]!.pair!, side: 1 } }]).length).toBe(0);
+});
+
+test("a dodo stuck in a flooded U swims out once its patient search may swim", () => {
+  // Every dodo the rule lost in the water family walked round the strip at its slow pace.
+  const s = draw("water", 500011);
+  expect(s.kind).toBe("core:dodo");
+  const run = (policy: "off" | "rule") => {
+    const b = build(s), t = play(b, { point: "nav.ring", policy });
+    b.lab.host.shutdown();
+    return t.arrivedAt >= 0;
+  };
+  expect([run("off"), run("rule")]).toEqual([false, true]);
 });

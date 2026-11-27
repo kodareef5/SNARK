@@ -422,6 +422,7 @@ export class Nav implements Ladder, Held {
     mid.state[ms.rung] = deep / 3;
     mid.state[ms.pace] = paceShare;
     mid.state[ms.stuck] = unit(mind.stuck[e]!, STUCK_TICKS);
+    mid.state[ms.swim] = p.walkSpeed > 0 ? soon(p.swimSpeed / p.walkSpeed, 1) : 0;
     near.state[ns.rung] = deep / 3;
     near.state[ns.pace] = paceShare;
     near.state[ns.stuck] = unit(mind.stuck[e]!, STUCK_TICKS);
