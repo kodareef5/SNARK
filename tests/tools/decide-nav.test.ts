@@ -7,14 +7,14 @@ import type { Model } from "../../shared/decide/forward.ts";
 import { RING_MID } from "../../shared/decide/profiles.ts";
 import { RULE_MID } from "../../shared/decide/rules.ts";
 import { writeModel } from "../../shared/decide/weights.ts";
-import { GAME_CATALOG } from "../../tools/decide/catalog.ts";
+import { GAME_CATALOG, NAV_POINTS } from "../../tools/decide/catalog.ts";
 import { READINGS, emptyManifest, readData, type Decision } from "../../tools/decide/dataset.ts";
 import { argmax, examples, probabilities, scoreModel } from "../../tools/decide/fit.ts";
 import { generate } from "../../tools/decide/generate.ts";
 import type { Answer } from "../../tools/decide/label.ts";
 import { draw } from "../../tools/decide/random.ts";
 import { agreement, layouts } from "../../tools/decide/score.ts";
-import { build, gameReplayer } from "../../tools/decide/setups.ts";
+import { build, clearYaw, gameReplayer, play, policyText } from "../../tools/decide/setups.ts";
 
 const scene = draw("water", 3);
 
@@ -40,9 +40,32 @@ function agrees(answers: Answer[], m: Model): number {
 /** RULE_MID made hotter and then cooled by a temperature, so the pass's weight in the sum is not the rule's. */
 const warm: Model = { ...RULE_MID, w1: RULE_MID.w1.map((v) => v * 3), temperature: 2 };
 
-test("the lab finds the ladder's two points by name on a host", () => {
+test("a long body is put down with its head clear of the wall it was drawn against", () => {
+  // A rex drawn 3 m from the wall that closes its U, its head 5 m ahead of it.
+  const s = draw("water", 500006), b = build(s), ents = b.lab.world.ents, reg = b.lab.world.reg;
+  const move = reg.move[reg.index.get(s.kind)!]!;
+  expect(s.kind).toBe("core:rex");
+  // As drawn it has no clear facing where it stands, so it stands a little off, facing a way that is.
+  expect(clearYaw(b.lab, move, s.start.x, s.start.z, s.start.yaw)).not.toBe(s.start.yaw);
+  const x = ents.x[b.mover]!, z = ents.z[b.mover]!, yaw = ents.yaw[b.mover]!;
+  expect(clearYaw(b.lab, move, x, z, yaw)).toBe(yaw);
+  expect(Math.hypot(x - s.start.x, z - s.start.z)).toBeLessThan(6);
+  b.lab.host.shutdown();
+});
+
+test("a mover at a crowd or at water arrives with every ladder point under the rule", () => {
+  // Scenes the ring alone gets through, which the actions lost by waiting for a body that stands and by sprinting off the ring's heading.
+  expect(policyText("nav.ring", "rule")).toContain("nav.do=rule");
+  for (const [family, seed] of [["crowd", 500011], ["water", 500039]] as const) {
+    const b = build(draw(family, seed)), t = play(b, { point: "nav.ring", policy: "rule" });
+    expect([family, t.arrivedAt >= 0]).toEqual([family, true]);
+    b.lab.host.shutdown();
+  }
+});
+
+test("the lab knows every point the ladder declares on a host", () => {
   const b = build(scene);
-  expect(b.lab.host.decide.points.map((p) => p.name)).toEqual(["nav.snag", "nav.ring"]);
+  expect(b.lab.host.decide.points.map((p) => p.name)).toEqual([...NAV_POINTS]);
   expect(Number.isNaN(b.way)).toBe(false);
   b.lab.host.shutdown();
 });

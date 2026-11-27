@@ -13,7 +13,7 @@ export const FAMILIES = ["trees", "deadEnd", "pen", "water", "blocker", "crowd"]
 export const SPLIT: Split = { held: ["pen"], heldMaps: ["miami"], validation: ["blocker"] };
 
 /** The stuck ladder's points (server/decide/nav.ts), found by name on a host's decider and always decided together. */
-export const NAV_POINTS: readonly string[] = ["nav.snag", "nav.ring"];
+export const NAV_POINTS: readonly string[] = ["nav.snag", "nav.ring", "nav.reach", "nav.probe", "nav.do"];
 
 export const GAME_CATALOG: Catalog = {
   profiles: PROFILES, rules: new Map<string, Model>(RULES.map((m) => [m.profile, m])), split: SPLIT,

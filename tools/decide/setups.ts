@@ -4,7 +4,7 @@
 // mover's luck there when the movement code allows it, and reads the cost one second on, five, and at the end.
 
 import { GOAL_WALK, SEARCH_CELLS } from "../../server/behavior.ts";
-import { LEAVE, SPARE } from "../../server/decide/decide.ts";
+import { LEAVE, SPARE, type Point } from "../../server/decide/decide.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { SNAG_SECONDS } from "../../shared/decide/profiles.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -352,14 +352,14 @@ export function episode(s: Scene, point: string, policy: Hooks["policy"], models
  * and its probabilities where it says them, and the answer as made.
  */
 function madeAgain(b: Built, id: number, pick: number, policy: Hooks["policy"]): { agrees: boolean; final: Final } | null {
-  const d = b.lab.host.decide, point = d.points[id]!, passes = GAME_CATALOG.passes?.[point.name];
-  if (!passes || point.tables.length < 2) return null;
-  const first = point.tables[0]!, held = first.profile.columns.indexOf("held"), k = first.table.k;
+  const d = b.lab.host.decide, point = d.points[id]!, passes = GAME_CATALOG.passes?.[point.name], tables = passTables(point);
+  if (!passes || tables.length < 2) return null;
+  const first = tables[0]!, held = first.profile.columns.indexOf("held"), k = first.table.k;
   let at = -1;
   for (let c = 0; c < k && held >= 0; c++) if (first.table.rows[c * first.table.width + held] === 1) at = c;
-  const weights = point.tables.map(({ profile, weight }) => weight ?? (passes.mix[profile.name] ?? 0) / (policy === "model" ? (d.trained.get(profile.name)?.temperature ?? 1) : 1));
+  const weights = tables.map(({ profile, weight }) => weight ?? (passes.mix[profile.name] ?? 0) / (policy === "model" ? (d.trained.get(profile.name)?.temperature ?? 1) : 1));
   const into = new Table(k, 0, 1);
-  let again = combine(into, point.tables.map(({ table }, i) => ({ table, weight: weights[i]! })), at, passes.stick);
+  let again = combine(into, tables.map(({ table }, i) => ({ table, weight: weights[i]! })), at, passes.stick);
   const made = point.final;
   let close = true;
   if (made) {
@@ -371,9 +371,15 @@ function madeAgain(b: Built, id: number, pick: number, policy: Hooks["policy"]):
   return { agrees: again === pick && close, final };
 }
 
-/** Copies a point's tables as they stand. */
+/** A point's tables that are passes over its candidates: those the catalog gives a mix. A point of one table has only that. */
+function passTables(point: Point): Point["tables"] {
+  const passes = GAME_CATALOG.passes?.[point.name];
+  return passes ? point.tables.filter(({ profile }) => profile.name in passes.mix) : point.tables;
+}
+
+/** Copies a point's tables as they stand: of a point that adds passes, the passes, and not what it asks itself beside them. */
 function served(b: Built, id: number): Answer["tables"] {
-  return b.lab.host.decide.points[id]!.tables.map(({ profile, table: t }) => ({
+  return passTables(b.lab.host.decide.points[id]!).map(({ profile, table: t }) => ({
     profile: profile.name, k: t.k, state: t.state.slice(), rows: t.rows.slice(0, t.k * t.width), bias: t.bias.slice(0, t.k), mask: t.mask.slice(0, t.k),
   }));
 }
