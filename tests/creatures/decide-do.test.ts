@@ -33,14 +33,13 @@ function run(name: string, way: string): Seen {
   try {
     decideBy(s.w, way);
     const mind = s.w.host.creatures.mind, ents = s.w.world.ents, e = s.movers[0]!;
-    const x0 = ents.x[e]!, z0 = ents.z[e]!, before = health(s);
+    const x0 = ents.x[e]!, before = health(s);
     let out = -1, aside = 0;
     const h = hashes(s, (t) => {
       if (name === "blocker" && t === 3 * TICK_RATE) blockerLeaves(s);
       if (out < 0 && Math.max(Math.abs(ents.x[e]! - 128), Math.abs(ents.z[e]! - 128)) > 6 + 2.5) out = t;
       if (name === "blocker" && t < 3 * TICK_RATE) aside = Math.max(aside, Math.abs(ents.x[e]! - x0));
     });
-    void z0;
     const nav = mind.ladder as Nav;
     return { arrived: s.goal ? mind.arrived(e, 1.5) : false, out, aside, started: { ...nav.actions!.started }, bites: mind.bites, before, after: health(s), hashes: h };
   } finally {
