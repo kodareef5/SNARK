@@ -23,7 +23,7 @@ export const LEG_LEAST = 120;
 export function legSeconds(d: number, speed: number): number {
   return Math.max(LEG_LEAST, (1.6 * d) / Math.max(0.1, speed) + 30);
 }
-/** A `reach` under this for REACH_LOW_TICKS running gives the leg up early. */
+/** A `reach` under this (and not unknown, under 0) for REACH_LOW_TICKS running gives the leg up early. */
 export const REACH_LOW = 0.15;
 export const REACH_LOW_TICKS = 5 * TICK_RATE;
 /** Metres past a detour's radius from the mover's line within which it is visited on the way. */
@@ -31,6 +31,17 @@ export const DETOUR_SLACK = 4;
 /** Ticks between looks for a detour, and between a mover's owner being asked to look at its course again. */
 const DETOUR_EVERY = 15;
 const WATCH_EVERY = TICK_RATE;
+
+/**
+ * A decider point that picks among an objective's choices (server/decide/nav-pick.ts). Courses makes the plain pick at
+ * once; where the point is on it is asked too, and an answer acted on comes back through `take` in the same tick.
+ */
+export interface Picker {
+  /** Whether it is asked at all, and whether its answers are acted on: then it chooses the detours too. */
+  on(): boolean;
+  acts(): boolean;
+  ask(e: number): void;
+}
 
 /** Whoever set a course hears of it here. `at` is the point of the course, or the choice of the objective. */
 export interface CourseOwner {
@@ -55,6 +66,8 @@ class Mover {
   /** The choice made for, and a detour taken on the way to it, or -1. */
   aim = -1;
   detour = -1;
+  /** 1 where the aim was kept from before a detour rather than picked afresh. */
+  kept = false;
   /** The leg: where, how near counts, the awake ticks spent on it and allowed, and the ticks `reach` has been low. */
   x = 0;
   z = 0;
@@ -75,15 +88,17 @@ export class Courses {
   stepped = 0;
   gaveUp = 0;
   finished = 0;
-  /** 0 to 1: whether `e` will reach its leg's end. Set by another system; under REACH_LOW for long, the leg is given up. */
+  /** 0 to 1: whether `e` will reach its leg's end, under 0 where unknown. Under REACH_LOW for long, the leg is given up. */
   reach: ((e: number) => number) | null = null;
-  /** Picks a choice of what is left to `e`, an index of `o.choices`; pickPlain where it is not set. */
-  pick: ((e: number, o: Objective) => number) | null = null;
+  /** Picks among an objective's choices besides the plain pick, where it is on. */
+  pick: Picker | null = null;
+  /** Told of each leg's end: reached, or given up. */
+  legEnded: ((e: number, ok: boolean) => void) | null = null;
   private readonly ctx: CoursesContext;
   private readonly list: Mover[] = [];
   private readonly byEnt = new Map<number, Mover>();
   private dirty = false;
-  /** What is left of an objective, for a pick, and where each came from. */
+  /** What is left of an objective, for the plain pick, and where each came from. */
   private readonly left: Objective = { choices: [] };
   private readonly leftAt: number[] = [];
 
@@ -124,7 +139,10 @@ export class Courses {
     m.done = new Uint8Array(o.choices.length);
     m.aim = this.choose(m);
     if (m.aim < 0) this.end(m, false);
-    else this.leg(m);
+    else {
+      this.leg(m);
+      this.askPick(m);
+    }
     return "";
   }
 
@@ -148,6 +166,52 @@ export class Courses {
   making(e: number): number {
     const m = this.byEnt.get(e);
     return !m || !m.objective ? -1 : m.detour >= 0 ? m.detour : m.aim;
+  }
+
+  /** `e`'s objective, or null. */
+  objectiveOf(e: number): Objective | null {
+    return this.byEnt.get(e)?.objective ?? null;
+  }
+
+  /** Whether choice `i` of `e`'s objective is still to be made for: neither visited nor given up. */
+  open(e: number, i: number): boolean {
+    const m = this.byEnt.get(e);
+    return !!m && m.objective !== null && i >= 0 && i < m.done.length && m.done[i] === 0;
+  }
+
+  /** The choice `e` aims at past any detour, and whether it was kept from before one: -1 where none was kept. */
+  keptAim(e: number): number {
+    const m = this.byEnt.get(e);
+    return m && m.objective && m.kept ? m.aim : -1;
+  }
+
+  /** Metres a second that `e` walks its course at. */
+  speedOf(e: number): number {
+    const m = this.byEnt.get(e);
+    return this.speed(e, m ? m.pace : GOAL_WALK);
+  }
+
+  /** The tick by which `e`'s leg runs out if every tick from now counts, or -1 for none. */
+  legEnds(e: number): number {
+    const m = this.byEnt.get(e);
+    return m && m.live && m.budget > 0 ? this.ctx.world.tick + Math.max(0, m.budget - m.spent) : -1;
+  }
+
+  /**
+   * Sends `e` for choice `aim` of its objective, through `detour` first where it is not -1, as a pick decided. False where
+   * either is not open or is of the wrong sort; nothing changes where it is already so.
+   */
+  take(e: number, aim: number, detour: number): boolean {
+    const m = this.byEnt.get(e);
+    if (!m || !m.live || !m.objective) return false;
+    const c = m.objective.choices;
+    if (!this.open(e, aim) || c[aim]!.detour || (detour >= 0 && (!this.open(e, detour) || !c[detour]!.detour))) return false;
+    if (m.aim === aim && m.detour === detour) return true;
+    m.aim = aim;
+    m.detour = detour;
+    m.kept = false;
+    this.leg(m);
+    return true;
   }
 
   step(tick: number): void {
@@ -176,15 +240,16 @@ export class Courses {
       // A hunt or a fright comes first, and its time is not the leg's.
       if (mind.mind[e] !== MIND_WANDER) continue;
       m.spent++;
-      const reach = this.reach;
-      if (reach !== null && reach(e) < REACH_LOW) m.low++;
+      const r = this.reach !== null ? this.reach(e) : -1;
+      if (r >= 0 && r < REACH_LOW) m.low++;
       else m.low = 0;
       if (m.spent > m.budget || m.low >= REACH_LOW_TICKS) {
         this.gaveUp++;
         this.reached(m, false);
         continue;
       }
-      if (m.objective !== null && m.detour < 0 && (tick + e) % DETOUR_EVERY === 0) this.lookAside(m);
+      // A pick that is acted on chooses the detours itself, where it picks.
+      if (m.objective !== null && m.detour < 0 && (tick + e) % DETOUR_EVERY === 0 && !(this.pick !== null && this.pick.acts())) this.lookAside(m);
     }
     if (this.dirty) {
       this.dirty = false;
@@ -221,14 +286,20 @@ export class Courses {
     return at >= 0 ? o.choices[at]!.place : null;
   }
 
+  /** Metres a second `e` walks at `pace`. */
+  private speed(e: number, pace: number): number {
+    const { world } = this.ctx, ents = world.ents;
+    const move = (ents.team[e] !== 0 ? world.reg.tamedMove : world.reg.move)[ents.kind[e]!]!;
+    return move.walkSpeed * (pace === GOAL_RUN ? move.sprintMul : pace === GOAL_STROLL ? 0.5 : 1);
+  }
+
   /** Starts the leg to `m`'s point, with its time from where it stands. */
   private leg(m: Mover): void {
     const p = this.point(m)!;
     const { world, mind } = this.ctx;
     const ents = world.ents, e = m.e;
     const dx = p.x - ents.x[e]!, dz = p.z - ents.z[e]!;
-    const move = (ents.team[e] !== 0 ? world.reg.tamedMove : world.reg.move)[ents.kind[e]!]!;
-    const speed = move.walkSpeed * (m.pace === GOAL_RUN ? move.sprintMul : m.pace === GOAL_STROLL ? 0.5 : 1);
+    const speed = this.speed(e, m.pace);
     m.x = p.x;
     m.z = p.z;
     m.radius = Math.max(p.radius, 0.5);
@@ -246,6 +317,7 @@ export class Courses {
     else if (m.detour >= 0) at = m.detour;
     else at = m.aim;
     if (m.objective) m.done[at] = 1;
+    this.legEnded?.(e, ok);
     if (ok) m.owner.arrived?.(e, at);
     else m.owner.failed?.(e, at);
     // The owner may have stopped it, or given it another.
@@ -254,13 +326,21 @@ export class Courses {
     if (m.course) more = advance(m.course);
     else if (m.detour >= 0) {
       m.detour = -1;
+      m.kept = true;
       more = m.done[m.aim] === 0;
     } else {
       m.aim = this.choose(m);
+      m.kept = false;
       more = m.aim >= 0;
     }
-    if (more) this.leg(m);
-    else this.end(m, ok);
+    if (!more) return this.end(m, ok);
+    this.leg(m);
+    if (m.objective) this.askPick(m);
+  }
+
+  /** Puts the question of the pick for `m`, where the point is on. */
+  private askPick(m: Mover): void {
+    if (this.pick !== null && this.pick.on()) this.pick.ask(m.e);
   }
 
   /** It ran out. Where its last leg was given up, it stops where it is rather than walk on at what it cannot reach. */
@@ -272,7 +352,7 @@ export class Courses {
     m.owner.ended?.(m.e);
   }
 
-  /** The choice to make for next, of those not done and not detours; -1 for none. */
+  /** The plain pick of what is left of `m`'s objective: the highest priority, then the nearest; never a detour. -1 for none. */
   private choose(m: Mover): number {
     const o = m.objective!, left = this.left.choices as Choice[], at = this.leftAt;
     left.length = 0;
@@ -284,10 +364,8 @@ export class Courses {
     }
     if (left.length === 0) return -1;
     const ents = this.ctx.world.ents;
-    const k = this.pick ? this.pick(m.e, this.left) : pickPlain(this.left, ents.x[m.e]!, ents.z[m.e]!);
-    const i = k >= 0 && k < at.length ? at[k]! : -1;
-    // A detour is never an end of its own.
-    return i >= 0 && !o.choices[i]!.detour ? i : -1;
+    const k = pickPlain(this.left, ents.x[m.e]!, ents.z[m.e]!);
+    return k >= 0 ? at[k]! : -1;
   }
 
   /** A detour not yet visited near the line from `m` to its choice is taken first. */

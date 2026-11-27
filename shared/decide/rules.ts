@@ -62,11 +62,13 @@ export const RULE_SURE = ruleOf(SURE, { own: { ways: 1, open: 2, run: 1.5, price
 export const RULE_REACH = ruleOf(REACH, { own: { lineSoon: -1, waySoon: -0.5, blocked: -1, onWay: 1, noWay: -3, stucks: -2, spent: -1.5 }, constant: 2.5 });
 /** The freest of the three, the one drawn where they are near alike, and a little toward the way it faces. */
 export const RULE_PROBE = ruleOf(PROBE, { own: { run: 3, runHigh: 1.5, drawn: 0.5, facing: 0.2 } });
-/** The highest priority, then the nearest; a little toward the place already made for. */
+/**
+ * The highest priority, then the soonest by a way, less danger; never where no way leads while another has one; a
+ * detour where it adds fewer seconds than it is worth.
+ */
 export const RULE_PICK = ruleOf(PICK, {
-  own: { priority: 3, pull: 1.5, travelSoon: -1.5, danger: -1.5, crowd: -0.3, age: -0.2, current: 0.4, detour: -0.5 },
-  // In a hurry the nearer place wins over the more wanted one.
-  cross: { "urgency*travelSoon": -3 },
+  // A step of priority (a seventh) is worth 3, more than all the seconds of travel can weigh.
+  own: { priority: 21, pull: 1, travelSoon: -2.5, noWay: -30, danger: -2.5, worth: 4, extraSoon: -4, current: 0.1 },
 });
 /** To keep moving, unless something it can do fits what is in the way and is cheap. */
 export const RULE_DO = ruleOf(DO, {

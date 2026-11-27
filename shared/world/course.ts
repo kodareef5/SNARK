@@ -58,6 +58,16 @@ export interface Choice {
   place: Waypoint;
   /** Worth leaving the way for, but never an end of its own. */
   detour: boolean;
+  /** Seconds a detour is worth leaving the way for; WORTH_SECONDS for each step of priority and one more where not given. */
+  worth?: number;
+}
+
+/** Seconds of a detour's worth for each step of its priority, and one more. A guess the owner may turn. */
+export const WORTH_SECONDS = 5;
+
+/** What a detour is worth leaving the way for, in seconds. */
+export function worthOf(c: Choice): number {
+  return c.worth ?? WORTH_SECONDS * (1 + c.place.priority);
 }
 
 export interface Objective {

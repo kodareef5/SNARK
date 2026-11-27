@@ -29,6 +29,8 @@ import { CastHost } from "./cast/host.ts";
 import { Decide } from "./decide/decide.ts";
 import { LineLog } from "./decide/log.ts";
 import { addNav } from "./decide/nav.ts";
+import { addPick } from "./decide/nav-pick.ts";
+import { Reach } from "./decide/nav-reach.ts";
 import { DecideCopy, settingsOf } from "./decide/shared.ts";
 import type { CastSettings } from "../shared/cast/state.ts";
 import { Taming } from "./taming.ts";
@@ -2016,6 +2018,14 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // The stuck ladder's points (server/decide/nav.ts): movers that are snagged or stuck get out.
   creatures.mind.decide = decide;
   addNav(decide, world, creatures.mind, game.players.blocking);
+  // Objectives pick by `nav.pick` (server/decide/nav-pick.ts), and a leg `nav.reach` doubts is given up early.
+  addPick(decide, world, creatures.mind, courses, (team) => pins.of(team));
+  const reacher = creatures.mind.reacher;
+  if (reacher instanceof Reach) {
+    reacher.ends = (e) => courses.legEnds(e);
+    courses.reach = (e) => reacher.reachOf(e);
+    courses.legEnded = (e, ok) => reacher.ended(e, ok);
+  }
   // A cluster's worlds take the Decide settings one of them copies to its folder (server/decide/shared.ts).
   const decideCopy = cluster ? new DecideCopy({
     root: cluster.folder.root, world: cluster.world, now: () => cluster.now(), say,

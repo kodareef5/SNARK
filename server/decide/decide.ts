@@ -73,8 +73,10 @@ export interface Point {
   answer(e: number, tick: number, rung: number, ask: Ask): number;
   /** Acts on the candidate chosen. */
   apply(e: number, tick: number, rung: number, pick: number): void;
-  /** Writes a few numbers of what became of `e` since its answer to `out`, and returns how many. */
-  outcome?(e: number, tick: number, out: Float32Array): number;
+  /** The tick a logged answer given now is judged at, where its answers do not all wait `horizon`. */
+  due?(e: number, tick: number): number;
+  /** Writes a few numbers of what became of `e` since its answer at tick `asked` to `out`, and returns how many. */
+  outcome?(e: number, tick: number, out: Float32Array, asked: number): number;
   /**
    * Its answers are no longer acted on (turned off or only watched): it lets go of all it had set going in movers, so
    * they go back to today's code at once.
@@ -181,12 +183,13 @@ class Asked {
   }
 }
 
-/** Logged answers of one point waiting for their horizon, oldest first: every one waits the same time, so a ring is in order. */
+/** Logged answers of one point waiting for their outcome, in a ring kept in the order they are due. */
 class Waiting {
   readonly due = new Int32Array(WAITING);
   readonly ent = new Int32Array(WAITING);
   readonly gen = new Int32Array(WAITING);
   readonly id = new Int32Array(WAITING);
+  readonly at = new Int32Array(WAITING);
   head = 0;
   count = 0;
 }
@@ -447,7 +450,7 @@ export class Decide {
       if (sampled) {
         log.add(JSON.stringify(row));
         c.logged++;
-        if (point.horizon > 0 && point.outcome) this.wait(id, e, tick + point.horizon, row.id);
+        if (point.horizon > 0 && point.outcome) this.wait(id, e, point.due ? point.due(e, tick) : tick + point.horizon, row.id, tick);
       }
     }
     if (policy !== WATCH && !spared) {
@@ -456,14 +459,26 @@ export class Decide {
     }
   }
 
-  private wait(point: number, e: number, due: number, line: number): void {
+  private wait(point: number, e: number, due: number, line: number, tick: number): void {
     const w = this.waiting[point]!;
     if (w.count >= WAITING) return;
-    const at = (w.head + w.count++) % WAITING;
+    // Those due later move up one, so the ring stays in the order they are due.
+    let at = (w.head + w.count++) % WAITING;
+    for (let n = w.count - 1; n > 0; n--) {
+      const before = (at + WAITING - 1) % WAITING;
+      if (w.due[before]! <= due) break;
+      w.due[at] = w.due[before]!;
+      w.ent[at] = w.ent[before]!;
+      w.gen[at] = w.gen[before]!;
+      w.id[at] = w.id[before]!;
+      w.at[at] = w.at[before]!;
+      at = before;
+    }
     w.due[at] = due;
     w.ent[at] = e;
     w.gen[at] = this.ctx.world.ents.gen[e]!;
     w.id[at] = line;
+    w.at[at] = tick;
   }
 
   private close(p: number, tick: number): void {
@@ -471,7 +486,7 @@ export class Decide {
     while (w.count > 0 && w.due[w.head]! <= tick) {
       const e = w.ent[w.head]!, line = w.id[w.head]!;
       const here = ents.gen[e] === w.gen[w.head] && (ents.flags[e]! & F_ALIVE) !== 0;
-      const n = here ? point.outcome!(e, tick, this.outcome) : 0;
+      const n = here ? point.outcome!(e, tick, this.outcome, w.at[w.head]!) : 0;
       this.ctx.log?.add(JSON.stringify(here ? { id: line, t: tick, outcome: list(this.outcome, n) } : { id: line, t: tick, gone: true }));
       this.counts[p]!.closed++;
       w.head = (w.head + 1) % WAITING;
