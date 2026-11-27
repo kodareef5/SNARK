@@ -75,7 +75,7 @@ export class EventKit {
     e[0] = seconds;
     e[1] = rgb;
     e[2] = power;
-    e[3] = packEffect(1, false, 0, 1);
+    e[3] = packEffect(1, false, 0);
   }
 
   /** Keeps the place of a craft drawn. */

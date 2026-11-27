@@ -14,7 +14,7 @@ import { FADE_ORDER } from "./hand.ts";
 import { FIRE_BLOOMS, UNGRADED } from "./fire-light.ts";
 import { FIELD_COORDS_GLSL, RIPPLE_GLSL } from "./tek-ripple.ts";
 import { DIGITS_GLSL } from "./digits.ts";
-import { DETAIL_TEK, DETAIL_DIGITS, DETAIL_GLOW, DETAIL_SCORCH, DETAIL_SMOKE, FRAME_BLOCK, GLOW_STEPS, SMOKE_STEPS, DETAIL_TIRE, DETAIL_GLASS, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_SHADED_POOL, DETAIL_WAKE, DETAIL_WIRE, MAX_CONTACTS } from "./packet.ts";
+import { DETAIL_BEACON, DETAIL_TEK, DETAIL_DIGITS, DETAIL_GLOW, DETAIL_SCORCH, DETAIL_SMOKE, FRAME_BLOCK, GLOW_STEPS, SMOKE_STEPS, DETAIL_TIRE, DETAIL_GLASS, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_SHADED_POOL, DETAIL_WAKE, DETAIL_WIRE, MAX_CONTACTS } from "./packet.ts";
 import { POOL_ACROSS, POOL_UP, poolShadeGlsl } from "./lamp.ts";
 import { AMBIENT, DIFFUSE } from "./shading.ts";
 import { DEPTH_SLACK, SHADOW_GLSL } from "./shadowtext.ts";
@@ -148,6 +148,28 @@ vec4 weighed(vec3 c, float a) {
 }
 `;
 
+const BEACON_LIGHT = `vec4 beaconLight() {
+  float edge = max(0.0, 1.0 - abs(vCorner.x));
+  float core = pow(max(0.0, 1.0 - abs(vCorner.x) / vGrey), 7.0);
+  float tip = 1.0 - smoothstep(0.66, 1.0, vCorner.y);
+  float alpha = covers(tip * (0.55 * edge * edge + 0.45 * core));
+  vec3 light = mix(vA, vec3(1.0), 0.58 * core);
+#ifdef LIGHT_TARGET
+  light = ${UNGRADED("light * light * (1.0 + 0.45 * core)")};
+#endif
+  return vec4(light * alpha, 0.50 * alpha);
+}
+`;
+
+/** The display-space light and coverage of a beacon, for the software renderer. */
+export function beaconLight(across: number, up: number, coreWidth: number, out: number[]): void {
+  const edge = Math.max(0, 1 - Math.abs(across));
+  const core = Math.max(0, 1 - Math.abs(across) / coreWidth) ** 7;
+  const t = Math.min(1, Math.max(0, (up - 0.66) / 0.34));
+  out[0] = (1 - t * t * (3 - 2 * t)) * (0.55 * edge * edge + 0.45 * core);
+  out[1] = 0.58 * core;
+}
+
 const INS = `in vec3 vRel, vBulge;
 in vec2 vUv, vCorner;
 flat in vec3 vA, vB, vNormal;
@@ -233,7 +255,7 @@ ${INS}uniform vec3 uSun, uSky;
 uniform vec2 uFog;
 uniform float uLight;
 out vec4 o;
-${SHAPES}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}${RIPPLE_GLSL}${DIGITS_GLSL}void main() {
+${SHAPES}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}${RIPPLE_GLSL}${DIGITS_GLSL}${BEACON_LIGHT}void main() {
   if (vFlags == ${DETAIL_TEK}u) {
     o = rippleOf() * covers(1.0);
     return;
@@ -244,6 +266,7 @@ ${SHAPES}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}${RIPPLE_GLSL}${DIGITS_
     o = weighed(mix(DIGITS_OUTLINE, vA * g.z, g.y), g.x * vShows);
     return;
   }
+  if (vFlags == ${DETAIL_BEACON}u) { o = beaconLight(); return; }
   if (vFlags == ${DETAIL_GLOW}u) {
     o = vec4((1.0 - exp(-vA * (vGrey * ${f(255 / GLOW_STEPS)}))) * covers(poolOf(vCorner).x), 0.0);
     return;
@@ -264,7 +287,7 @@ precision highp float;
 ${INS}flat in vec3 vLens;
 uniform sampler2D uDetails;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${AIR}${STREET_GLSL}${poolShadeGlsl(MAX_CONTACTS)}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}${RIPPLE_GLSL}${DIGITS_GLSL}vec3 linear(vec3 c) {
+${LIGHT}${SHADOW_GLSL}${AIR}${STREET_GLSL}${poolShadeGlsl(MAX_CONTACTS)}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}${RIPPLE_GLSL}${DIGITS_GLSL}${BEACON_LIGHT}vec3 linear(vec3 c) {
   return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
 }
 void main() {
@@ -283,6 +306,7 @@ void main() {
     o = weighed(shown(mix(linear(DIGITS_OUTLINE), linear(vA) * g.z, g.y) / fSunColor.w, vRel), g.x * vShows);
     return;
   }
+  if (vFlags == ${DETAIL_BEACON}u) { o = beaconLight(); return; }
   if (vFlags == ${DETAIL_GLOW}u) {
     // Light with no surface, as bright as its grey says, as the finish takes it or as a display shows it.
     vec3 e = linear(vA) * (vGrey * ${f(255 / GLOW_STEPS)});
