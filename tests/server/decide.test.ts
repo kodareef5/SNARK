@@ -56,6 +56,10 @@ class Probe implements Point {
     out[1] = tick;
     return 2;
   }
+  released = 0;
+  release(): void {
+    this.released++;
+  }
 }
 
 function decider(over: Partial<ConstructorParameters<typeof Decide>[0]> = {}): { d: Decide; world: ReturnType<typeof movers> } {
@@ -87,6 +91,23 @@ test("the rule answers and acts; watching answers and does not act", () => {
   expect([q.asked, q.applied]).toEqual([[5], []]);
   expect([d.acts(a), d.acts(b)]).toEqual([true, false]);
   expect(d.report().points.map((r) => [r.policy, r.counts.answered, r.counts.applied])).toEqual([["rule", 1, 1], ["watch", 1, 0]]);
+});
+
+test("a point no longer acted on lets go of its movers, once, and only then", () => {
+  const { d } = decider();
+  const p = new Probe("a", COST_YES);
+  d.add(p);
+  d.set("a=watch");
+  d.set("a=off");
+  expect(p.released).toBe(0);
+  d.set("a=rule");
+  d.set("a=model");
+  expect(p.released).toBe(0);
+  d.set("a=watch");
+  expect(p.released).toBe(1);
+  d.set("a=rule");
+  d.set("*=off");
+  expect(p.released).toBe(2);
 });
 
 test("a star names every point not named itself", () => {
@@ -320,6 +341,37 @@ test("the lab may see every answer with its table and force another candidate", 
   expect(p.applied).toEqual([[1, 1], [2, 6]]);
   expect(seen).toEqual([[id, 1, 2], [id, 2, 7], [id, 3, 4]]);
   expect(d.report().points[0]!.counts).toMatchObject({ answered: 3, applied: 2 });
+});
+
+test("an answer made of passes is logged as the server made it, with each pass's weight", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "decide-final-"));
+  try {
+    const log = new LineLog(dir, "decide-w1");
+    const { d } = decider({ log, settings: () => ({ policy: "a=rule", sample: 1, megabytes: 1 }) });
+    const p = new Probe("a", COST_YES);
+    const final = tableFor(RING_MID, 8);
+    Object.assign(p, { final, tables: [{ profile: RING_MID, table: p.table, weight: 0.5 }] });
+    // The probe's answer is copied into the final table with a bias the pass alone does not have.
+    const inner = p.answer.bind(p);
+    p.answer = (e, tick, rung, ask) => {
+      const pick = inner(e, tick, rung, ask);
+      final.clear(8);
+      final.score.set(p.table.score.subarray(0, 8));
+      final.bias[pick] = 0.5;
+      return answer("choice", final, 1);
+    };
+    const id = d.add(p);
+    d.step(0);
+    d.put(id, 3, 2);
+    d.step(1);
+    await d.flush();
+    const line = JSON.parse(readFileSync(join(dir, readdirSync(dir)[0]!), "utf8").trim().split("\n")[0]!);
+    expect(line.tables[0].weight).toBe(0.5);
+    expect([line.final.k, line.final.bias[3], line.pick]).toEqual([8, 0.5, 3]);
+    expect(line.final.out.reduce((s: number, v: number) => s + v, 0)).toBeCloseTo(1, 3);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("answers are kept for a page only while it looks, and weights are read again when asked", () => {
