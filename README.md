@@ -21,7 +21,7 @@ ARK-style dinosaur survival and GTA-style vehicles in a persistent multiplayer b
 
 [![The cluster admin’s map replay, supply drops and Vegas ball screens](docs/media/admin-views.webp)](docs/media/admin-views.webp)
 
-https://github.com/user-attachments/assets/582fb3e4-0e42-49d7-86a2-3eadeb4f3789
+https://github.com/user-attachments/assets/2ffa3176-d771-49ce-8856-56353764e1c3
 
 [![A Wraith banks over the Vegas ball as its screen changes from lava to ocean at sunset](docs/media/vegas-jet.webp)](docs/media/vegas-jet.webp)
 

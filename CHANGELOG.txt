@@ -1,3 +1,23 @@
+v0.0.15 — 2026-11-27
+
+Waypoints and tames
+- Mark danger, resources and meeting places on the map or through a spyglass. Keep pins private or share them with your tribe.
+- Whistle a ground tame to a spot, or set it to patrol up to eight shared Go pins. Patrols resume after a restart.
+- Hosts can try new creature navigation rules and inspect route choices in the admin view.
+
+In the city
+- Wrecks and hearths cast firelight and smoke. On High and Ultra, hot air ripples above the flames.
+- A supply drop’s beam rises after touchdown. Nearby loot and usable vehicles give a subtler glint.
+- Plasma bolts leave the barrel in both the shooter’s view and other players’ views.
+- The Zephyr can kickflip over a semi cab from level pavement. Watch three players’ views of the stunt in the README.
+
+Controls and reporting
+- Turn on raw mouse input in Settings to aim without pointer acceleration on supported browsers.
+- Download a debug ZIP from the in-game debug bar. It includes the client build so a host can trace a report.
+
+World saves
+- Quiet worlds write fewer saves. Backups keep the newest 12 copies plus one per day for seven days by default.
+
 v0.0.14 — 2026-11-26
 
 Survivors and clothing
@@ -9,12 +29,6 @@ Survivors and clothing
 City structures
 - A ruined storey gives way when most of its original supports are gone. On newly built maps, fallen window frames lie low enough to walk over, and hanging slabs leave room underneath.
 - New city builds keep plants out of paved traffic lanes. Roadside billboards range from small street signs to 30-metre displays on concrete pillars.
-
-Combat
-- Plasma rifle and pistol bolts leave the barrel in line with the gun, both in your own view and when watching another survivor fire.
-
-Vehicles
-- The Zephyr can kickflip just over a semi cab from level pavement and land on its wheels.
 
 Doors
 - Hinged doors and Tek doors respect tribe access. A blocked door or a Tek field that stays open leaves nearby survivors in place.
