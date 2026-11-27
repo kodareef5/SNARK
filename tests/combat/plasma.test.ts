@@ -231,13 +231,14 @@ for (const latencyMs of [40, 150]) {
     // Up and north, into the open: the bolt flies its whole reach.
     app.controls.yaw = 0;
     app.controls.pitch = 0.3;
+    eve.controls.yaw = Math.atan2(-8, -10);
     run(300);
     const shots = h.host.projectiles;
     const speed = reg.ammoSpeed[id("plasma_cell")]!;
     let apart = -1;
     let flashed = false;
     let drawn = false;
-    const checked = new Set<object>();
+    const checked = new Set<object>(), posedViewers = new Set<App>();
     app.controls.mouseButton(0, true);
     run(400, () => {
       for (const viewer of [app, eve]) for (const f of viewer.shots.flashes) {
@@ -261,6 +262,7 @@ for (const latencyMs of [40, 150]) {
             }
           }
           checked.add(b);
+          posedViewers.add(viewer);
         }
       }
       if (eve.shots.flashes.length > 0) flashed = true;
@@ -276,7 +278,7 @@ for (const latencyMs of [40, 150]) {
     // The message took the link's time to come, and the server's bolt flew on meanwhile: no further than that and a tick.
     expect(apart).toBeLessThanOrEqual((latencyMs / TICK_MS + 2) * speed * TICK_DT);
     expect(flashed).toBe(true);
-    expect(checked.size).toBeGreaterThan(0);
+    expect(posedViewers.size).toBe(2);
     expect(drawn).toBe(true);
     expect(eve.session.events.some((ev) => ev.kind === EVENT_SHOT)).toBe(false);
     // Gone at its reach on every side, and nothing burst in the open air.
