@@ -68,7 +68,7 @@ interface Run {
   passes?: boolean;
   off?: Effect | "far";
   /** An effect every other frame draws without, on the page's clock. */
-  ab?: Effect;
+  ab?: Effect | `${Effect},${Effect},${Effect}`;
   /** Metres ahead of the view a rocket's blast is set off, every second and a half of the run. */
   blast?: number;
   /** Metres ahead of the view a rocket is flown across it, every three seconds of the run. */
@@ -172,6 +172,9 @@ export function plan(): Run[] {
   for (const [tier, scale] of [["high", 1], ["high", 2], ["medium", 1]] as const) runs.push({ scene: "city", view: "street", tier, scale, ab: "glass" });
   for (const tier of ["high", "medium"]) runs.push({ scene: "city", view: "lamp-cars", tier, scale: 1, window: [1920, 1167], ab: "glass", hour: 22 });
   if (process.env.CITY_MARINA) for (const tier of ["medium", "high"]) for (const scale of [1, 2]) runs.push({ scene: "city", view: "marina", tier, scale });
+  // What burns there (render/fires.ts), its light and the hot air over it, off every other frame: each by itself, and
+  // the three together by day and by night, with CITY_MARINA by a burning hull.
+  if (process.env.CITY_MARINA) for (const tier of ["medium", "high"]) for (const [ab, hour] of [["fires", 12], ["firelight", 22], ["mirage", 12], ["fires,firelight,mirage", 12], ["fires,firelight,mirage", 22]] as const) runs.push({ scene: "city", view: "marina", tier, scale: 1, ab, hour });
   return runs;
 }
 

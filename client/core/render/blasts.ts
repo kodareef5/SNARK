@@ -18,6 +18,7 @@
 import type { Registry } from "../../../shared/content/registry.ts";
 import { SURFACE_AIR, SURFACE_BODY, SURFACE_BUILT, SURFACE_GROUND, SURFACE_VEHICLE, SURFACE_WATER } from "../../../shared/net/rockets.ts";
 import { sortU32 } from "../../../shared/sort.ts";
+import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { Assets } from "../assets/assets.ts";
 import type { Tier } from "../assets/tiers.ts";
 import { BURST_SHARE, type Details } from "../details/details.ts";
@@ -25,8 +26,10 @@ import { SHAKE_LAUNCH, Shake, blastShake } from "../view/shake.ts";
 import { LOW } from "./atmosphere.ts";
 import type { Camera } from "./camera.ts";
 import type { Draws } from "./draws.ts";
-import { FIRE_FLAME, FIRE_LOBE, flamePhase, lobeSwell, putFlame, putLobe } from "./fire-light.ts";
-import { DETAIL, DETAIL_FLOATS, DETAIL_GLOW, DETAIL_SMOKE, SMOKE_STEPS, DRAW_BLEND, DRAW_FIRE, DRAW_PLAIN, GLOW_STEPS, TRANSIENT_BUFFER, type FramePacket } from "./packet.ts";
+import { FIRE_BLAZE, FIRE_FLAME, FIRE_LOBE, blazePhase, flamePhase, lobeSwell, putBlaze, putFlame, putLobe } from "./fire-light.ts";
+import { BLAST_BY_DAY, FIRE_BY_DAY, FIRE_COLOUR, FIRE_LIGHT, type FireLights } from "./fire-lights.ts";
+import { MIRAGE_REACH, type Mirage } from "./mirage.ts";
+import { DETAIL, DETAIL_FLOATS, DETAIL_GLOW, DETAIL_SMOKE, SMOKE_STEPS, DRAW_BLEND, DRAW_FIRE, DRAW_PLAIN, GLOW_STEPS, PASS_NEAR, TRANSIENT_BUFFER, type FramePacket } from "./packet.ts";
 
 /** Rounds with a motor kept at once, flying or their smoke still thinning, and blasts whose fire is still alight. */
 export const MAX_TRAILS = 64;
@@ -36,6 +39,8 @@ export const TRAIL_CARDS = 24;
 export const MAX_TRAIL_CARDS = 384;
 /** Cards a frame holds in all: the smoke, and each rocket's glow and each far blast's. */
 const MAX_CARDS = 512;
+/** The near depth range alone, as a draw names its ranges. */
+const NEAR = 1 << PASS_NEAR;
 /** Seconds a rocket's smoke hangs, and seconds between the lengths of it laid nearest the rocket. */
 export const TRAIL_SECONDS = 4.5;
 const TRAIL_STEP = 1 / 22;
@@ -61,6 +66,15 @@ export const LOBES_MID = 140;
 /** Scorches that lie at once, and the milliseconds one lies: a blast past those leaves none, so a fight does not paint the ground over and over. */
 export const SCORCHES = 8;
 const SCORCH_MS = 32000;
+/** Fires a blast leaves burning on the ground at once at the most, the most one blast leaves, and the metres past which they are not drawn. */
+export const MAX_LEFT = 12;
+const LEFT_MOST = 4, LEFT_REACH = 120;
+/** Metres the ground under a fire left burning may be above or below where the blast met it. */
+const LEFT_STEP = 1.5;
+/** A blast's flash's light before exposure a metre off, for each square metre of its fireball's radius, and the seconds it lasts; and its fireball's glow's. */
+const FLASH_LIGHT = 60, FLASH_SECONDS = 0.25, BALL_LIGHT = 14;
+/** Seconds a blast's shock takes to cross the air about it as a ring that bends what is seen through it. */
+const SHOCK_SECONDS = 0.2;
 /** A rocket's reach in metres, which a blast's size is measured against. */
 const ROCKET_REACH = 7.5;
 
@@ -87,6 +101,8 @@ const BY_SURFACE: readonly (readonly number[])[] = [
 ];
 /** The share of a lobe's life past which a hundredth of it shows at the most (fire-light.ts lobeLight), and it is not drawn. */
 const LOBE_ENDS = 0.88;
+/** The share of a blast's fire's life from which the smoke nearer than it is drawn over it. */
+const VEIL_FROM = 0.3;
 const word = (r: number, g: number, b: number): number => (r | (g << 8) | (b << 16) | (255 << 24)) >>> 0;
 /** The colour of the dust off something built, by what it is made of (MADE_): unknown, thatch, wood, stone, metal; and of its debris, which is darker. */
 const MADE_TINT: readonly number[] = [word(150, 146, 138), word(176, 150, 96), word(128, 96, 64), word(150, 146, 138), word(96, 100, 108)];
@@ -159,6 +175,15 @@ export class Blasts {
   private readonly bFloor = new Float32Array(MAX_BURSTS);
   private readonly bLobe = new Float32Array(MAX_BURSTS * LOBES * LOBE);
 
+  // Fires left burning where a blast met the ground: where, when it was lit, its seconds, its height and its seed.
+  private readonly lAt = new Float64Array(MAX_LEFT * 3);
+  private readonly lBorn = new Float64Array(MAX_LEFT).fill(-Infinity);
+  private readonly lLife = new Float32Array(MAX_LEFT);
+  private readonly lHigh = new Float32Array(MAX_LEFT);
+  private readonly lSeed = new Float32Array(MAX_LEFT);
+  /** Fires left burning that the last frame drew. */
+  left = 0;
+
   /** How far the rockets' smoke is thinned to keep its share of the screen: the levels of its lengths left out, 0 to 3. */
   private thin = 0;
   private calm = 0;
@@ -177,6 +202,11 @@ export class Blasts {
   private nearest = Infinity;
   private farthest = -Infinity;
   private readonly order = new Uint8Array(LOBES);
+  // The order a frame draws its blasts in, and how far each cooling one in view is (-1 for the rest).
+  private readonly turn = new Uint8Array(MAX_BURSTS);
+  private readonly away = new Float32Array(MAX_BURSTS);
+  /** The ground a blast leaves its fires on: with none they stand at the height the blast met. */
+  hf: Heightfield | null = null;
   private readonly depth = new Float32Array(LOBES);
 
   /**
@@ -418,6 +448,29 @@ export class Blasts {
     if (chunks > 0) this.ask(WISPS, px, py, pz, nx, ny, nz, seed, scale, Math.min(WISPS_MOST, chunks), -1, 0.1);
     this.ask(SPARKS, px, py, pz, nx, ny, nz, seed, scale, this.part(SPARKS_MOST, 9, unit * shares[4]!));
     if (surface === SURFACE_GROUND) this.ask(GLOW, x, y + 0.06, z, 0, 1, 0, seed, scale, 1);
+    // What it leaves burning on level ground: a few small fires within its scorch, each for some seconds, by its seed.
+    if (surface === SURFACE_GROUND && ny > 0.7) {
+      const count = Math.min(LEFT_MOST, Math.max(1, Math.round((2 + 2 * this.next()) * Math.min(1, cap / 60))));
+      for (let k = 0; k < count; k++) {
+        // The oldest gives up its place.
+        let slot = 0;
+        for (let j = 1; j < MAX_LEFT; j++) if (this.lBorn[j]! < this.lBorn[slot]!) slot = j;
+        const turn = this.next() * Math.PI * 2, out = (0.12 + 0.3 * Math.sqrt(this.next())) * radius;
+        const lx = x + Math.cos(turn) * out, lz = z + Math.sin(turn) * out;
+        // Lit as the fireball passes, not all at once.
+        const born = nowMs + 150 + 350 * this.next(), life = 4 + 4 * this.next(), high = (0.35 + 0.5 * this.next()) * Math.sqrt(Math.max(0.4, scale)), own = this.next();
+        // It stands on the ground under it, and there is none over water or past a drop or a bank.
+        const hf = this.hf, ly = hf ? hf.heightAt(lx, lz) : y;
+        if (hf && (hf.waterAt(lx, lz) >= ly || Math.abs(ly - y) > LEFT_STEP)) continue;
+        this.lAt[slot * 3] = lx;
+        this.lAt[slot * 3 + 1] = ly;
+        this.lAt[slot * 3 + 2] = lz;
+        this.lBorn[slot] = born;
+        this.lLife[slot] = life;
+        this.lHigh[slot] = high;
+        this.lSeed[slot] = own;
+      }
+    }
   }
 
   /**
@@ -627,7 +680,7 @@ export class Blasts {
   }
 
   /** Queues what is alight into the frame. */
-  draw(p: FramePacket, cam: Camera, nowMs: number): void {
+  draw(p: FramePacket, cam: Camera, nowMs: number, smoke: ((far: number) => void) | null = null): void {
     this.tier = p.tier;
     this.eyeX = cam.x;
     this.eyeY = cam.y;
@@ -681,8 +734,20 @@ export class Blasts {
         this.draws++;
       }
     }
+    // The cooling fires in view first, the farthest first, each after the smoke behind it; then the rest, over all the smoke.
+    const turn = this.turn, away = this.away;
+    let cooling = 0;
+    for (let b = 0; b < MAX_BURSTS; b++) if ((away[b] = this.cooling(b, cam, nowMs)) >= 0) turn[cooling++] = b;
+    for (let i = 1; i < cooling; i++) for (let j = i; j > 0 && away[turn[j]!]! > away[turn[j - 1]!]!; j--) {
+      const swap = turn[j]!;
+      turn[j] = turn[j - 1]!;
+      turn[j - 1] = swap;
+    }
+    for (let b = 0, rest = cooling; b < MAX_BURSTS; b++) if (away[b]! < 0) turn[rest++] = b;
     // Each blast's lobes in a draw, the farthest first: three near, two farther, one far off, and one where the tier says.
-    for (let b = 0; this.lobe >= 0 && b < MAX_BURSTS; b++) {
+    for (let at = 0; this.lobe >= 0 && at < MAX_BURSTS; at++) {
+      const b = turn[at]!;
+      if (at === cooling) smoke?.(0);
       if (this.bLive[b] === 0) continue;
       const seconds = (nowMs - this.bBorn[b]!) / 1000, life = this.bLife[b]!;
       if (seconds >= life || seconds < 0) continue;
@@ -735,10 +800,42 @@ export class Blasts {
       put.effect[1] = 0;
       put.effect[2] = this.bTone[b]!;
       put.effect[3] = this.bHeat[b]!;
+      // The smoke behind a cooling fire goes before it.
+      if (at < cooling) smoke?.(away[b]!);
       const before = p.drawCount;
       put.draw(this.lobe, level, TRANSIENT_BUFFER, first, n, 0, 0, 0, DRAW_BLEND | DRAW_PLAIN | DRAW_FIRE, cam.passes(cx - reach, cy - reach, cz - reach, cx + reach, cy + reach, cz + reach));
       if (p.drawCount > before) {
         this.lobes += n;
+        this.draws++;
+      }
+    }
+    // The fires left burning, in a draw of the cone as a fire that stands has (fires.ts), near ones alone.
+    this.left = 0;
+    const first = p.transientCount;
+    let n = 0, nearest = Infinity;
+    for (let k = 0; this.cone >= 0 && k < MAX_LEFT; k++) {
+      const shows = this.leftShows(k, nowMs);
+      if (shows <= 0.01 || first + n >= ids.length) continue;
+      const x = this.lAt[k * 3]! - cam.x, y = this.lAt[k * 3 + 1]! - cam.y, z = this.lAt[k * 3 + 2]! - cam.z, d = Math.hypot(x, y, z), high = this.lHigh[k]!;
+      if (d > LEFT_REACH || !cam.boxVisible(x - high, y, z - high, x + high, y + 2 * high, z + high) || cam.passes(x - high, y, z - high, x + high, y + 2 * high, z + high) !== NEAR) continue;
+      // It burns down: lower as it goes, and out.
+      putBlaze(bytes, first + n, x, y, z, high * (0.55 + 0.45 * shows), 0.6 * high, 0, 0, Math.min(1, 1.6 * shows), high < 0.5 ? 3 : 2, this.lSeed[k]!);
+      ids[first + n] = 0;
+      n++;
+      nearest = Math.min(nearest, d / high);
+      fill += Math.min(1, (0.8 * high * high) / (Math.max(d, 0.5) ** 2 * screen)) * shows;
+    }
+    if (n > 0) {
+      p.transientCount = first + n;
+      const level = assets.choose(assets.table.error[this.cone]!, Math.max(1, nearest), -1);
+      assets.want(this.cone, level, nearest);
+      put.effect[0] = FIRE_BLAZE;
+      put.effect[1] = blazePhase(nowMs);
+      put.effect[2] = put.effect[3] = 0;
+      const before = p.drawCount;
+      put.draw(this.cone, level, TRANSIENT_BUFFER, first, n, 0, 0, 0, DRAW_BLEND | DRAW_PLAIN | DRAW_FIRE, NEAR);
+      if (p.drawCount > before) {
+        this.left = n;
         this.draws++;
       }
     }
@@ -748,6 +845,77 @@ export class Blasts {
     p.detailFill += this.fill;
     if (this.details) this.details.fill += this.fill;
     this.expire(nowMs);
+  }
+
+  /**
+   * How far from the eye at `cam` the middle of blast `b` is, in metres, if its fire is cooling at `nowMs` and may be
+   * seen; -1 if not. In its first three tenths it is not cooling: its flash is seen bare.
+   */
+  private cooling(b: number, cam: Camera, nowMs: number): number {
+    const seconds = (nowMs - this.bBorn[b]!) / 1000, life = this.bLife[b]!;
+    if (this.bLive[b] === 0 || seconds < life * VEIL_FROM || seconds >= life * LOBE_ENDS) return -1;
+    const x = this.bAt[b * 3]! - cam.x, y = this.bAt[b * 3 + 1]! - cam.y, z = this.bAt[b * 3 + 2]! - cam.z, reach = this.bBall[b]! * 3;
+    const far = Math.hypot(x, y, z);
+    return far <= BURST_REACH && cam.boxVisible(x - reach, y - reach, z - reach, x + reach, y + reach, z + reach) ? far : -1;
+  }
+
+  /**
+   * Metres from the eye at `cam` to the farthest blast in view whose fire is cooling at `nowMs`, and Infinity with none.
+   * The smoke nearer than that is held back (scene.ts) and drawn between the fires and before them by `draw`, so a
+   * fire is seen in its smoke and not laid over it. A blast out of view decides nothing.
+   */
+  veilFrom(cam: Camera, nowMs: number): number {
+    let farthest = -1;
+    for (let b = 0; this.on && this.lobe >= 0 && b < MAX_BURSTS; b++) farthest = Math.max(farthest, this.cooling(b, cam, nowMs));
+    return farthest >= 0 ? farthest : Infinity;
+  }
+
+  /** How much of the fire left burning in slot `k` shows at `nowMs`, 0 to 1: up in a quarter of a second, and burning down over its last half. */
+  private leftShows(k: number, nowMs: number): number {
+    const age = (nowMs - this.lBorn[k]!) / 1000, life = this.lLife[k]!;
+    if (!this.on || age <= 0 || age >= life) return 0;
+    return Math.min(1, age / 0.25) * Math.min(1, (2 * (life - age)) / life);
+  }
+
+  /**
+   * Hands `lights` each blast's light from the eye at `cam`: a white flash gone in a quarter of a second, then its
+   * fireball's orange glow while it burns, each as strong as its fireball is large.
+   */
+  light(lights: FireLights, cam: Camera, nowMs: number): void {
+    if (!this.on) return;
+    for (let b = 0; b < MAX_BURSTS; b++) {
+      if (this.bLive[b] === 0) continue;
+      const age = (nowMs - this.bBorn[b]!) / 1000, life = this.bLife[b]!;
+      if (age < 0 || age >= life) continue;
+      const ball = this.bBall[b]!, area = ball * ball;
+      const flash = FLASH_LIGHT * area * Math.max(0, 1 - age / FLASH_SECONDS) ** 3, fire = BALL_LIGHT * area * (1 - age / life) ** 2, all = flash + fire;
+      const white = flash / Math.max(all, 1e-6);
+      lights.add(this.bAt[b * 3]! - cam.x, this.bAt[b * 3 + 1]! + 0.6 * ball - cam.y, this.bAt[b * 3 + 2]! - cam.z, all, 1, 0.42 + 0.38 * white, 0.12 + 0.43 * white, BLAST_BY_DAY, 0, 0, true);
+    }
+    // And each fire it left burning, as a small fire that stands gives its own.
+    const [r, g, bl] = FIRE_COLOUR;
+    for (let k = 0; k < MAX_LEFT; k++) {
+      const shows = this.leftShows(k, nowMs), high = this.lHigh[k]!;
+      if (shows > 0.01) lights.add(this.lAt[k * 3]! - cam.x, this.lAt[k * 3 + 1]! + 0.5 * high - cam.y, this.lAt[k * 3 + 2]! - cam.z, FIRE_LIGHT * 0.8 * high * high * shows, r, g, bl, FIRE_BY_DAY, 0.16, this.lSeed[k]!);
+    }
+  }
+
+  /**
+   * Hands `mirage` each blast's hot air from the eye at `cam`: its shock, a ring thrown out to twice its fireball's reach
+   * in SHOCK_SECONDS, and the air over its fireball while it burns.
+   */
+  waver(mirage: Mirage, cam: Camera, nowMs: number): void {
+    if (!this.on) return;
+    for (let b = 0; b < MAX_BURSTS; b++) {
+      if (this.bLive[b] === 0) continue;
+      const age = (nowMs - this.bBorn[b]!) / 1000, life = this.bLife[b]!;
+      if (age < 0 || age >= life) continue;
+      const ball = this.bBall[b]!, x = this.bAt[b * 3]! - cam.x, y = this.bAt[b * 3 + 1]! - cam.y, z = this.bAt[b * 3 + 2]! - cam.z;
+      if (Math.hypot(x, y, z) > MIRAGE_REACH) continue;
+      const t = age / SHOCK_SECONDS;
+      if (t < 1) mirage.ring(x, y + 0.5 * ball, z, ball * (0.6 + 5 * (1 - (1 - t) * (1 - t))), (1 - t) * (1 - t));
+      mirage.over(x, y + 2.2 * ball, z, 1.3 * ball, 2 * ball, 0.9 * (1 - age / life), (b * 0.37) % 1);
+    }
   }
 
   /** Lets go of the blasts whose fire is out. */

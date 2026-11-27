@@ -357,6 +357,8 @@ export const DROP_STREAKS = 4;
 export const DROP_LANES = DROP_STREAKS * 2 + 3;
 /** The vec4 lanes of the orb's section (`orb`): the scenes' eight, then the screen's eleven (orb.ts SCREEN_AT). */
 export const ORB_LANES = 19;
+/** Lights from fire a frame carries at the most (fire-lights.ts), two lanes each. */
+export const FIRE_LIGHTS = 4;
 
 /** A section of the frame block: its name, the first of FRAME_BLOCK's members it holds, and its floats, whole vec4s. */
 export interface FrameSection {
@@ -392,6 +394,8 @@ export const FRAME_SECTIONS = [
   { name: "made", first: "fMade", floats: MADE_READS.length * MADE_FLOATS },
   { name: "orb", first: "fOrb", floats: ORB_LANES * 4 },
   { name: "window", first: "fWindow", floats: 4 },
+  { name: "fires", first: "fFires", floats: FIRE_LIGHTS * 8 },
+  { name: "mirage", first: "fMirage", floats: 4 },
 ] as const satisfies readonly FrameSection[];
 
 /** Where each section of `rows` begins, in floats, by its name, and where the last ends, `end`. */
@@ -607,6 +611,17 @@ export const ORB_AT = SECTION.orb;
  * their size (terrain.ts), x and z; 0 while there is none.
  */
 export const WINDOW_AT = SECTION.window;
+/**
+ * fFires: the lights from fire nearest the eye (fire-lights.ts), the strongest first and the unused after: for each, its
+ * place from the eye and the metres its light reaches (0 for none), then its light before exposure a metre off and
+ * the most its glint off the sea shows, after exposure.
+ */
+export const FIRES_AT = SECTION.fires;
+/**
+ * fMirage: the frame's hot air (mirage.ts): 1 where its cards are drawn, the pixels a unit of their shift is, and the
+ * phase of their waves, radians.
+ */
+export const MIRAGE_AT = SECTION.mirage;
 export const OPTIC_NONE = 0;
 export const OPTIC_NIGHT = 1;
 export const OPTIC_HEAT = 2;
@@ -633,6 +648,8 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fMade[${(MADE_READS.length * MADE_FLOATS) / 4}];
   highp vec4 fOrb[${ORB_LANES}];
   highp vec4 fWindow;
+  highp vec4 fFires[${FIRE_LIGHTS * 2}];
+  highp vec4 fMirage;
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)
@@ -999,6 +1016,9 @@ export class FramePacket {
   detailOwn = 0;
   readonly detailTag = new Uint8Array(MAX_DETAILS);
   burstFirst = 0;
+  /** The run of cards that is the frame's hot air (mirage.ts), which no draw of the frame names: a shell with a light target draws it apart. */
+  mirageFirst = 0;
+  mirageCount = 0;
   burstCount = 0;
 
   /**
@@ -1084,7 +1104,7 @@ export class FramePacket {
     this.triangles = 0;
     this.detailCount = 0;
     this.detailFill = 0;
-    this.detailOwn = this.burstCount = 0;
+    this.detailOwn = this.burstCount = this.mirageCount = 0;
   }
 }
 

@@ -44,7 +44,8 @@ import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyope
 import { roofBounce, roofOpen } from "../../client/core/render/roof.ts";
 import { lampSees, lensOfWord, poolShade } from "../../client/core/render/lamp.ts";
 import { orbMirror, orbSees, orbShade } from "../../client/core/render/orb-light.ts";
-import { MOST_LOD, beaconLight, detailKeeps, lampOf, poolOf, rotorOf, scorchOf, shapeOf, smokeOf, wakeFoam, wireOf } from "../../client/core/render/detailtext.ts";
+import { SMOKE_FIRE, fireCast, fireSees } from "../../client/core/render/fire-lights.ts";
+import { MOST_LOD, beaconLight, detailKeeps, lampOf, poolOf, rotorOf, scorchOf, shapeOf, smokeBillows, smokeOf, wakeFoam, wireOf } from "../../client/core/render/detailtext.ts";
 import { drawFire, type FireLook, type FireTarget } from "./fire.ts";
 import { FACE_PLAIN, FACE_WEARS, PIECE_MADE_AT, PIECE_MADE_BITS, PIECE_STAGE, PIECE_STATE_AT, PieceFit } from "../../client/core/render/piece-fit.ts";
 import { WEAR_OVER_MADE, WEAR_STAGE, pieceMade, pieceShown, pieceWear, wearShade } from "../../client/core/render/pieces.ts";
@@ -1110,6 +1111,7 @@ export class Rasterizer {
     lampSees(p.frame, rx, ry, rz, nx, ny, nz);
     // An orb's light on it, where the tier's lit programs take it (orb-light.ts).
     orbSees(p.frame, p.lit && (ground ? p.tier.orb.ground : p.tier.orb.light), rx, ry, rz, nx, ny, nz);
+    fireSees(p.frame, p.lit && p.tier.fires.lights > 0, rx, ry, rz, nx, ny, nz);
     const contact = (ground || stands) && p.tier.contact ? contactAt(p.frame, rx, ry, rz, nx, ny, nz) : 1;
     const roofs = p.lit && p.tier.roofs && this.roofSide > 0;
     if (ground) return contact * skyOpen(this.open, this.openWidth, this.openHeight, p.frame, rx, rz, 0, 1, 0, 0, 0) * (roofs ? roofOpen(this.roof, this.roofSide, p.frame, rx, rz, 0, 1, 0, 0) : 1);
@@ -1602,7 +1604,7 @@ export class Rasterizer {
             if (flags === DETAIL_SMOKE && p.lit) {
               // A ball of smoke, or a length of a rope of it, lit on the side the sun is (detailtext.ts): no shadow is looked up here.
               const stretch = (grey * 255) / SMOKE_STEPS;
-              smokeOf(cx, cy, (b & 255) / 255, shape, stretch, ((b >>> 8) & 255) / 255);
+              smokeOf(cx, cy, (b & 255) / 255, shape, stretch, ((b >>> 8) & 255) / 255, smokeBillows(p.tier));
               const alpha = shape[0]! * shows * Math.min(1, Math.max(0, (ry - f[o + DETAIL.floor]!) / (0.5 * half)));
               if (alpha < 0.004) continue;
               const wide = Math.hypot(bx, by, bz) || 1, dist = Math.hypot(rx, ry, rz);
@@ -1617,7 +1619,8 @@ export class Rasterizer {
               skyOn(light, fr, uy / ul);
               const ash = 0.2126 * light[0]! + 0.7152 * light[1]! + 0.0722 * light[2]!;
               for (let c = 0; c < 3; c++) light[c] = ash + 0.4 * (light[c]! - ash);
-              for (let c = 0; c < 3; c++) light[c] = (((a >>> (c * 8)) & 255) / 255) ** 2 * shape[2]! * (fr[FRAME.sunColor + c]! * (0.14 + 0.86 * sun * sun) + fr[FRAME.moonColor + c]! * (0.14 + 0.86 * moon * moon) + 1.35 * light[c]!);
+              fireSees(fr, p.tier.fires.lights > 0, rx, ry, rz, ux / ul, uy / ul, uz / ul);
+              for (let c = 0; c < 3; c++) light[c] = (((a >>> (c * 8)) & 255) / 255) ** 2 * shape[2]! * (fr[FRAME.sunColor + c]! * (0.14 + 0.86 * sun * sun) + fr[FRAME.moonColor + c]! * (0.14 + 0.86 * moon * moon) + 1.35 * light[c]!) + SMOKE_FIRE * shape[2]! * fireCast[c]!;
               shown(rgb, light, dist, p);
               for (let c = 0; c < 3; c++) this.color[at * 4 + c] = this.color[at * 4 + c]! + (rgb[c]! * 255 - this.color[at * 4 + c]!) * alpha;
               continue;
@@ -1686,6 +1689,7 @@ export class Rasterizer {
               if ((flags & DETAIL_LIT) !== 0) {
                 lampSees(p.frame, rx, ry, rz, normal[0]!, normal[1]!, normal[2]!);
                 orbSees(p.frame, p.tier.orb.light, rx, ry, rz, normal[0]!, normal[1]!, normal[2]!);
+                fireSees(p.frame, p.tier.fires.lights > 0, rx, ry, rz, normal[0]!, normal[1]!, normal[2]!);
                 lit(light, albedo, ROUGH, normal, eye, p.frame, NOTHING, ballShade(p, rx, ry, rz));
               } else for (let c = 0; c < 3; c++) light[c] = albedo[c]! / exposure;
               shown(rgb, light, dist, p);

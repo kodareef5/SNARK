@@ -9,11 +9,11 @@ import { join } from "node:path";
 import { TIERS, tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { Details } from "../../client/core/details/details.ts";
 import { effectsOff, packetWithout, sceneWithout } from "../../client/core/passes.ts";
-import { BURST_REACH, Blasts, LOBES_MID, LOBES_NEAR, MAX_BURSTS, MAX_TRAILS, MAX_TRAIL_CARDS, TRAIL_CARDS, TRAIL_SECONDS } from "../../client/core/render/blasts.ts";
+import { BURST_REACH, Blasts, LOBES_MID, LOBES_NEAR, MAX_BURSTS, MAX_LEFT, MAX_TRAILS, MAX_TRAIL_CARDS, TRAIL_CARDS, TRAIL_SECONDS } from "../../client/core/render/blasts.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { DETAIL_FLAT_FRAGMENT, DETAIL_LIT_FRAGMENT } from "../../client/core/render/detailtext.ts";
-import { UNGRADED } from "../../client/core/render/fire-light.ts";
-import { DETAIL, DETAIL_FLOATS, DETAIL_GLOW, DETAIL_SMOKE, DETAIL_TEK, DRAW_BLEND, DRAW_DETAILS, DRAW_FIRE, FramePacket } from "../../client/core/render/packet.ts";
+import { FIRE_BLAZE, UNGRADED } from "../../client/core/render/fire-light.ts";
+import { DETAIL, DETAIL_FLOATS, DETAIL_GLOW, DETAIL_SMOKE, DETAIL_TEK, DRAW_BLEND, DRAW_DETAILS, DRAW_FIRE, FIRES_AT, FramePacket } from "../../client/core/render/packet.ts";
 import { SETTING_ROWS, Settings } from "../../client/core/settings.ts";
 import { SHAKE_LAUNCH, SHAKE_MOST, SHAKE_MS, Shake, blastShake } from "../../client/core/view/shake.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -23,6 +23,7 @@ import { TICK_RATE } from "../../shared/coords.ts";
 import { SURFACE_AIR, SURFACE_BODY, SURFACE_BUILT, SURFACE_GROUND, SURFACE_VEHICLE, SURFACE_WATER, blastSeed } from "../../shared/net/rockets.ts";
 import { INSTANCE_BYTES } from "../../shared/pack/pack.ts";
 import { effectOf } from "../../shared/pack/details.ts";
+import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { buildProvingHeightfield } from "../../shared/world/proving.ts";
 import { provingView } from "../../tools/snap.ts";
 import { corePack } from "../fixtures/pack.ts";
@@ -205,8 +206,125 @@ function frame(tier: string, far: number, nowMs: number): FramePacket {
   return scene.build(cam, remote);
 }
 
-const fires = (p: FramePacket): number[] => [...Array(p.drawCount).keys()].filter((d) => (p.drawFlags[d]! & DRAW_FIRE) !== 0);
+/** The draws of a blast's own fire and of rockets' flames: not of the fires a blast leaves burning, which are a fire that stands' (FIRE_BLAZE). */
+const fires = (p: FramePacket): number[] => [...Array(p.drawCount).keys()].filter((d) => (p.drawFlags[d]! & DRAW_FIRE) !== 0 && p.drawEffect[d * 4] !== FIRE_BLAZE);
+/** The fires left burning that a frame draws: the instances of its blazes, as bytes. */
+const leftBurning = (p: FramePacket): number[][] => [...Array(p.drawCount).keys()].filter((d) => (p.drawFlags[d]! & DRAW_FIRE) !== 0 && p.drawEffect[d * 4] === FIRE_BLAZE)
+  .flatMap((d) => Array.from({ length: p.drawInstances[d]! }, (_, k) => [...p.transient.subarray((p.drawFirst[d]! + k) * INSTANCE_BYTES, (p.drawFirst[d]! + k + 1) * INSTANCE_BYTES)]));
 let clock = 100000;
+
+test("a blast on the ground leaves a few small fires burning for some seconds, by its seed; one on water or in the air leaves none", () => {
+  const { scene } = view;
+  const y = hf.heightAt(X, Z);
+  const after = (surface: number, seed: number, ms: number): number[][] => {
+    clock += 60000;
+    frame("high", 14, clock);
+    scene.blasts.burst(ROCKET, X, surface === SURFACE_AIR ? y + 9 : y, Z, 0, 1, 0, 7.5, surface, 0, seed, clock);
+    return leftBurning(frame("high", 14, clock + ms));
+  };
+  // None while the fireball is new; then one to four, each lit within half a second, burning four seconds at the least and eight and a half at the most.
+  expect(after(SURFACE_GROUND, 7, 100).length).toBe(0);
+  const lit = after(SURFACE_GROUND, 7, 1500);
+  expect([lit.length >= 1, lit.length <= 4]).toEqual([true, true]);
+  expect(after(SURFACE_GROUND, 7, 3500).length).toBe(lit.length);
+  expect(after(SURFACE_GROUND, 7, 9000).length).toBe(0);
+  // Each is small, a metre high at the most, and burns down: lower later than sooner.
+  const high = (b: number[]): number => b[14]! / 24;
+  expect(lit.every((b) => high(b) > 0.1 && high(b) <= 1)).toBe(true);
+  const late = after(SURFACE_GROUND, 7, 3900);
+  expect(Math.max(...late.map(high))).toBeLessThanOrEqual(Math.max(...lit.map(high)));
+  // The same seed leaves the same fires; another seed others.
+  const again = after(SURFACE_GROUND, 7, 1500), other = after(SURFACE_GROUND, 8, 1500);
+  const told = (list: number[][]): string[] => list.map((b) => b.slice(12).join()).sort();
+  expect(told(again)).toEqual(told(lit));
+  expect(told(other)).not.toEqual(told(lit));
+  expect([after(SURFACE_WATER, 7, 1500).length, after(SURFACE_AIR, 7, 1500).length, after(SURFACE_BODY, 7, 1500).length]).toEqual([0, 0, 0]);
+  // Never more than the most at once, however many blasts, and each gives light while it burns.
+  clock += 60000;
+  frame("high", 14, clock);
+  for (let k = 0; k < 9; k++) scene.blasts.burst(ROCKET, X + k * 0.5, y, Z, 0, 1, 0, 7.5, SURFACE_GROUND, 0, 20 + k, clock);
+  const p = frame("high", 14, clock + 1500);
+  expect([leftBurning(p).length <= MAX_LEFT, leftBurning(p).length > 4, p.frame[FIRES_AT + 3]! > 0, scene.blasts.left]).toEqual([true, true, true, leftBurning(p).length]);
+  // With what burns switched off there are none.
+  scene.bursts = false;
+  expect(leftBurning(frame("high", 14, clock + 1600)).length).toBe(0);
+  scene.bursts = true;
+  clock += 60000;
+});
+
+test("a fire a blast leaves stands on the ground under it: on a slope at the slope's height, and none over water or past a drop", () => {
+  const left = (ground: (x: number, z: number) => number, water: number): number[][] => {
+    const a = alone(tierOf("high"));
+    a.blasts.hf = { heightAt: ground, waterAt: () => water } as unknown as Heightfield;
+    const out: number[][] = [];
+    for (let seed = 1; seed <= 12; seed++) a.blasts.burst(ROCKET, X, ground(X, Z), Z, 0, 1, 0, 7.5, SURFACE_GROUND, 0, seed, 0);
+    const kept = a.blasts as unknown as { lAt: Float64Array; lBorn: Float64Array };
+    for (let k = 0; k < MAX_LEFT; k++) if (kept.lBorn[k]! > -Infinity) out.push([kept.lAt[k * 3]!, kept.lAt[k * 3 + 1]!, kept.lAt[k * 3 + 2]!]);
+    return out;
+  };
+  // A slope of twenty degrees: each stands at the ground's height where it is, some of them well off the blast's own.
+  const slope = (x: number): number => 30 + Math.tan((20 * Math.PI) / 180) * (x - X);
+  const on = left(slope, -1e6);
+  expect(on.length).toBe(MAX_LEFT);
+  for (const [x, y] of on) expect(Math.abs(y! - slope(x!))).toBeLessThan(1e-6);
+  expect(Math.max(...on.map(([, y]) => Math.abs(y! - 30)))).toBeGreaterThan(0.4);
+  // Over water there is none, and none past a drop of more than a metre and a half: only the side that is level keeps its fires.
+  expect(left(slope, 1e6).length).toBe(0);
+  const edge = left((x) => (x > X ? 24 : 30), -1e6);
+  expect([edge.length > 0, edge.every(([x, y]) => x! <= X && y === 30)]).toEqual([true, true]);
+});
+
+test("the smoke nearer than a blast's fire is drawn after the fire and the rest before it; with no fire it is one draw", () => {
+  const { scene, cam } = view;
+  clock += 60000;
+  frame("high", 14, clock);
+  const y = hf.heightAt(X, Z);
+  scene.blasts.burst(ROCKET, X, y, Z, 0, 1, 0, 7.5, SURFACE_GROUND, 0, 7, clock);
+  // The draws of the details' own see-through particles.
+  const own = (p: FramePacket): number[] => [...Array(p.drawCount).keys()].filter((d) => (p.drawFlags[d]! & (DRAW_DETAILS | DRAW_BLEND)) === (DRAW_DETAILS | DRAW_BLEND) && p.drawFirst[d]! < p.detailOwn);
+  // Its flash is seen bare: nothing is parted in its first tenth of a second.
+  expect(own(frame("high", 14, clock + 100)).length).toBe(1);
+  const p = frame("high", 14, clock + 400);
+  const far = Math.hypot(X - cam.x, y - cam.y, Z - cam.z), lobes = fires(p), draws = own(p);
+  expect([lobes.length > 0, draws.length]).toEqual([true, 2]);
+  const [behind, before] = draws as [number, number];
+  expect([behind < lobes[0]!, before > lobes[lobes.length - 1]!]).toEqual([true, true]);
+  // Between them they are every particle once, parted at the fire's distance: a blast shakes the eye a little.
+  expect([p.drawInstances[behind]! > 0, p.drawInstances[before]! > 0]).toEqual([true, true]);
+  expect([p.drawFirst[behind]! + p.drawInstances[behind]!, p.drawFirst[before]! + p.drawInstances[before]!]).toEqual([p.drawFirst[before]!, p.detailOwn]);
+  const away = (n: number): number => Math.hypot(p.details[n * DETAIL_FLOATS]!, p.details[n * DETAIL_FLOATS + 1]!, p.details[n * DETAIL_FLOATS + 2]!);
+  for (let n = p.drawFirst[behind]!; n < p.drawFirst[before]!; n++) expect(away(n)).toBeGreaterThan(far - 0.5);
+  for (let n = p.drawFirst[before]!; n < p.detailOwn; n++) expect(away(n)).toBeLessThan(far + 0.5);
+  // Its fire over, the smoke that hangs is one draw again, and with what burns switched off it is never parted.
+  expect(own(frame("high", 14, clock + 2600)).length).toBe(1);
+  // A blast behind the eye decides nothing: the smoke is parted at the one in view, 50 m off, not at the one 15 m back.
+  clock += 60000;
+  frame("high", 50, clock);
+  scene.blasts.burst(ROCKET, X, y, Z, 0, 1, 0, 7.5, SURFACE_GROUND, 0, 7, clock);
+  scene.blasts.burst(ROCKET, X, hf.heightAt(X, Z - 65), Z - 65, 0, 1, 0, 7.5, SURFACE_GROUND, 0, 9, clock);
+  const two = frame("high", 50, clock + 400), parts = own(two);
+  expect([fires(two).length, parts.length]).toEqual([1, 2]);
+  const ahead = Math.hypot(X - cam.x, y - cam.y, Z - cam.z), off = (n: number): number => Math.hypot(two.details[n * DETAIL_FLOATS]!, two.details[n * DETAIL_FLOATS + 1]!, two.details[n * DETAIL_FLOATS + 2]!);
+  expect([ahead > 45, two.drawInstances[parts[0]!]! > 0, two.drawInstances[parts[1]!]! > 0]).toEqual([true, true, true]);
+  for (let n = two.drawFirst[parts[0]!]!; n < two.drawFirst[parts[1]!]!; n++) expect(off(n)).toBeGreaterThan(ahead - 0.5);
+  for (let n = two.drawFirst[parts[1]!]!; n < two.detailOwn; n++) expect(off(n)).toBeLessThan(ahead + 0.5);
+  // Two in view, one behind the other: the smoke behind each goes before its fire, so the draws go smoke, the far fire, smoke, the near fire, smoke.
+  clock += 60000;
+  frame("high", 14, clock);
+  scene.blasts.burst(ROCKET, X, y, Z, 0, 1, 0, 7.5, SURFACE_GROUND, 0, 7, clock);
+  scene.blasts.burst(ROCKET, X, hf.heightAt(X, Z + 26), Z + 26, 0, 1, 0, 7.5, SURFACE_GROUND, 0, 9, clock);
+  const both = frame("high", 14, clock + 400), runs = own(both), balls = fires(both);
+  expect([balls.length, runs.length]).toEqual([2, 3]);
+  expect([runs[0]! < balls[0]!, balls[0]! < runs[1]!, runs[1]! < balls[1]!, balls[1]! < runs[2]!]).toEqual([true, true, true, true]);
+  expect(runs.map((d) => both.drawFirst[d]! + both.drawInstances[d]!)).toEqual([both.drawFirst[runs[1]!]!, both.drawFirst[runs[2]!]!, both.detailOwn]);
+  clock += 60000;
+  frame("high", 14, clock);
+  scene.blasts.burst(ROCKET, X, y, Z, 0, 1, 0, 7.5, SURFACE_GROUND, 0, 7, clock);
+  scene.bursts = false;
+  expect(own(frame("high", 14, clock + 400)).length).toBeLessThanOrEqual(1);
+  scene.bursts = true;
+  clock += 60000;
+});
 
 test("a blast is three lobes near, two farther, one far off and one glow beyond, one lobe on low poly, in one draw", () => {
   const { scene } = view;

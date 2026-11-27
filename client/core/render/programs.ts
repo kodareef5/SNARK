@@ -7,7 +7,7 @@ import type { TextureFormat } from "../../../shared/pack/texture.ts";
 import type { Tier } from "../assets/tiers.ts";
 import { AIR, SKY_FRAGMENT, SKY_VERTEX } from "./atmosphere.ts";
 import { tekPhaseFragment, tekPhaseVertex } from "./tek-phase.ts";
-import { DETAIL_FLAT_FRAGMENT, DETAIL_LIT_FRAGMENT, DETAIL_LIT_VERTEX, DETAIL_VERTEX } from "./detailtext.ts";
+import { DETAIL_FLAT_FRAGMENT, DETAIL_LIT_FRAGMENT, DETAIL_LIT_VERTEX, DETAIL_VERTEX, smokeBillows } from "./detailtext.ts";
 import { FACADE_GLSL, FACADE_TIERS, facadeFarVertex, facadeVertex } from "./facade.ts";
 import { FIRE_FRAGMENT, FIRE_VERTEX } from "./fire-light.ts";
 import { FAR_MESH_VERTEX, FLAT_BODY_FRAGMENT, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_MESH_FRAGMENT, LIT_SPLIT_FRAGMENT, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX, finishVertex } from "./glsl.ts";
@@ -16,6 +16,7 @@ import { DROP_GLSL } from "./supply-light.ts";
 import { FACE_FRAGMENT, FACE_VERTEX } from "./screen-shade.ts";
 import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_FIRE, DRAW_ORB, DRAW_PRINTED, DRAW_SCREENS, DRAW_SKYLINE, FRAME_BLOCK, SKYLINE_MAX_FOG, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, SOURCE_MAP, SOURCE_WINDOW, WATER_MARK_COUNT, type FramePacket } from "./packet.ts";
 import { BLOOM_DOWN, BLOOM_UP, FINISH, POST_VERTEX, drawsLight } from "./post.ts";
+import { MIRAGE_FRAGMENT, MIRAGE_VERTEX } from "./mirage.ts";
 import { DEPTH_CUTOUT_FRAGMENT, DEPTH_FRAGMENT, DEPTH_VERTEX, clampDepth, shadowDefines } from "./shadowtext.ts";
 import { MAX_PRINT_LAYERS } from "./print-term.ts";
 import { PIECE_SPALL_RIM, PIECE_SPALL_TEXT, SURFACE_ANY, surfaceFragment, surfaceVertex, type SurfaceVariant } from "./surface.ts";
@@ -66,7 +67,11 @@ const WINDOW = { uHeight: UNIT.windowHeights, uTint: UNIT.windowTint };
  */
 const out = (tier: Tier, light: boolean): string => (tier.contact ? "#define CONTACT\n" : "") + (tier.roofs ? "#define ROOF\n" : "") + (drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : "");
 /** And where the tier lights by an orb (orb-light.ts), for a program that lights by `lit`: the ground's by its own say. */
-const lights = (tier: Tier, light: boolean, ground = false): string => ((ground ? tier.orb.ground : tier.orb.light) ? "#define ORB_LIGHT\n" : "") + out(tier, light);
+const lights = (tier: Tier, light: boolean, ground = false): string => ((ground ? tier.orb.ground : tier.orb.light) ? "#define ORB_LIGHT\n" : "") + fireLight(tier) + out(tier, light);
+/** Smoke's billows (detailtext.ts smokeOf), where the tier's fire reads both octaves of the noise: smoke is many pixels, and medium's are left plain. */
+const smokeNoise = (tier: Tier): string => (smokeBillows(tier) ? "#define SMOKE_NOISE\n" : "");
+/** Fire's light (fire-lights.ts), where the tier carries any. */
+const fireLight = (tier: Tier): string => (tier.lit && tier.fires.lights > 0 ? "#define FIRE_LIGHT\n" : "");
 
 /**
  * A program of FLAT's vertex text: FLAT's fragment on low poly, and on a lit tier `lit`, which reads the sky table for
@@ -115,8 +120,8 @@ function water(tier: Tier, hard: boolean, light: boolean, wakes: boolean): Progr
   return {
     vertex: FLAT_MESH_VERTEX,
     fragment: WATER_FRAGMENT,
-    // The sea is lit by its own glint and not `lit`, so the street lamp's light is not looked up for it.
-    defines: shadowDefines(tier.shadows, hard, false) + out(tier, light) + (wakes ? "#define LOCAL_WAKES\n" : ""),
+    // The sea is lit by its own glint and not `lit`, so the street lamp's light is not looked up for it; a fire's glints in it.
+    defines: shadowDefines(tier.shadows, hard, false) + fireLight(tier) + out(tier, light) + (wakes ? "#define LOCAL_WAKES\n" : ""),
     samplers: { ...MESH, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uMapHeight: UNIT.heights, uWindowHeight: UNIT.windowHeights, uWindowTint: UNIT.windowTint, uWaveLong: UNIT.maps + 3, uWaveShort: UNIT.maps + 4 },
   };
 }
@@ -167,7 +172,7 @@ const MAKE = {
   // Small details (packet.ts DRAW_DETAILS): on a lit tier their pictures, lit and in the sun's shadow; on low poly their flat shapes.
   details: (tier, _, hard = false, light = false): ProgramText =>
     tier.lit
-      ? { vertex: DETAIL_LIT_VERTEX, fragment: DETAIL_LIT_FRAGMENT, defines: "#define STREET\n" + shadowDefines(tier.shadows, hard) + lights(tier, light), samplers: { uDetails: UNIT.details, uStreetEnv: UNIT.street, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } }
+      ? { vertex: DETAIL_LIT_VERTEX, fragment: DETAIL_LIT_FRAGMENT, defines: "#define STREET\n" + shadowDefines(tier.shadows, hard) + lights(tier, light) + smokeNoise(tier), samplers: { uDetails: UNIT.details, uStreetEnv: UNIT.street, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } }
       : { vertex: DETAIL_VERTEX, fragment: DETAIL_FLAT_FRAGMENT, defines: "", samplers: {} },
   // A caster, a cut-out caster, and the ground, each drawn from the sun into a cascade's layer.
   depth: () => ({ vertex: tekPhaseVertex(DEPTH_VERTEX), fragment: tekPhaseFragment(DEPTH_FRAGMENT, true), defines: "", samplers: { uBones: UNIT.bones, uPieces: UNIT.pieces } }),
@@ -209,13 +214,16 @@ void main() {
   // The finish (post.ts): bloom's chain down and up, and the pass into the canvas.
   bloomDown: () => post(BLOOM_DOWN, { uSource: UNIT.details }),
   bloomUp: () => post(BLOOM_UP, { uSource: UNIT.details }),
-  finish: () => post(FINISH, { uScene: UNIT.details, uBloom: UNIT.layer }),
+  // The frame's hot air is read on the shadows' unit, whose array is another kind of texture and stays bound beside it.
+  finish: () => post(FINISH, { uScene: UNIT.details, uBloom: UNIT.layer, uMirage: UNIT.shadow }),
   // Last, so the programs before keep their numbers: a draw whose instances carry prints (packet.ts DRAW_PRINTED, print-term.ts): never dropping, able to, and with a layer.
   surfacePrinted: (tier, format, hard = false, light = false) => surface(tier, format, hard, light, { ...SURFACE_ANY, drops: false, printed: true }),
   surfacePrintedCut: (tier, format, hard = false, light = false) => surface(tier, format, hard, light, { ...SURFACE_ANY, printed: true }),
   surfacePrintedLayer: (tier, format, hard = false, light = false) => surface(tier, format, hard, light, { ...SURFACE_ANY, layered: true, printed: true }),
   // Hair, cut-out cards and solid core both, with its shifted highlight (surface.ts hairBand).
   surfaceHair: (tier, format, hard = false, light = false) => surface(tier, format, hard, light, { ...SURFACE_ANY, hair: true }),
+  // The air's waver over what is hot (mirage.ts): its cards' shifts, into the scene's second attachment.
+  mirage: () => ({ vertex: MIRAGE_VERTEX, fragment: MIRAGE_FRAGMENT, defines: "", samplers: {} }),
 } satisfies Record<string, Make>;
 
 /**
@@ -279,6 +287,7 @@ const WARM: Readonly<Record<keyof typeof MAKE, WarmDraw>> = {
   surfacePrintedCut: warm(TEXTURED, CUT),
   surfacePrintedLayer: warm(TEXTURED, CUT),
   surfaceHair: warm(TEXTURED, CUT),
+  mirage: warm(WARM_FORM.detail, WARM_STATE.blended),
 };
 /**
  * The programs the first frame waits for (WarmDraw.early). The world's own are drawn at once by the first frame or a
@@ -329,6 +338,7 @@ const ROWS: Readonly<Record<keyof typeof MAKE, readonly UniformRow[]>> = {
   surfacePrintedCut: [...SURFACE_DRAW, ...PRINT_ROWS],
   surfacePrintedLayer: [...SURFACE_DRAW, ...LAYER_ROWS, ...PRINT_ROWS],
   surfaceHair: SURFACE_DRAW,
+  mirage: [],
 };
 /** The same by a program's number. */
 export const UNIFORMS: readonly (readonly UniformRow[])[] = Object.keys(MAKE).map((name) => ROWS[name as keyof typeof MAKE]);
@@ -348,7 +358,7 @@ const PRINTED = ["surfacePrinted", "surfacePrintedCut", "surfacePrintedLayer"];
 
 /** The programs a frame of `tier` may ask for, by number, which a shell may begin making before one does. */
 export function tierPrograms(tier: Tier): number[] {
-  return Object.keys(MAKE).flatMap((name, n) => ((tier.lit || UNLIT.includes(name)) && (name !== "seeThrough" || tier.split > 0) && (!name.startsWith("depth") || tier.shadows.size > 0) && (!POST.includes(name) || tier.post !== null) && (name !== "orb" || LATE.orb !== null) && (!PRINTED.includes(name) || (LATE.prints && tier.prints.layers > 0)) ? [n] : []));
+  return Object.keys(MAKE).flatMap((name, n) => ((tier.lit || UNLIT.includes(name)) && (name !== "seeThrough" || tier.split > 0) && (!name.startsWith("depth") || tier.shadows.size > 0) && (!POST.includes(name) || tier.post !== null) && (name !== "mirage" || tier.post?.mirage === true) && (name !== "orb" || LATE.orb !== null) && (!PRINTED.includes(name) || (LATE.prints && tier.prints.layers > 0)) ? [n] : []));
 }
 
 /**

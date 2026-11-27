@@ -5,7 +5,7 @@ import { captureWidth, type StreetImage } from "../core/render/street-finish.ts"
 import {
   moved, ATLAS_ROWS, ATLAS_WIDTH, BEND_BUFFERS, BEND_BYTES, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_FIRE,
   DRAW_SCREENS, FACE_FLOATS, FACE_HIGH, FACE_LEVELS, FACE_WIDE, DRAW_RANGED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP,
-  SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STREET_SIDE, STREET_TILE_BYTES, STREET_TILE_SIDE, TILE_CASTS, TRANSIENT_BUFFER, boneRows,
+  SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, STREET_SIDE, STREET_TILE_BYTES, STREET_TILE_SIDE, TILE_CASTS, TRANSIENT_BUFFER, boneRows,
   quadIndices, stepOf, type TextureUpload,
 } from "../core/render/packet.ts";
 import { MASK_LAYER, MASK_MATERIALS, SURFACE_NAMES, SURFACE_PREFIX } from "../../content/surfaces.ts";
@@ -13,6 +13,7 @@ import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { DetailAtlas, type ReadAtlas } from "./detail-atlas.ts";
 import { PIECE_KEYS, PIECE_ROWS } from "../core/render/pieces.ts";
 import { PROGRAM, PROGRAMS, UNIFORMS, UNIT, WARM_AIM, WARM_DRAWS, WARM_FORM, drawProgram, tierPrograms, type ProgramText } from "../core/render/programs.ts";
+import { MIRAGE_NONE } from "../core/render/mirage.ts";
 import { PictureArray } from "./picture-array.ts";
 import {
   AT_DRAW, AT_FRAME, AT_TILES, Drawn, SEND_1F, SEND_1I, SEND_2F, SEND_3F, SEND_3FV, SEND_FLOATS, SHELL_UNIFORMS, type UniformRow,
@@ -139,6 +140,8 @@ const FORMATS: Readonly<Record<string | number, readonly number[]>> = {
   8: [0x93d7, 0x93b7, 0x93b7],
   rgba: [0x8c43, 0x822b, 0x8058],
 };
+/** What the hot air's attachment is cleared to (render/mirage.ts): no shift, a byte's half each way. */
+const MIRAGE_CLEAR = new Float32Array([MIRAGE_NONE, MIRAGE_NONE, 0, 0]);
 /** The most ms a want of memory goes unknown on a card that never catches up with the page between two frames. */
 const ASK_MOST_MS = 5000;
 const RUNS = Math.max(MAX_DRAWS, MAX_CASTERS);
@@ -167,6 +170,8 @@ export class GlRenderer {
   /**
    * What the light target is made of, `w` by `h`: the scene's framebuffer, multisampled, then its resolved copy's and
    * each bloom level's, with their textures; `drawn`, its corner the frame's scene fills; a pass's read (passExtent).
+   * `mirage` is the texture the frame's hot air is read from (render/mirage.ts), the scene's second attachment, and
+   * `mirageFb` what it is resolved into where the scene has samples.
    */
   private post = {
     size: "",
@@ -177,7 +182,13 @@ export class GlRenderer {
     fbs: [] as WebGLFramebuffer[],
     tex: [] as WebGLTexture[],
     bufs: [] as WebGLRenderbuffer[],
+    mirage: null as WebGLTexture | null,
+    mirageFb: null as WebGLFramebuffer | null,
   };
+  /** In this frame: whether it is drawn into the light target, its hot air has been drawn, and the viewer's own body has. */
+  private lightFrame = false;
+  private miraged = false;
+  private bodied = false;
   /** The sun's shadow maps: a 16-bit depth layer a cascade, the far map's two and the lamp's after them, a target on each, and their side. */
   private shadow = { texture: null as WebGLTexture | null, targets: [] as WebGLFramebuffer[], size: 0 };
   /** The sky's openness (skyopen.ts) on its unit, and its cells across times 65536 and down. */
@@ -383,7 +394,7 @@ export class GlRenderer {
     };
     this.light = LIGHT_FORMATS.find((f) => most(f) > 0) ?? 0;
     this.samples = this.light && Math.min(LIGHT_SAMPLES, most(this.light));
-    this.post = { size: "", w: 0, h: 0, drawn: [0, 0], extent: this.post.extent, fbs: [], tex: [], bufs: [] };
+    this.post = { size: "", w: 0, h: 0, drawn: [0, 0], extent: this.post.extent, fbs: [], tex: [], bufs: [], mirage: null, mirageFb: null };
     this.shadow = { texture: null, targets: [], size: 0 };
     this.open = { texture: null, size: 0 };
     this.screen = { texture: null, w: 0, h: 0 };
@@ -1576,6 +1587,8 @@ export class GlRenderer {
     }
     this.worldReady = p.worldSide[0] === 0 ? 0 : base ? 1 + (full ? p.worldEarly : 1) : p.worldComing ? 3 : 0;
     const finish = drawsLight(p.tier, this.light);
+    this.lightFrame = finish;
+    this.miraged = this.bodied = false;
     const samples = Math.min(this.samples, p.lightSamples), [tw, th] = sceneSize(gl.drawingBufferWidth, gl.drawingBufferHeight, finish ? p.room : 1);
     // A frame drawn without it every other frame (FramePacket.alternate) leaves it for the frames either side.
     if (this.post.size !== (finish ? `${tw} ${th} ${samples}` : "") && (finish || !p.alternate)) this.targets(finish ? tw : 0, th, samples);
@@ -1635,6 +1648,7 @@ export class GlRenderer {
     }
     // The terrain and the dome are drawn when there is no draw after them.
     while (step < STEP_FAR_SEE) this.step(p, ++step);
+    this.mirage(p);
     gl.disable(gl.SCISSOR_TEST);
     if (finish) this.toCanvas(p);
     // A program still waiting to be drawn warm is drawn after the frame, one a frame.
@@ -1862,6 +1876,9 @@ export class GlRenderer {
     for (const f of new Set(t.fbs.splice(0))) gl.deleteFramebuffer(f);
     for (const x of t.tex.splice(0)) gl.deleteTexture(x);
     for (const b of t.bufs.splice(0)) gl.deleteRenderbuffer(b);
+    gl.deleteTexture(t.mirage);
+    gl.deleteFramebuffer(t.mirageFb);
+    t.mirage = t.mirageFb = null;
     t.size = w > 0 ? `${w} ${h} ${samples}` : ""; t.w = w; t.h = h;
     for (let k = samples > 0 ? -1 : 0; k <= levels && w > 0; k++) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, (t.fbs[k + 1] = gl.createFramebuffer()!));
@@ -1885,16 +1902,104 @@ export class GlRenderer {
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t.tex[k]!, 0);
     }
     t.fbs[0] ??= t.fbs[1]!;
+    if (w === 0) return;
+    // The hot air's shifts (render/mirage.ts): a second attachment of the scene's, two bytes a pixel, with its samples where it
+    // has them and then resolved into a texture, or the texture itself where the scene is drawn into its own.
+    gl.activeTexture(gl.TEXTURE0 + UNIT.details);
+    gl.bindTexture(gl.TEXTURE_2D, (t.mirage = gl.createTexture()!));
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RG8, w, h);
+    for (const name of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, name, gl.LINEAR);
+    for (const name of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T]) gl.texParameteri(gl.TEXTURE_2D, name, gl.CLAMP_TO_EDGE);
+    if (samples > 0) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbs[0]!);
+      gl.bindRenderbuffer(gl.RENDERBUFFER, (t.bufs[t.bufs.length] = gl.createRenderbuffer()!));
+      gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.RG8, w, h);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.RENDERBUFFER, t.bufs.at(-1)!);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, (t.mirageFb = gl.createFramebuffer()!));
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t.mirage, 0);
+    } else {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbs[1]!);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, t.mirage, 0);
+    }
+  }
+
+  /**
+   * The frame's hot air (render/mirage.ts): its cards' shifts into the scene's second attachment, as the near
+   * see-through step draws, tested against the world's depth and writing none, so what stands before it hides it. Once
+   * a frame, before the depth is cleared for the viewer's own body or, with none, before the finish.
+   */
+  private mirage(p: FramePacket): void {
+    const gl = this.gl;
+    if (this.miraged || !this.lightFrame || p.mirageCount === 0 || !this.post.mirage) return;
+    this.miraged = true;
+    this.view = this.serial * 16 + STEP_NEAR_SEE;
+    this.matrix = p.viewProj;
+    this.matrixAt = 0;
+    this.from = 0;
+    gl.depthRange(0, p.split > 0 ? 0.5 : 1);
+    gl.drawBuffers([gl.NONE, gl.COLOR_ATTACHMENT1]);
+    // All of it is cleared, a sight's window or not: the finish reads the whole of it.
+    const windowed = p.window[2]! > 0;
+    if (windowed) gl.disable(gl.SCISSOR_TEST);
+    gl.clearBufferfv(gl.COLOR, 1, MIRAGE_CLEAR);
+    if (windowed) gl.enable(gl.SCISSOR_TEST);
+    this.use(PROGRAM.mirage, p);
+    this.set(true, false, false);
+    this.mirageCards(p, p.mirageCount);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+  }
+
+  /** Draws `count` of the frame's hot air cards with the program in use, from the details' buffer. */
+  private mirageCards(p: FramePacket, count: number): void {
+    const gl = this.gl;
+    this.vertexArray(this.detailVao);
+    this.array(this.detailBuffer);
+    const stride = DETAIL_FLOATS * 4, at = p.mirageFirst * stride;
+    for (let a = 0; a < 4; a++) gl.vertexAttribPointer(a, a === 3 ? 1 : 3, gl.FLOAT, false, stride, at + a * 12);
+    gl.vertexAttribPointer(4, 4, gl.UNSIGNED_BYTE, true, stride, at + 40);
+    gl.vertexAttribPointer(5, 4, gl.UNSIGNED_BYTE, true, stride, at + 44);
+    gl.vertexAttribIPointer(6, 4, gl.UNSIGNED_BYTE, stride, at + 48);
+    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
+    this.drawCalls++;
+  }
+
+  /**
+   * The hot air under the viewer's own body is cleared: the body was drawn over a depth clear, so the depth buffer
+   * holds it alone, and the whole view drawn at its far end with the test turned round touches only where it is.
+   */
+  private mirageMask(p: FramePacket): void {
+    const gl = this.gl;
+    gl.drawBuffers([gl.NONE, gl.COLOR_ATTACHMENT1]);
+    // A view of its own, whose `from` under zero tells the vertex text to cover the view (mirage.ts).
+    this.view = this.serial * 16 + 15;
+    this.from = -1;
+    gl.depthRange(0, 1);
+    this.use(PROGRAM.mirage, p);
+    this.set(false, false, false);
+    gl.depthMask(false);
+    gl.depthFunc(gl.GREATER);
+    this.mirageCards(p, 1);
+    gl.depthFunc(gl.LESS);
+    gl.depthMask(true);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
   }
 
   /** The finish (post.ts): the scene resolved, bloom's chain down and then up, adding, and the finish into the canvas. */
   private toCanvas(p: FramePacket): void {
     const gl = this.gl, t = this.post, levels = Math.min(p.frame[FRAME.levels]!, t.tex.length - 1), [w, h] = this.post.drawn;
     this.mark(PASS_FINISH);
+    if (this.miraged && this.bodied) this.mirageMask(p);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, t.fbs[0]!);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, t.fbs[1]!);
     if (t.fbs[0] !== t.fbs[1]) gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
-    gl.invalidateFramebuffer(gl.READ_FRAMEBUFFER, t.fbs[0] !== t.fbs[1] ? [gl.COLOR_ATTACHMENT0, gl.DEPTH_ATTACHMENT] : [gl.DEPTH_ATTACHMENT]);
+    // The hot air's shifts, resolved as the scene is, where the frame drew any.
+    if (this.miraged && t.mirageFb) {
+      gl.readBuffer(gl.COLOR_ATTACHMENT1);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, t.mirageFb);
+      gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+      gl.readBuffer(gl.COLOR_ATTACHMENT0);
+    }
+    gl.invalidateFramebuffer(gl.READ_FRAMEBUFFER, t.fbs[0] !== t.fbs[1] ? [gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.DEPTH_ATTACHMENT] : [gl.DEPTH_ATTACHMENT]);
     this.set(false, false, false);
     gl.disable(gl.DEPTH_TEST);
     this.vertexArray(null);
@@ -1907,6 +2012,8 @@ export class GlRenderer {
     this.weighed = false;
     gl.activeTexture(gl.TEXTURE0 + UNIT.layer);
     gl.bindTexture(gl.TEXTURE_2D, t.tex[Math.min(1, levels)]!);
+    gl.activeTexture(gl.TEXTURE0 + UNIT.shadow);
+    gl.bindTexture(gl.TEXTURE_2D, t.mirage);
     this.pass(p, PROGRAM.finish, 0, -1);
     gl.enable(gl.DEPTH_TEST);
   }
@@ -1939,6 +2046,8 @@ export class GlRenderer {
     this.groundLeft = false;
     if (tiles) return;
     const gl = this.gl;
+    // The hot air is tested against the world's depth, which the body's step clears.
+    if (s === STEP_BODY) this.mirage(p);
     const far = s === STEP_FAR || s === STEP_FAR_SEE;
     const half = p.split > 0 && s !== STEP_BODY;
     this.view = this.serial * 16 + s;
@@ -1950,6 +2059,7 @@ export class GlRenderer {
     if (s === STEP_BODY) {
       this.set(false, true, false);
       gl.clear(gl.DEPTH_BUFFER_BIT);
+      this.bodied = true;
     }
     // A lit frame's dome goes at the far end of the view, where the opaque steps left it.
     if (s === STEP_FAR_SEE && !this.transparentStage && (p.lit || p.frame[FRAME.eyes + 3]! > 0)) {

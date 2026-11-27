@@ -12,6 +12,8 @@ import { CELL } from "../../../shared/pack/details.ts";
 import { AIR } from "./atmosphere.ts";
 import { FADE_ORDER } from "./hand.ts";
 import { FIRE_BLOOMS, UNGRADED } from "./fire-light.ts";
+import { SMOKE_FIRE } from "./fire-lights.ts";
+import { TILED_GLSL, tiled } from "../tiled-noise.ts";
 import { FIELD_COORDS_GLSL, RIPPLE_GLSL } from "./tek-ripple.ts";
 import { DIGITS_GLSL } from "./digits.ts";
 import { DETAIL_BEACON, DETAIL_TEK, DETAIL_DIGITS, DETAIL_GLOW, DETAIL_SCORCH, DETAIL_SMOKE, FRAME_BLOCK, GLOW_STEPS, SMOKE_STEPS, DETAIL_TIRE, DETAIL_GLASS, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_SHADED_POOL, DETAIL_WAKE, DETAIL_WIRE, MAX_CONTACTS } from "./packet.ts";
@@ -217,7 +219,7 @@ vec3 wakeOf(vec2 c, float seed) {
 }
 vec3 smokeOf(vec2 c, float seed, float stretch, float torn) {
   float s = 6.2831853 * seed;
-  float r, lump, puff = 1.0, rim = 0.82;
+  float r, lump, puff = 1.0, rim = 0.82, fold = -1.0;
   if (stretch > 1.5) {
     float y = c.y * stretch;
     float x = c.x - 0.07 * sin(1.9 * y + s) - 0.04 * sin(4.3 * y + 2.3 * s);
@@ -228,10 +230,19 @@ vec3 smokeOf(vec2 c, float seed, float stretch, float torn) {
   } else {
     r = length(c + 0.17 * vec2(sin(3.9 * c.y + s), sin(3.3 * c.x + 1.7 * s)));
     lump = 0.5 + 0.5 * sin(5.3 * c.x + 2.1 * s) * sin(4.7 * c.y - 1.3 * s);
+#ifdef SMOKE_NOISE
+    // Billows: the value noise breaks its outline into folds and mottles its middle.
+    int k = int(floor(seed * 255.0));
+    float n = tiled(2.4 * c.x + 8.0 + 7.0 * fract(seed * 3.7), 2.4 * c.y + 8.0 + 7.0 * fract(seed * 9.1), 16, 16, k + 3);
+    lump = 0.35 * lump + 0.65 * n;
+    r += 0.3 * (0.5 - n);
+    // Its folds: light on what swells out and dark in the creases between, far more than a plain puff's mottle.
+    fold = smoothstep(0.3, 0.72, n);
+#endif
     rim = 0.6 + 0.2 * lump;
   }
   float a = (1.0 - smoothstep(0.3 + 0.22 * lump, rim, r)) * smoothstep(1.3 * torn - 0.24, 1.3 * torn, lump + 0.3 * (1.0 - r));
-  return vec3(a, 0.0, 0.58 + 0.2 * lump + 0.22 * puff);
+  return vec3(a, 0.0, fold < 0.0 ? 0.58 + 0.2 * lump + 0.22 * puff : 0.44 + 0.8 * fold);
 }
 float scorchOf(vec2 c, float seed) {
   float s = 6.2831853 * seed;
@@ -287,7 +298,9 @@ precision highp float;
 ${INS}flat in vec3 vLens;
 uniform sampler2D uDetails;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${AIR}${STREET_GLSL}${poolShadeGlsl(MAX_CONTACTS)}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}${RIPPLE_GLSL}${DIGITS_GLSL}${BEACON_LIGHT}vec3 linear(vec3 c) {
+${LIGHT}${SHADOW_GLSL}${AIR}${STREET_GLSL}${poolShadeGlsl(MAX_CONTACTS)}${ROTOR_SHAPE}${LAMP_SHAPE}#ifdef SMOKE_NOISE
+${TILED_GLSL}#endif
+${POOL_SHAPE}${KEEPS}${RIPPLE_GLSL}${DIGITS_GLSL}${BEACON_LIGHT}vec3 linear(vec3 c) {
   return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
 }
 void main() {
@@ -342,7 +355,13 @@ void main() {
     float sun = clamp(0.5 + 0.5 * dot(n, fSun.xyz), 0.0, 1.0), moon = clamp(0.5 + 0.5 * dot(n, fMoon.xyz), 0.0, 1.0);
     // Smoke is grey: it takes the sky's light with most of the sky's blue left out.
     vec3 sky = skyOn(n.y);
-    o = weighed(shown(vA * vA * s.z * (fSunColor.rgb * ((0.14 + 0.86 * sun * sun) * key.x) + fMoonColor.rgb * ((0.14 + 0.86 * moon * moon) * key.y) + 1.35 * mix(vec3(dot(sky, vec3(0.2126, 0.7152, 0.0722))), sky, 0.4)), vRel), a);
+    vec3 fire = vec3(0.0);
+#ifdef FIRE_LIGHT
+    // Fire under smoke lights it through, however dark it is: a share of its light whatever the smoke's colour.
+    fireSees(vRel, n);
+    fire = ${f(SMOKE_FIRE)} * s.z * gFire;
+#endif
+    o = weighed(shown(vA * vA * s.z * (fSunColor.rgb * ((0.14 + 0.86 * sun * sun) * key.x) + fMoonColor.rgb * ((0.14 + 0.86 * moon * moon) * key.y) + 1.35 * mix(vec3(dot(sky, vec3(0.2126, 0.7152, 0.0722))), sky, 0.4)) + fire, vRel), a);
     return;
   }
   if (vFlags == ${DETAIL_GLASS}u) {
@@ -400,19 +419,24 @@ export function wakeFoam(x: number, y: number, seed: number, out: Float64Array |
   out[1] = 0; out[2] = .90+.10*holes;
 }
 
+/** Whether a tier's smoke billows (`smokeOf`): where it is lit and its fire reads both octaves of the noise. */
+export const smokeBillows = (tier: { readonly lit: boolean; readonly bursts: { readonly noise: number } }): boolean => tier.lit && tier.bursts.noise > 1;
+
 /**
  * A thick puff of smoke with no picture, at corner (x, y) of its card: a soft disc whose outline is bent by its seed, so
  * no two are alike and none shows its card, mottled darker in its creases. A card `stretch` times longer than wide (past
  * one and a half) is a length of a rope of smoke instead: its middle wanders and its width swells along it, and its ends
- * thin into the next. `torn` from 0 to 1 breaks it up where it is thinnest. Twin of smokeOf in the detail shaders.
+ * thin into the next. `torn` from 0 to 1 breaks it up where it is thinnest. With `billows` an octave of the value noise
+ * breaks a puff's outline into folds, as high and ultra draw it (programs.ts SMOKE_NOISE): smoke is many pixels, and
+ * medium's keep to this. Twin of smokeOf in the detail shaders.
  */
-export function smokeOf(x: number, y: number, seed: number, out: Float64Array | number[], stretch = 1, torn = 0): void {
+export function smokeOf(x: number, y: number, seed: number, out: Float64Array | number[], stretch = 1, torn = 0, billows = false): void {
   const s = 6.2831853 * seed;
   const step = (a: number, b: number, v: number): number => {
     const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
     return t * t * (3 - 2 * t);
   };
-  let r: number, lump: number, puff = 1, rim = 0.82;
+  let r: number, lump: number, puff = 1, rim = 0.82, fold = -1;
   if (stretch > 1.5) {
     const along = y * stretch;
     const off = x - 0.07 * Math.sin(1.9 * along + s) - 0.04 * Math.sin(4.3 * along + 2.3 * s);
@@ -424,12 +448,21 @@ export function smokeOf(x: number, y: number, seed: number, out: Float64Array | 
   } else {
     r = Math.hypot(x + 0.17 * Math.sin(3.9 * y + s), y + 0.17 * Math.sin(3.3 * x + 1.7 * s));
     lump = 0.5 + 0.5 * Math.sin(5.3 * x + 2.1 * s) * Math.sin(4.7 * y - 1.3 * s);
+    if (billows) {
+      // Billows: the value noise breaks its outline into folds and mottles its middle.
+      const k = Math.floor(seed * 255), frac = (v: number): number => v - Math.floor(v);
+      const n = tiled(2.4 * x + 8 + 7 * frac(seed * 3.7), 2.4 * y + 8 + 7 * frac(seed * 9.1), 16, 16, k + 3);
+      lump = 0.35 * lump + 0.65 * n;
+      r += 0.3 * (0.5 - n);
+      // Its folds: light on what swells out and dark in the creases between, far more than a plain puff's mottle.
+      fold = step(0.3, 0.72, n);
+    }
     // A puff's outline is as lumpy as its middle, and no disc.
     rim = 0.6 + 0.2 * lump;
   }
   out[0] = (1 - step(0.3 + 0.22 * lump, rim, r)) * step(1.3 * torn - 0.24, 1.3 * torn, lump + 0.3 * (1 - r));
   out[1] = 0;
-  out[2] = 0.58 + 0.2 * lump + 0.22 * puff;
+  out[2] = fold < 0 ? 0.58 + 0.2 * lump + 0.22 * puff : 0.44 + 0.8 * fold;
 }
 
 /** How much of a scorch shows at corner (x, y) of its card: an uneven patch of soot, and five rays thrown out of it. Twin of scorchOf. */

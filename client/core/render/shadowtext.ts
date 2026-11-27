@@ -17,6 +17,7 @@ import type { Tier } from "../assets/tiers.ts";
 import { FAR_LEAD, FAR_OUT, FAR_RISE, FAR_SPAN, FLAT_LEAST, farLayer } from "./shadow-map.ts";
 import { LAMP_CORNER, LAMP_GROUND, LAMP_LONG, LAMP_NEAREST, LAMP_OUT, LAMP_TAN, LAMP_WIDE } from "./lamp.ts";
 import { ORB_SEES_GLSL, ORB_SHADE_GLSL } from "./orb-light.ts";
+import { FIRE_SEES_GLSL } from "./fire-lights.ts";
 import { BONES_PER_ROW, MAX_CASCADES } from "./packet.ts";
 import { MAX_REACH } from "./shadow.ts";
 import { BEND_GLSL, BEND_PLACE } from "./bend.ts";
@@ -177,7 +178,7 @@ function filterText(m: number): string {
  * share is `mapShadow`; with ORB_SHADE the share an orb's own shadow leaves is taken of it (orb-light.ts `orbShade`),
  * whether or not the frame has cascades.
  */
-export const SHADOW_GLSL = `${ORB_SEES_GLSL}${ORB_SHADE_GLSL}#define fFarAt fSwell.zw
+export const SHADOW_GLSL = `${ORB_SEES_GLSL}${FIRE_SEES_GLSL}${ORB_SHADE_GLSL}#define fFarAt fSwell.zw
 #define fFarScale fLook.w
 #define fFarDepth fSkyAlong.w
 #define fFarLayer fShore.z
@@ -298,6 +299,9 @@ float sunShadow(vec3 rel, vec3 normal) {
 #ifdef ORB_LIGHT
   orbSees(rel, normal);
 #endif
+#ifdef FIRE_LIGHT
+  fireSees(rel, normal);
+#endif
 #ifdef ORB_SHADE
   return mapShadow(rel, normal) * orbShade(rel);
 #else
@@ -308,6 +312,9 @@ float sunShadow(vec3 rel, vec3 normal) {
 float sunShadow(vec3 rel, vec3 normal) {
 #ifdef ORB_LIGHT
   orbSees(rel, normal);
+#endif
+#ifdef FIRE_LIGHT
+  fireSees(rel, normal);
 #endif
   return 1.0;
 }

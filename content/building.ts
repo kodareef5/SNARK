@@ -93,6 +93,9 @@ function piece(tier: Tier, name: string): StructureDef {
   return other === undefined ? base : { ...base, opens: `core:${other}_${tier.name}`, locked: true };
 }
 
+/** Where a lit one's fire stands (StructureDef.flames), from its model (assets/source/core/structures/camp/fires.py). */
+const FLAMES: Readonly<Record<string, StructureDef["flames"]>> = { campfire: [[0, 0.09, 0, 0.78, 0.52]] };
+
 /** Free-standing pieces, set on the ground or on a floor and joined to nothing. Beds are apart, below. */
 const STORES: readonly { name: string; label: string; half: readonly [number, number, number]; color: number; hp: number; material: string; slots?: number; falls?: boolean; fire?: boolean; decayDays?: number; stack: number; weight: number; level: number; cost: number; xp?: number; at?: string; needs: Needs }[] = [
   { name: "storage_box", label: "Storage box", half: [0.5, 0.3125, 0.375], color: 3, hp: 500, material: "wood", slots: 15, stack: 100, weight: 4, level: 4, cost: 6, needs: [["wood", 25], ["thatch", 20], ["fiber", 10]] },
@@ -141,7 +144,7 @@ function store(s: (typeof STORES)[number]): Def[] {
   return [
     { type: "shape", id: shapeId, role: "thing", boxes: [box(0, 0, 0, s.half[0], s.half[1], s.half[2])] },
     { type: "structure", class: s.fire ? "station" : "container", id: `core:${s.name}`, mesh: "shape", shape: shapeId, half: s.half, color: s.color, hp: s.hp, material: `core:mat_${s.material}`, decayDays: s.decayDays ?? 16, ...(s.slots ? { slots: s.slots } : {}), ...(s.falls ? { falls: true } : {}), ...(s.fire ? { lights: `core:${s.name}_lit` } : {}) },
-    ...(s.fire ? [{ type: "structure", class: "station", id: `core:${s.name}_lit`, mesh: "shape", shape: shapeId, half: s.half, color: 8, hp: s.hp, material: `core:mat_${s.material}`, decayDays: s.decayDays ?? 16, slots: s.slots!, lights: `core:${s.name}`, lit: true } as StructureDef] : []),
+    ...(s.fire ? [{ type: "structure", class: "station", id: `core:${s.name}_lit`, mesh: "shape", shape: shapeId, half: s.half, color: 8, hp: s.hp, material: `core:mat_${s.material}`, decayDays: s.decayDays ?? 16, slots: s.slots!, lights: `core:${s.name}`, lit: true, ...(FLAMES[s.name] ? { flames: FLAMES[s.name] } : {}) } as StructureDef] : []),
     { type: "item", class: "structure", id: item, stack: s.stack, weight: s.weight, label: s.label.toLowerCase(), color: s.color, places: [`core:${s.name}`] },
     ...crafting(item, { needs: s.needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: s.xp ?? Math.max(1, Math.round(s.level / 3)), ...(s.at ? { at: s.at } : {}) }),
     { type: "engram", id: `core:engram-piece_${s.name}`, label: s.label, level: s.level, cost: s.cost, item: `core:piece_${s.name}` },

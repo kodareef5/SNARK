@@ -272,6 +272,13 @@ interface Thing {
   after?: readonly string[];
   color: number;
 }
+/** Where a lit one's fire stands (StructureDef.flames), from its model (assets/source/core/structures/camp/fires.py). */
+const FLAMES: Readonly<Record<string, StructureDef["flames"]>> = {
+  standing_torch: [[-0.02, 1.43, 0.01, 0.52, 0.2]],
+  cooking_pot: [[-0.03, 0.03, -0.14, 0.34, 0.42]],
+  fireplace: [[-0.02, 0.3, -0.17, 0.78, 0.72]],
+};
+
 const THINGS: readonly Thing[] = [
   // Standing Torch: 500 health, 8 slots for what it burns, decays in 4 days; weight 4, stacks to 3; in the hand; level 7,
   // 6 points. Its light and its warmth are not built.
@@ -317,7 +324,7 @@ const SET_DOWN: Def[] = THINGS.flatMap((t): Def[] => {
   return [
     { type: "shape", id: shape, role: "thing", boxes: [{ at: [0, 0, 0], half: [...t.half] }] },
     structure,
-    ...(t.fire ? [{ ...structure, id: id(`${t.name}_lit`), color: 8, lights: structure.id, lit: true }] : []),
+    ...(t.fire ? [{ ...structure, id: id(`${t.name}_lit`), color: 8, lights: structure.id, lit: true, ...(FLAMES[t.name] ? { flames: FLAMES[t.name] } : {}) }] : []),
     { type: "item", class: "structure", id: id(`piece_${t.name}`), stack: t.stack, weight: t.weight, label: t.label, color: t.color, places: [structure.id] },
     ...made(`piece_${t.name}`, `${t.label[0]!.toUpperCase()}${t.label.slice(1)}`, t.level, t.cost, 1, t.seconds, t.needs, t.at, t.after),
   ];

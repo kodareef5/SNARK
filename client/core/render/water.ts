@@ -19,7 +19,8 @@ import { WATER_TRAILS_GLSL } from "./water-trails.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import { AIR, hazed } from "./atmosphere.ts";
 import { SEE_THROUGH_SPLIT } from "./glsl.ts";
-import { FRAME, SOURCE_MAP, SOURCE_WINDOW, WINDOW_AT } from "./packet.ts";
+import { FIRES_AT, FRAME, SOURCE_MAP, SOURCE_WINDOW, WINDOW_AT } from "./packet.ts";
+import { FIRE_NEAREST } from "./fire-lights.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { domeLight, shownSky, trueSun } from "./sky.ts";
 import { LIGHT, moonCasts, skyOn } from "./surface.ts";
@@ -328,7 +329,7 @@ const seen = [0, 0, 0];
  * distance, `shade` of the light the cascades are cast from reaching it (the sun's, or the moon's by night), `foam` of
  * it foam (seaFoam), at a bank `bank` (seaBank). `table` is the sky table.
  */
-export function seaPixel(frame: Float32Array, table: Uint8Array, n: Vec, v: Vec, depth: number, spread: number, shade = 1, foam = 0, bank: Bank = NO_BANK): SeaPixel {
+export function seaPixel(frame: Float32Array, table: Uint8Array, n: Vec, v: Vec, depth: number, spread: number, shade = 1, foam = 0, bank: Bank = NO_BANK, rel: Vec | null = null): SeaPixel {
   const nv = Math.min(Math.max(n[0]! * v[0]! + n[1]! * v[1]! + n[2]! * v[2]!, 0.001), 1);
   const a2 = Math.pow(SEA_ROUGH, 4) + DISC * DISC + spread;
   facing(seen, n, v, spread);
@@ -349,6 +350,15 @@ export function seaPixel(frame: Float32Array, table: Uint8Array, n: Vec, v: Vec,
   glint(shine, lights, 7, 11, a2, n, v, nv);
   const most = Math.max(...shine) * frame[FRAME.exposure]!;
   if (most > GLINT_MOST) for (let k = 0; k < 3; k++) shine[k] = (shine[k]! * GLINT_MOST) / most;
+  // The strongest fire's, where the point's place from the eye is given: held to its own most, apart from the sun's.
+  if (rel && frame[FIRES_AT + 3]! > 0) {
+    const dx = frame[FIRES_AT]! - rel[0]!, dy = frame[FIRES_AT + 1]! - rel[1]!, dz = frame[FIRES_AT + 2]! - rel[2]!;
+    const d2 = Math.max(dx * dx + dy * dy + dz * dz, 1e-4), r2 = Math.max(d2, (FIRE_NEAREST * frame[FIRES_AT + 3]!) ** 2), s = r2 / frame[FIRES_AT + 3]! ** 2, w = Math.max(1 - s * s, 0), r = Math.sqrt(d2);
+    const fire = [0, 0, 0];
+    glint(fire, Float64Array.of(dx / r, dy / r, dz / r, 0, ...[0, 1, 2].map((k) => (frame[FIRES_AT + 4 + k]! * w * w) / r2)), 0, 4, a2, n, v, nv);
+    const held = Math.min(1, frame[FIRES_AT + 7]! / Math.max(Math.max(...fire) * frame[FRAME.exposure]!, 1e-6));
+    for (let k = 0; k < 3; k++) shine[k] = shine[k]! + fire[k]! * held;
+  }
   const d = Math.max(depth, 0);
   const up = Math.abs(v[1]!);
   const steep = Math.sqrt(1 - (1 - up * up) / (BEND * BEND));
@@ -558,7 +568,19 @@ void main() {
   // The sun's glint where the sun is, as much as its disc is up and as it is not in shadow; the moon's; neither past GLINT_MOST.
   vec2 key = keyShade(sunShadow(vRel, vec3(0.0, 1.0, 0.0)));
   vec3 shine = glint(fTrueSun, fSunColor.rgb * (fSun.w * key.x), a2, n, v, nv) + glint(fMoon.xyz, fMoonColor.rgb * key.y, a2, n, v, nv);
+  vec3 fire = vec3(0.0);
+#ifdef FIRE_LIGHT
+  // The strongest fire's glint, which the waves break into a streak toward the eye, never brighter than a fire's is
+  // (fire-lights.ts FIRE_GLINT): it is held apart from the sun's and the moon's, which are held to their own most.
+  if (fFires[0].w > 0.0) {
+    vec3 d = fFires[0].xyz - vRel;
+    float d2 = max(dot(d, d), 1.0e-4), r2 = max(d2, ${g(FIRE_NEAREST * FIRE_NEAREST)} * fFires[0].w * fFires[0].w), s = r2 / (fFires[0].w * fFires[0].w), w = max(1.0 - s * s, 0.0);
+    fire = glint(d * inversesqrt(d2), fFires[1].rgb * (w * w / r2), a2, n, v, nv);
+    fire *= min(1.0, fFires[1].w / max(max(fire.r, max(fire.g, fire.b)) * fSunColor.w, 1e-6));
+  }
+#endif
   shine *= min(1.0, ${g(GLINT_MOST)} / max(max(shine.r, max(shine.g, shine.b)) * fSunColor.w, 1e-6));
+  shine += fire;
   float up = abs(v.y);
   float murk = bankMurk(bank);
   float through = exp(-${g(CLEAR)} * (1.0 + ${g(MURK_CLEAR)} * murk) * depth * (1.0 + 1.0 / sqrt(1.0 - (1.0 - up * up) / ${g(BEND * BEND)})));
