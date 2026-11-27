@@ -69,7 +69,10 @@ bun tools/decide/toy.ts                                the whole loop on the toy
 bun tools/decide/world.ts --cost                       what a lab world and a tick cost
 ```
 
-`generate.ts`, `fit.ts` and `score.ts` take `--root` for a dataset kept apart from the main one.
+`generate.ts`, `fit.ts` and `score.ts` take `--root` for a dataset kept apart from the main one, and `score.ts --held-data
+<root>` reads single decisions from another root, all of it held out, so two datasets are judged on the same decisions.
+Twelve scorers judged on the same layouts will clear the whole-episode marks by luck now and then: name the one that
+did before playing it again on layouts nobody has looked at (a new seed range), and refit it from other seeds.
 
 Wrap long runs in `systemd-run --user --scope -q -p MemoryMax=22G -p MemorySwapMax=0`. Workers are separate
 processes, at most 20, each kept for 300 scenes or until it holds 2 GB. Each holds about 1.7 GB once the content is
