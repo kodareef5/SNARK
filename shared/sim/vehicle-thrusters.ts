@@ -30,7 +30,7 @@ export interface VehicleThrusterSpec {
 
 export const ZEPHYR_THRUSTERS: VehicleThrusterSpec = {
   boostAccel: 40, boostTicks: 22, boostCooldownTicks: 4 * TICK_RATE,
-  hopSpeed: 17, liftTicks: 3, spinRate: 7.5, spinAccel: 75, catchAccel: 32, cushionAccel: 45,
+  hopSpeed: 14, liftTicks: 3, spinRate: 7.5, spinAccel: 75, catchAccel: 32, cushionAccel: 30,
   flipCooldownTicks: 3 * TICK_RATE, graceTicks: 6,
 };
 

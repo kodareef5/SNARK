@@ -38,7 +38,7 @@ function settled(speed = 0, s = spec) {
 
 const FLIPS = [["a kickflip", 0, 0], ["a roll left", 0, 1], ["a roll right", 0, -1], ["a front flip", 1, 0], ["a back flip", -1, 0]] as const;
 
-for (const [name, throttle, steer] of FLIPS) for (const speed of [0, 20]) test(`${name} at ${speed} m/s reaches cab-clearing height and lands upright`, () => {
+for (const [name, throttle, steer] of FLIPS) for (const speed of [0, 20]) test(`${name} at ${speed} m/s stays below six metres and lands upright`, () => {
   const car = settled(speed);
   let apex = 0, landing = -1, lowest = 1, airborne = false, cushioned = false, caught = false;
   for (let t = 0; t < 120; t++) {
@@ -48,7 +48,7 @@ for (const [name, throttle, steer] of FLIPS) for (const speed of [0, 20]) test(`
     if (!car.grounded) airborne = true;
     else if (airborne && landing < 0) landing = r.landSpeed;
   }
-  expect(apex).toBeGreaterThan(6.9); expect(apex).toBeLessThan(8.1);
+  expect(apex).toBeGreaterThan(5); expect(apex).toBeLessThan(6);
   // Turned all the way over, caught, and down soft: under the 12 m/s at which a landing hurts (server/urban.ts).
   expect(lowest).toBeLessThan(-.99); expect(caught).toBe(true); expect(cushioned).toBe(true);
   expect(landing).toBeGreaterThan(0); expect(landing).toBeLessThan(9);
@@ -57,21 +57,23 @@ for (const [name, throttle, steer] of FLIPS) for (const speed of [0, 20]) test(`
   expect(thrustAxis(car.thrust!)).toBe(0);
 });
 
-test("the Zephyr kickflips across the semi cab with a metre to spare", () => {
+test("the Zephyr kickflips just above the semi cab on level asphalt", () => {
   const zephyr = ROAD_FLEET.find(d => d.id === "core:zephyr")?.vehicle;
   const truck = SEMI.species.vehicle;
   if (!zephyr || !isWheelVehicle(zephyr) || !truck) throw new Error("Missing stunt vehicles");
-  for (const runUp of [10, 11, 12]) {
+  for (const runUp of [11, 12, 13]) {
     const car = settled(0, zephyr.spec);
     car.vz = 15;
     const semi = { x: car.x - 0.575, y: 0, z: car.z + runUp, yaw: Math.PI / 2, pitch: 0, roll: 0 };
-    // Park the cab across the driving lane and raise it a metre to check the margin.
     expect(carMeetsVehicle(zephyr.spec, { ...car, z: semi.z }, truck, semi)).not.toBeNull();
-    semi.y = 1;
+    const lower = { ...semi, y: 0.25 }, upper = { ...semi, y: 0.8 };
+    let touchedUpper = false;
     for (let t = 0; t < 105; t++) {
       stepVehicle(car, { ...coast, burst: t === 0 }, zephyr.spec, world);
-      expect(carMeetsVehicle(zephyr.spec, car, truck, semi)).toBeNull();
+      expect(carMeetsVehicle(zephyr.spec, car, truck, lower)).toBeNull();
+      touchedUpper ||= carMeetsVehicle(zephyr.spec, car, truck, upper) !== null;
     }
+    expect(touchedUpper).toBe(true);
     expect(car.z).toBeGreaterThan(semi.z + zephyr.spec.halfLength);
     expect(car.grounded).toBe(true);
     expect(upOf(car)).toBeGreaterThan(.999);

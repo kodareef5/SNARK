@@ -14,7 +14,7 @@ Combat
 - Plasma rifle and pistol bolts leave the barrel in line with the gun, both in your own view and when watching another survivor fire.
 
 Vehicles
-- The Zephyr can kickflip over a semi cab from a level street and land on its wheels.
+- The Zephyr can kickflip just over a semi cab from level pavement and land on its wheels.
 
 Doors
 - Hinged doors and Tek doors respect tribe access. A blocked door or a Tek field that stays open leaves nearby survivors in place.
