@@ -23,9 +23,10 @@ export const RING_FAR = profile("ring.far", "choice", true,
 
 /**
  * The mid pass: what the next few seconds along the heading hold. `run` and `runHigh` are the free run at knee and at
- * chest height, as a share of what it covers in `MID_SECONDS`. `drop`, `rise` and `wet` are how far the ground falls,
- * climbs and floods along it, in spans, a share of `MID_SPANS`. `hurt` is 1 where the run crosses ground that harms.
- * `crowd` is other bodies along it, a share of four.
+ * chest height, as a share of what it covers in `MID_SECONDS`. `drop` and `rise` are how far the ground falls and
+ * climbs along it, in spans, a share of `MID_SPANS`. `wet` is how much of the run lies under water it would wade, a
+ * share of the run, not the water's depth. `hurt` is 1 where the run crosses ground that harms. `crowd` is other
+ * bodies along it, a share of four.
  */
 export const RING_MID = profile("ring.mid", "choice", true,
   [...MODE, RUNG, "pace", "stuck"],

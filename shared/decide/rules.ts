@@ -41,14 +41,14 @@ export function ruleOf<S extends string, C extends string>(p: Profile<S, C>, w: 
 export const RULE_FAR = ruleOf(RING_FAR, {
   own: { goal: 2, way: 2.5, threat: -1, prey: 2.5, home: 0.5, pull: 1.5, held: 0.3, tried: -1.5 },
   // Deep in trouble the goal's own bearing counts for less and the way back along its trail for more.
-  cross: { "flee*threat": -2, "rung*goal": -1, "rung*trail": 2 },
+  cross: { "flee*threat": -2, "rung*goal": -2, "rung*trail": 1 },
 });
 /** Toward free ground, more where the ways beside it are free too; away from drops, climbs, water, harm and crowds. */
 export const RULE_MID = ruleOf(RING_MID, {
-  own: { run: 2, runHigh: 1, drop: -1.5, rise: -0.75, wet: -1, hurt: -2, crowd: -0.5, held: 0.3, tried: -1.5 },
+  own: { run: 2, runHigh: 1, drop: -1.5, rise: -0.75, wet: -4, hurt: -2, crowd: -0.5, held: 0.3, tried: -1.5 },
   beside: { run: 0.4, runHigh: 0.2 },
   // Pain is a price, and the deeper the trouble the more of it is worth paying: at the last rung water is nearly free.
-  cross: { "rung*wet": 0.8, "rung*hurt": 1, "rung*drop": 0.6 },
+  cross: { "rung*wet": 3.6, "rung*hurt": 1, "rung*drop": 0.6 },
 });
 /** Away from what it presses on, toward the open side. */
 export const RULE_NEAR = ruleOf(RING_NEAR, { own: { open: 2, pressed: -3, body: -1, held: 0.2, tried: -1 }, beside: { open: 0.5 }, cross: { "pinned*pressed": -2 } });
