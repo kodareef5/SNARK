@@ -4,7 +4,7 @@ import { expect, test } from "bun:test";
 import { LEAVE } from "../../server/decide/decide.ts";
 import { RING_FAR } from "../../shared/decide/profiles.ts";
 import { PathFinder, PATH_FOUND } from "../../shared/world/path.ts";
-import { pairsOf, see } from "../../tools/decide/audit.ts";
+import { against, pairsOf, see, type Seen } from "../../tools/decide/audit.ts";
 import { draw } from "../../tools/decide/random.ts";
 import { build, play, progress } from "../../tools/decide/setups.ts";
 
@@ -106,4 +106,20 @@ test("a fleeing mover's far pass bears on what it flees", () => {
   b.lab.host.shutdown();
   expect(n).toBeGreaterThan(0);
   expect(toward / n).toBeGreaterThan(0.1);
+});
+
+test("an audit against an earlier one names each scene gained and lost", () => {
+  const seen = (seed: number, arrived: number, kind = "core:raptor"): Seen => ({ family: "pen", seed, kind, way: 30, line: 20, off: { arrived: -1, stuck: 0, asked: 0 }, rule: { arrived, stuck: 0, asked: 1 } });
+  const was = [seen(1, 300), seen(2, -1), seen(3, 400), seen(4, -1, "core:dodo")];
+  const now = [seen(1, 310), seen(2, 500), seen(3, -1), seen(4, 200, "core:rex")];
+  const { gained, lost } = against(was, now, "rule");
+  // A scene whose creature changed is not the same scene.
+  expect([gained.map((s) => s.seed), lost.map((s) => s.seed)]).toEqual([[2], [3]]);
+});
+
+test("a scene is given at least three times the oracle's way at real pace", () => {
+  const s = draw("water", 500011), b = build(s);
+  expect(b.scene.horizon).toBeGreaterThanOrEqual(s.horizon);
+  expect(b.scene.horizon).toBeGreaterThanOrEqual(3 * b.oracle!.seconds * 30 - 30);
+  b.lab.host.shutdown();
 });
