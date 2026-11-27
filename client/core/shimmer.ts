@@ -8,8 +8,8 @@ import type { AppFrame, FramePart } from "./frame.ts";
 import type { RemoteSample } from "./session.ts";
 import { usableVehicle } from "./vehicle-ready.ts";
 
-/** Milliseconds a shimmer lasts, and the least between two of one vehicle's. */
-export const SHIMMER_MS = 800, SHIMMER_GAP_MS = 6000;
+/** Milliseconds a shimmer lasts, long enough to ease in and out (render/shimmer-glsl.ts shimmerSwell), and the least between two of one vehicle's. */
+export const SHIMMER_MS = 1600, SHIMMER_GAP_MS = 6000;
 /** Metres within which a vehicle coming into view shimmers once, past which it may do so again, and within which the aim sets it off. */
 export const SHIMMER_NEAR = 40, SHIMMER_LEFT = 46, SHIMMER_AIM = 30;
 /** Vehicles shimmering at once, the nearest first. */

@@ -11,6 +11,8 @@ import { Scene } from "../../client/core/render/scene.ts";
 import "../../client/core/render/city-late.ts";
 import { surfaceFragment } from "../../client/core/render/surface.ts";
 import { RemoteSample } from "../../client/core/session.ts";
+import { SHIMMER_BAND, SHIMMER_GLSL, SHIMMER_PALE, SHIMMER_RIM, shimmerSwell } from "../../client/core/render/shimmer-glsl.ts";
+import { SHIMMER_MS } from "../../client/core/shimmer.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { flatWorld } from "../fixtures/world.ts";
@@ -63,7 +65,19 @@ artTest("three cars of one model are one draw, and the one that shimmers is a dr
 
 test("the shimmer is in the textured and the mesh's flat programs, sent a draw, and not in the ground's", () => {
   expect(MESH_ROWS.some((r) => r.name === "uGlow")).toBe(true);
-  expect([FLAT_BODY_FRAGMENT.includes("uniform vec4 uGlow;"), FLAT_BODY_FRAGMENT.includes("+ shimmer(n, -normalize(vRel), vRel)"), FLAT_FRAGMENT.includes("uGlow")]).toEqual([true, true, false]);
+  expect([FLAT_BODY_FRAGMENT.includes("uniform vec4 uGlow;"), FLAT_BODY_FRAGMENT.includes("shimmer(vColor * light * shade, n, -normalize(vRel), vRel, 1.0)"), FLAT_FRAGMENT.includes("uGlow")]).toEqual([true, true, false]);
   const text = surfaceFragment("rgba", "");
-  expect([text.includes("uniform vec4 uGlow;"), text.includes("+ shimmer(n, v, vRel)")]).toEqual([true, true]);
+  expect([text.includes("uniform vec4 uGlow;"), text.includes("shown(shimmer(radiance + through(albedo, mro, n, uSheet, shade) + albedo * glow, n, v, vRel, max(fSunColor.w, 1e-6)), vRel)")]).toEqual([true, true]);
+});
+
+test("a shimmer is a hint: it eases in and out, never steps, and brightens a body without washing it out", () => {
+  // At sixty frames a second over its moment, no frame's step is more than a twentieth of it, and it is gone at both ends.
+  const frames = Math.round((SHIMMER_MS * 60) / 1000);
+  let most = 0;
+  for (let k = 1; k <= frames; k++) most = Math.max(most, Math.abs(shimmerSwell(k / frames) - shimmerSwell((k - 1) / frames)));
+  expect([most < 0.05, shimmerSwell(0), shimmerSwell(0.5), shimmerSwell(1), shimmerSwell(0.05) < 0.05]).toEqual([true, 0, 1, 0, true]);
+  // Whole, it brightens a body's own light by under twice at its rim in its band, and adds a trace of pale blue the
+  // same by night as by day: the body keeps its colours.
+  expect([SHIMMER_RIM + SHIMMER_BAND < 1, SHIMMER_PALE * (SHIMMER_RIM + SHIMMER_BAND) < 0.1]).toEqual([true, true]);
+  expect(SHIMMER_GLSL).toContain("return lit * (1.0 + s) + vec3(0.5, 0.8, 1.0) * (0.1 * s / eye);");
 });

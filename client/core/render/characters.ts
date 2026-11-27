@@ -77,6 +77,7 @@ import { ThrusterPlumes } from "./thruster-plumes.ts";
 import { PatrolLights } from "./patrol-lights.ts";
 import { solidOf } from "../../../shared/sim/vehicle-movers.ts";
 import { sortU32 } from "../../../shared/sort.ts";
+import { shimmerSwell } from "./shimmer-glsl.ts";
 
 /** A body is culled when its origin is farther than this outside the view. No pose reaches farther from its origin. */
 /** The places of a held item that has none. */
@@ -1554,10 +1555,10 @@ export class Characters {
     return 0;
   }
 
-  /** The shimmer of the body `glowNow` names, to `out` as a draw carries it (packet.ts drawGlow): rising and fading over its moment. */
+  /** The shimmer of the body `glowNow` names, to `out` as a draw carries it (packet.ts drawGlow): easing in and out over its moment. */
   glowOf(which: number, out: Float32Array): void {
     const t = this.glow ? this.glow.phase[which - 1]! : 1;
-    out[0] = Math.sin(Math.PI * Math.min(1, Math.max(0, t)));
+    out[0] = shimmerSwell(t);
     out[1] = t;
     out[2] = this.glowFoot[which - 1]!;
     out[3] = this.glowTall[which - 1]!;
