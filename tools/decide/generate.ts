@@ -32,7 +32,7 @@ export type Job =
   | { kind: "episode"; scene: Scene; point: string; policy: Hooks["policy"]; models: string[] };
 
 export type Done =
-  | { kind: "label"; yes: boolean; decision: string | null; runs: number; thrown: number; noReseed: number; rss: number }
+  | { kind: "label"; yes: boolean; decision: string | null; runs: number; thrown: number; noReseed: number; seconds: number; rss: number }
   | { kind: "episode"; result: EpisodeResult; rss: number }
   | { kind: "error"; error: string; rss: number };
 
@@ -49,13 +49,13 @@ export function loadModels(files: readonly string[]): Model[] {
 
 /** Runs one job where it is called: what a worker does with each message. */
 export function work(job: Job): Done {
-  const rss = () => process.memoryUsage().rss;
+  const rss = () => process.memoryUsage().rss, from = performance.now();
   try {
     const models = loadModels(job.models);
     if (job.kind === "episode") return { kind: "episode", result: episode(job.scene, job.point, job.policy, models), rss: rss() };
     const under = { policy: models.length ? "model" as const : "rule" as const, models };
     const l = labelScene(gameReplayer(job.point, under), job.scene, { seed: job.scene.seed, family: job.scene.family, map: job.scene.map }, { kind: (a) => PROFILES.find((q) => q.name === a.tables[0]?.profile)?.kind ?? "choice", seeds: job.seeds, today: true });
-    return { kind: "label", yes: l.kind === "yes", decision: l.decision ? pack(l.decision) : null, runs: l.runs, thrown: l.thrown, noReseed: l.noReseed, rss: rss() };
+    return { kind: "label", yes: l.kind === "yes", decision: l.decision ? pack(l.decision) : null, runs: l.runs, thrown: l.thrown, noReseed: l.noReseed, seconds: (performance.now() - from) / 1000, rss: rss() };
   } catch (err) {
     return { kind: "error", error: err instanceof Error ? (err.stack ?? err.message) : String(err), rss: rss() };
   }
@@ -155,7 +155,7 @@ export interface GenerateOptions {
 }
 
 /** Labels one decision of each scene and adds them to the point's dataset. */
-export async function generate(o: GenerateOptions): Promise<{ decisions: number; none: number; thrown: number; noReseed: number; runs: number; seconds: number; errors: string[] }> {
+export async function generate(o: GenerateOptions): Promise<{ decisions: number; none: number; thrown: number; noReseed: number; runs: number; busy: number; seconds: number; errors: string[] }> {
   const from = performance.now();
   const list = scenes(o.families, o.scenes, o.first);
   const jobs: Job[] = list.map((scene) => ({ kind: "label", scene, point: o.point, seeds: o.seeds, models: o.under }));
@@ -164,7 +164,7 @@ export async function generate(o: GenerateOptions): Promise<{ decisions: number;
   let w: Writer | null = null;
   let scenesSeen = 0, none = 0;
   const pool = new Workers(o.workers);
-  let done = 0, written = 0, runs = 0, last = 0;
+  let done = 0, written = 0, runs = 0, last = 0, busy = 0;
   const kept = new Map<number, Done>(), errors: string[] = [];
   const flush = () => {
     for (let d = kept.get(written); d; d = kept.get(written)) {
@@ -173,6 +173,7 @@ export async function generate(o: GenerateOptions): Promise<{ decisions: number;
       if (d.kind === "error") errors.push(d.error);
       else if (d.kind === "label") {
         runs += d.runs;
+        busy += d.seconds;
         if (d.decision) {
           w ??= new Writer(dataDir(o.point, join(o.root ?? ".cache/decide", "data")), o.point, d.yes ? "yes" : "choice", PROFILES, note, o.fresh);
           w.run.thrown += d.thrown;
@@ -201,7 +202,7 @@ export async function generate(o: GenerateOptions): Promise<{ decisions: number;
     ww.save();
   }
   status({ step: "idle", point: o.point, done, of: jobs.length });
-  return { decisions: ww?.run.decisions ?? 0, none, thrown: ww?.run.thrown ?? 0, noReseed: ww?.run.noReseed ?? 0, runs, seconds: (performance.now() - from) / 1000, errors };
+  return { decisions: ww?.run.decisions ?? 0, none, thrown: ww?.run.thrown ?? 0, noReseed: ww?.run.noReseed ?? 0, runs, busy, seconds: (performance.now() - from) / 1000, errors };
 }
 
 function arg(name: string): string | undefined {
@@ -222,7 +223,7 @@ if (import.meta.main && process.argv.includes("--worker")) {
   const under = arg("--under")?.split(",") ?? [];
   for (const f of under) if (!existsSync(f)) throw new Error(`no weights file ${f}`);
   const r = await generate({ point, families, scenes: Number(arg("--scenes") ?? 40), first: Number(arg("--first") ?? 1), workers: Number(arg("--workers") ?? 8), seeds: Number(arg("--seeds") ?? 3), under, fresh: process.argv.includes("--fresh") });
-  console.log(`${point}: ${r.decisions} decisions from ${r.runs} plays in ${r.seconds.toFixed(1)} s; ${r.none} scenes gave no answer, ${r.thrown} replays thrown away, ${r.noReseed} run with no reseed`);
+  console.log(`${point}: ${r.decisions} decisions from ${r.runs} plays in ${r.seconds.toFixed(1)} s; ${r.none} scenes gave no answer, ${r.thrown} replays thrown away, ${r.noReseed} run with no reseed; a play took ${((1000 * r.busy) / Math.max(1, r.runs)).toFixed(0)} ms of a worker's time`);
   for (const e of r.errors.slice(0, 5)) console.error(e);
   if (r.errors.length) process.exit(1);
 }

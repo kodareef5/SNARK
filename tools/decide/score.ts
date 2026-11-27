@@ -3,18 +3,18 @@
 // Scoreboard type) and a page with nothing outside it, .cache/decide/scoreboard.html, and puts each trained scorer's
 // held-out Score in its weights file's `about`.
 //
-//   bun tools/decide/score.ts [--point <name>] [--episodes 40] [--workers 8]
+//   bun tools/decide/score.ts [--point <name>] [--episodes 40] [--workers 8] [--reading 1s|5s|end]
 //   bun tools/decide/score.ts --headroom <point>     how far the best candidate beats the rule, before any training
 //
 // One answer is timed in a child pinned to a fast core and to a slow one (taskset -c 2 and -c 20 on this machine).
 
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { answer, scoreTable, type Model } from "../../shared/decide/forward.ts";
 import type { Profile } from "../../shared/decide/profile.ts";
 import type { EpisodeScore, PointScores, Scoreboard } from "../../shared/decide/scoreboard.ts";
 import { Table } from "../../shared/decide/table.ts";
-import { readModel } from "../../shared/decide/weights.ts";
+import { readModel, writeModel } from "../../shared/decide/weights.ts";
 import { boardHtml } from "./board.ts";
 import { catalog } from "./catalog.ts";
 import { READINGS, dataDir, readData, revision, type Decision } from "./dataset.ts";
@@ -109,6 +109,15 @@ export async function scorePoint(point: string, o: { episodes: number; workers: 
     episodes = policies.map((pol, i) => episodeScore(pol.name, results.slice(i * held.length, (i + 1) * held.length).flatMap((d) => (d.kind === "episode" ? [d.result] : []))));
   }
   const scores = ratePoint({ point, profile: p, cat, decisions, reading: o.reading ?? READINGS.length - 1, trained, episodes });
+  // The rule is timed as the trained are, from a file of its own outside the models.
+  const rule = cat.rules.get(p.name), ruled = scores.scores.find((s) => s.name === "rule");
+  if (rule && ruled) {
+    const file = join(ROOT, "rules", `${p.name}.json`);
+    mkdirSync(join(ROOT, "rules"), { recursive: true });
+    writeFileSync(file, JSON.stringify(writeModel(rule)));
+    const fast = timed(file, point, CORES.fast), slow = timed(file, point, CORES.slow);
+    Object.assign(ruled, { microsFast: fast.p99, microsSlow: slow.p99, medianFast: fast.median, medianSlow: slow.median, bytes: statSync(file).size });
+  }
   // Each trained scorer's file keeps its held-out score.
   for (const f of found) {
     const file = JSON.parse(readFileSync(f.file, "utf8")) as { about?: Record<string, unknown> };
@@ -147,7 +156,8 @@ if (import.meta.main && process.argv.includes("--time")) {
   const board: Scoreboard = { made: new Date().toISOString(), revision: revision(), points: [] };
   for (const point of points) {
     status({ step: "score", point, done: 0, of: 1 });
-    board.points.push(await scorePoint(point, { episodes: Number(arg("--episodes") ?? 40), workers: Number(arg("--workers") ?? 8) }));
+    const reading = READINGS.indexOf((arg("--reading") ?? "end") as (typeof READINGS)[number]);
+    board.points.push(await scorePoint(point, { episodes: Number(arg("--episodes") ?? 40), workers: Number(arg("--workers") ?? 8), reading: reading < 0 ? undefined : reading }));
   }
   writeFileSync(join(ROOT, "scoreboard.json"), JSON.stringify(board, null, 1));
   writeFileSync(join(ROOT, "scoreboard.html"), boardHtml(board));
