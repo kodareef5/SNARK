@@ -5,6 +5,7 @@
 
 import { GOAL_WALK, SEARCH_CELLS } from "../../server/behavior.ts";
 import { LEAVE, SPARE, type Point } from "../../server/decide/decide.ts";
+import { PROGRESS } from "../../server/decide/nav.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { SNAG_SECONDS } from "../../shared/decide/profiles.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -398,13 +399,11 @@ interface Observer {
   read(b: Built, from: number): number;
 }
 
-/** The share of its pace toward its goal that is real progress, as the ladder judges it (nav.ts, which does not export it). */
-export const SNAG_PROGRESS = 0.35;
 const left = (b: Built): number => Math.hypot(b.goal.x - b.lab.world.ents.x[b.mover]!, b.goal.z - b.lab.world.ents.z[b.mover]!);
 
 /** nav.snag: 1 where the mover gained less than real progress toward its goal over the SNAG_SECONDS after the question. */
 export const OBSERVERS: Readonly<Record<string, Observer>> = {
-  "nav.snag": { ticks: SNAG_SECONDS * TICK_RATE, start: left, read: (b, from) => (from - left(b) < SNAG_PROGRESS * b.body.pace * SNAG_SECONDS ? 1 : 0) },
+  "nav.snag": { ticks: SNAG_SECONDS * TICK_RATE, start: left, read: (b, from) => (from - left(b) < PROGRESS * b.body.pace * SNAG_SECONDS ? 1 : 0) },
 };
 
 /** The game's scenes for label.ts. */

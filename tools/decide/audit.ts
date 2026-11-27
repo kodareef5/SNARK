@@ -2,11 +2,12 @@
 // (the oracle), how often today's code and the rule arrive and how long they take, and how often the ring is asked. A
 // family the oracle cannot cross is impossible; one where today's code arrives and the ring is never asked teaches nothing.
 //
-//   bun tools/decide/audit.ts [--families trees,deadEnd,...] [--scenes 30] [--first 1]
+//   bun tools/decide/audit.ts [--families trees,deadEnd,...] [--scenes 30] [--first 1] [--out <file>] [--against <file>]
 //
-// writes .cache/decide/audit.json and prints a line a family.
+// writes .cache/decide/audit.json (or --out) and prints a line a family; `--against` an earlier audit's file says, by family
+// and by creature, which scenes each policy now arrives in that it did not, and which it no longer does.
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { FAMILIES } from "./catalog.ts";
 import { scenes, type Family, type Scene } from "./random.ts";
@@ -49,6 +50,35 @@ export function summary(all: readonly Seen[]): string {
   return `${all[0]?.family}: ${all.length} scenes, ${impossible} with no way at all; of the ${n} played: trivial ${pct(trivial)}, ring asked ${pct(asked)}; today arrives ${pct(arrived("off").length)} in ${mean(arrived("off").map((s) => s.off.arrived))} s, the rule ${pct(arrived("rule").length)} in ${mean(arrived("rule").map((s) => s.rule.arrived))} s, either ${pct(anyone)}`;
 }
 
+/** Scenes played in both audits that `policy` now arrives in and did not (gained), and arrived in before and now does not (lost). */
+export function against(was: readonly Seen[], now: readonly Seen[], policy: "off" | "rule"): { gained: Seen[]; lost: Seen[] } {
+  const before = new Map(was.map((s) => [`${s.family}/${s.seed}`, s]));
+  const gained: Seen[] = [], lost: Seen[] = [];
+  for (const s of now) {
+    const b = before.get(`${s.family}/${s.seed}`);
+    if (!b || b.kind !== s.kind) continue;
+    const a0 = !Number.isNaN(b.way) && b[policy].arrived >= 0, a1 = !Number.isNaN(s.way) && s[policy].arrived >= 0;
+    if (a1 && !a0) gained.push(s);
+    if (a0 && !a1) lost.push(s);
+  }
+  return { gained, lost };
+}
+
+/** Lines saying what `against` found: totals, then each scene gained or lost with its family, seed and creature. */
+export function againstText(was: readonly Seen[], now: readonly Seen[]): string[] {
+  const out: string[] = [];
+  for (const p of ["rule", "off"] as const) {
+    const { gained, lost } = against(was, now, p);
+    const by = (list: Seen[], key: (s: Seen) => string) => [...new Set(list.map(key))].map((k) => `${k} ${list.filter((s) => key(s) === k).length}`).join(", ");
+    out.push(`${p === "rule" ? "the rule" : "today"}: gained ${gained.length}, lost ${lost.length}`);
+    if (gained.length) out.push(`  gained by family: ${by(gained, (s) => s.family)}; by creature: ${by(gained, (s) => s.kind)}`);
+    if (lost.length) out.push(`  lost by family: ${by(lost, (s) => s.family)}; by creature: ${by(lost, (s) => s.kind)}`);
+    for (const s of gained) out.push(`  + ${s.family} ${s.seed} ${s.kind}`);
+    for (const s of lost) out.push(`  - ${s.family} ${s.seed} ${s.kind}`);
+  }
+  return out;
+}
+
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(name);
   return i >= 0 ? process.argv[i + 1] : undefined;
@@ -64,5 +94,7 @@ if (import.meta.main) {
     console.log(summary(seen));
   }
   mkdirSync(".cache/decide", { recursive: true });
-  writeFileSync(".cache/decide/audit.json", JSON.stringify(all, null, 1));
+  writeFileSync(arg("--out") ?? ".cache/decide/audit.json", JSON.stringify(all, null, 1));
+  const was = arg("--against");
+  if (was) for (const line of againstText(JSON.parse(readFileSync(was, "utf8")) as Seen[], all)) console.log(line);
 }

@@ -51,7 +51,7 @@ export const MID_TICKS = THINK_TICKS;
 const CALM_TICKS = 2 * TICK_RATE;
 const PATIENT_TICKS = 4 * TICK_RATE;
 /** Real progress is this share of its pace, toward its goal (or anywhere, for a wanderer), or along a held heading. */
-const PROGRESS = 0.35;
+export const PROGRESS = 0.35;
 /** Ticks a held heading runs before it is judged, and over which the mark of one that led nowhere fades. */
 const JUDGE_TICKS = 8;
 const TRIED_TICKS = 4 * TICK_RATE;
