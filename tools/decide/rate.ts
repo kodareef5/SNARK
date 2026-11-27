@@ -56,7 +56,7 @@ export function episodeScore(name: string, all: readonly EpisodeResult[]): Episo
     name, scenes: list.length, arrived: list.filter((e) => e.arrived).length, ticks: mean((e) => e.ticks), healthLost: mean((e) => e.healthLost),
     stuckTicks: mean((e) => e.stuckTicks), searches: mean((e) => e.searches), cells: mean((e) => e.cells), cost: mean((e) => e.cost),
     decideMicros: parts.length ? parts[Math.min(parts.length - 1, Math.floor(parts.length * 0.99))]! : NaN,
-    layouts: all.map((e) => ({ family: e.family ?? "", seed: e.seed ?? 0, route: e.skipped ? NaN : (e.route ?? NaN), arrived: !e.skipped && e.arrived, ticks: e.ticks, healthLost: e.skipped ? 0 : e.healthLost, acted: e.acted ?? 0 })),
+    layouts: all.map((e) => ({ family: e.family ?? "", seed: e.seed ?? 0, route: e.skipped ? NaN : (e.route ?? NaN), arrived: !e.skipped && e.arrived, ticks: e.ticks, healthLost: e.skipped ? 0 : e.healthLost, acted: e.acted ?? 0, cost: e.skipped ? NaN : e.cost })),
     families: Object.fromEntries([...new Set(list.map((e) => e.family ?? ""))].map((f) => {
       const of = list.filter((e) => (e.family ?? "") === f);
       return [f, { scenes: of.length, arrived: of.filter((e) => e.arrived).length, ticks: of.reduce((s, e) => s + e.ticks, 0) / of.length }];
@@ -132,17 +132,19 @@ export function ratePoint(o: RateOptions): PointScores {
     columns: examples(held, p, cat.profiles, cat.rules, reading, hide("rows"), passes),
     shuffled: hasState ? examples(held, p, cat.profiles, cat.rules, reading, shuffled(held, p.name, seed), passes) : null,
   };
+  const uniformLoss = scores[0]!.logLoss;
   for (const t of o.trained) {
     const s = summarize(t.name, t.kind, grade(p.kind, ex, t.model, rule), { seed });
-    const own = meanLoss(p.kind, ex, t.model);
-    const worse = (set: Example[] | null) => (set ? (meanLoss(p.kind, set, t.model) - own) / own : NaN);
+    const own = meanLoss(p.kind, ex, t.model), gain = uniformLoss - own;
+    // What hiding a part costs, as a share of what the scorer gains over uniform; NaN where it gains nothing.
+    const worse = (set: Example[] | null) => (set && gain > 0 ? (meanLoss(p.kind, set, t.model) - own) / gain : NaN);
     s.blind = { state: worse(blindSets.state), columns: worse(blindSets.columns), shuffled: worse(blindSets.shuffled) };
     s.microsFast = t.microsFast ?? NaN;
     s.microsSlow = t.microsSlow ?? NaN;
     s.medianFast = t.medianFast ?? NaN;
     s.medianSlow = t.medianSlow ?? NaN;
     s.bytes = t.bytes;
-    s.gate = gateOf(s, { hasState, mine: played(t.name), rule: played("rule"), today: played("today") });
+    s.gate = gateOf(s, { hasState, calibrated: p.kind === "yes", mine: played(t.name), rule: played("rule"), today: played("today"), seed });
     scores.push(s);
   }
   const all = examples(o.decisions, p, cat.profiles, cat.rules, reading, undefined, passes);

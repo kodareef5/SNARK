@@ -1,7 +1,7 @@
 // The scoreboard's arithmetic (tools/decide/board.ts, fit.ts's grading) on cases worked by hand.
 import { expect, test } from "bun:test";
 import type { EpisodeScore, Score } from "../../shared/decide/scoreboard.ts";
-import { GATE, boardHtml, eceOf, gateOf, regretInterval, ruleGate, summarize, type Graded } from "../../tools/decide/board.ts";
+import { GATE, boardHtml, eceOf, episodeWhy, gateOf, meanInterval, regretInterval, ruleGate, summarize, type Graded } from "../../tools/decide/board.ts";
 import { gradeOne, type Example } from "../../tools/decide/fit.ts";
 
 const example = (cost: number[], target: number[]): Example => ({
@@ -49,7 +49,12 @@ function good(): Score {
     logLoss: 1, brier: 0.2, ece: 0.03, reliability: [], blind: { state: 0.2, columns: 0.5, shuffled: 0.15 }, microsFast: 4, microsSlow: 9, medianFast: 2, medianSlow: 5, bytes: 4000, gate: { pass: false, why: [] },
   };
 }
-const ep = (name: string, arrived: number, cost: number): EpisodeScore => ({ name, scenes: 50, arrived, ticks: 600, healthLost: 0, stuckTicks: 10, searches: 2, cells: 100, cost, decideMicros: 20 });
+/** Fifty layouts of one family, the first `arrived` of them arrived, each costing `cost` (or as `each` says). */
+const ep = (name: string, arrived: number, cost: number, each: (i: number) => number = () => cost, family = "pen"): EpisodeScore => ({
+  name, scenes: 50, arrived, ticks: 600, healthLost: 0, stuckTicks: 10, searches: 2, cells: 100, cost, decideMicros: 20,
+  families: { [family]: { scenes: 50, arrived, ticks: 600 } },
+  layouts: Array.from({ length: 50 }, (_, i) => ({ family, seed: i + 1, route: 50, arrived: i < arrived, ticks: 600, healthLost: 0, acted: 1, cost: each(i) })),
+});
 
 test("the gate passes a scorer that meets every mark and names each one missed", () => {
   expect(gateOf(good(), { hasState: true, mine: ep("m", 40, 700), rule: ep("rule", 38, 720) })).toEqual({ pass: true, why: [] });
@@ -58,12 +63,32 @@ test("the gate passes a scorer that meets every mark and names each one missed",
   expect(v.pass).toBe(false);
   expect(v.why.map((w) => w.split(/[:,]/)[0])).toEqual([
     "not measurable", "regret is 0.800 of the rule's", "the interval's top is 0.950", "its worst held-out family is 1.200 of the rule's", "ECE is 0.070",
-    "hiding the state costs only 0.050 more log loss", "one answer takes 30.0 µs at the 99th percentile", `its weights are ${GATE.bytes + 1} bytes`, "whole episodes", "whole episodes",
+    "hiding the state costs only 0.050 of its gain over uniform", "one answer takes 30.0 µs at the 99th percentile", `its weights are ${GATE.bytes + 1} bytes`, "whole episodes", "whole episodes", "whole episodes", "whole episodes",
   ]);
   // A scorer that wins single decisions and is never played whole is not passed.
   expect(gateOf(good(), { hasState: true }).why).toEqual(["no whole episodes were played"]);
   // A profile with no state has none to hide.
   expect(gateOf({ ...good(), blind: { state: NaN, columns: 0.5, shuffled: NaN } }, { hasState: false, mine: ep("m", 40, 700), rule: ep("rule", 38, 720) }).pass).toBe(true);
+});
+
+test("ECE is a bar only where the point's probability is read", () => {
+  const off = { ...good(), ece: 0.2 };
+  expect(gateOf(off, { hasState: true, calibrated: false, mine: ep("m", 40, 700), rule: ep("rule", 38, 720) }).pass).toBe(true);
+  expect(gateOf(off, { hasState: true, calibrated: true, mine: ep("m", 40, 700), rule: ep("rule", 38, 720) }).why).toEqual(["ECE is 0.200, above 0.05"]);
+});
+
+test("whole episodes fail a scorer that loses a family, loses more than it gains, or saves no clear cost", () => {
+  const rule = ep("rule", 38, 720);
+  // As many arrivals, but layouts 0 to 2 lost and 38 to 40 gained: as many lost as gained passes.
+  const swapped = { ...ep("m", 38, 700), layouts: ep("m", 38, 700).layouts!.map((l, i) => ({ ...l, arrived: i >= 3 && i < 41 })) };
+  expect(episodeWhy(swapped, rule)).toEqual([]);
+  // Four lost and three gained.
+  const worse = { ...ep("m", 37, 700), layouts: ep("m", 37, 700).layouts!.map((l, i) => ({ ...l, arrived: i >= 4 && i < 41 })) };
+  expect(episodeWhy(worse, rule).map((w) => w.split(":")[1]!.trim().split(" ").slice(0, 4).join(" "))).toEqual(["it arrives in 37", "in pen it arrives", "it loses 4 of"]);
+  // A mean under the rule's whose saving is one layout's luck.
+  const lucky = ep("m", 38, 719, (i) => (i === 0 ? 670 : 720));
+  expect(episodeWhy(lucky, rule)).toEqual([expect.stringContaining("the interval of its cost less the rule's reaches 0.0")]);
+  expect(meanInterval([-2, -2, -2])).toEqual([-2, -2]);
 });
 
 test("neither a scorer nor the rule passes where it loses whole episodes to today's code", () => {
