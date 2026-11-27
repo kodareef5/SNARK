@@ -7,7 +7,7 @@ import type { TextureFormat } from "../../../shared/pack/texture.ts";
 import type { Tier } from "../assets/tiers.ts";
 import { AIR, SKY_FRAGMENT, SKY_VERTEX } from "./atmosphere.ts";
 import { tekPhaseFragment, tekPhaseVertex } from "./tek-phase.ts";
-import { DETAIL_FLAT_FRAGMENT, DETAIL_LIT_FRAGMENT, DETAIL_LIT_VERTEX, DETAIL_VERTEX } from "./detailtext.ts";
+import { DETAIL_FLAT_FRAGMENT, DETAIL_LIT_FRAGMENT, DETAIL_LIT_VERTEX, DETAIL_VERTEX, smokeBillows } from "./detailtext.ts";
 import { FACADE_GLSL, FACADE_TIERS, facadeFarVertex, facadeVertex } from "./facade.ts";
 import { FIRE_FRAGMENT, FIRE_VERTEX } from "./fire-light.ts";
 import { FAR_MESH_VERTEX, FLAT_BODY_FRAGMENT, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_MESH_FRAGMENT, LIT_SPLIT_FRAGMENT, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX, finishVertex } from "./glsl.ts";
@@ -66,7 +66,11 @@ const WINDOW = { uHeight: UNIT.windowHeights, uTint: UNIT.windowTint };
  */
 const out = (tier: Tier, light: boolean): string => (tier.contact ? "#define CONTACT\n" : "") + (tier.roofs ? "#define ROOF\n" : "") + (drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : "");
 /** And where the tier lights by an orb (orb-light.ts), for a program that lights by `lit`: the ground's by its own say. */
-const lights = (tier: Tier, light: boolean, ground = false): string => ((ground ? tier.orb.ground : tier.orb.light) ? "#define ORB_LIGHT\n" : "") + out(tier, light);
+const lights = (tier: Tier, light: boolean, ground = false): string => ((ground ? tier.orb.ground : tier.orb.light) ? "#define ORB_LIGHT\n" : "") + fireLight(tier) + out(tier, light);
+/** Smoke's billows (detailtext.ts smokeOf), where the tier's fire reads both octaves of the noise: smoke is many pixels, and medium's are left plain. */
+const smokeNoise = (tier: Tier): string => (smokeBillows(tier) ? "#define SMOKE_NOISE\n" : "");
+/** Fire's light (fire-lights.ts), where the tier carries any. */
+const fireLight = (tier: Tier): string => (tier.lit && tier.fires.lights > 0 ? "#define FIRE_LIGHT\n" : "");
 
 /**
  * A program of FLAT's vertex text: FLAT's fragment on low poly, and on a lit tier `lit`, which reads the sky table for
@@ -115,8 +119,8 @@ function water(tier: Tier, hard: boolean, light: boolean, wakes: boolean): Progr
   return {
     vertex: FLAT_MESH_VERTEX,
     fragment: WATER_FRAGMENT,
-    // The sea is lit by its own glint and not `lit`, so the street lamp's light is not looked up for it.
-    defines: shadowDefines(tier.shadows, hard, false) + out(tier, light) + (wakes ? "#define LOCAL_WAKES\n" : ""),
+    // The sea is lit by its own glint and not `lit`, so the street lamp's light is not looked up for it; a fire's glints in it.
+    defines: shadowDefines(tier.shadows, hard, false) + fireLight(tier) + out(tier, light) + (wakes ? "#define LOCAL_WAKES\n" : ""),
     samplers: { ...MESH, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uMapHeight: UNIT.heights, uWindowHeight: UNIT.windowHeights, uWindowTint: UNIT.windowTint, uWaveLong: UNIT.maps + 3, uWaveShort: UNIT.maps + 4 },
   };
 }
@@ -167,7 +171,7 @@ const MAKE = {
   // Small details (packet.ts DRAW_DETAILS): on a lit tier their pictures, lit and in the sun's shadow; on low poly their flat shapes.
   details: (tier, _, hard = false, light = false): ProgramText =>
     tier.lit
-      ? { vertex: DETAIL_LIT_VERTEX, fragment: DETAIL_LIT_FRAGMENT, defines: "#define STREET\n" + shadowDefines(tier.shadows, hard) + lights(tier, light), samplers: { uDetails: UNIT.details, uStreetEnv: UNIT.street, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } }
+      ? { vertex: DETAIL_LIT_VERTEX, fragment: DETAIL_LIT_FRAGMENT, defines: "#define STREET\n" + shadowDefines(tier.shadows, hard) + lights(tier, light) + smokeNoise(tier), samplers: { uDetails: UNIT.details, uStreetEnv: UNIT.street, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } }
       : { vertex: DETAIL_VERTEX, fragment: DETAIL_FLAT_FRAGMENT, defines: "", samplers: {} },
   // A caster, a cut-out caster, and the ground, each drawn from the sun into a cascade's layer.
   depth: () => ({ vertex: tekPhaseVertex(DEPTH_VERTEX), fragment: tekPhaseFragment(DEPTH_FRAGMENT, true), defines: "", samplers: { uBones: UNIT.bones, uPieces: UNIT.pieces } }),

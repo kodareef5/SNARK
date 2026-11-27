@@ -125,7 +125,9 @@ export async function fireCost(): Promise<FireCost> {
     return { name, vertex: FACE, fragment: withDefines(text.fragment, text.defines), samplers: {}, frame, matrix, uniforms: { uEffect: [kind, 1.1, 0.04, 1], uFlatA: a, uFlatB: b, uFrom: [0] } };
   };
   const details = PROGRAMS.details!(medium, "rgba", false, false);
-  const card = (name: string, flags: number, grey: number): Record<string, unknown> => ({ name, vertex: CARD, fragment: withDefines(details.fragment, details.defines), samplers: details.samplers, frame, matrix, uniforms: { uCard: [flags, grey, 0.7, 0], uBlend: [1], uCells: [4], uFrom: [0] } });
+  const card = (name: string, flags: number, grey: number, text = details): Record<string, unknown> => ({ name, vertex: CARD, fragment: withDefines(text.fragment, text.defines), samplers: text.samplers, frame, matrix, uniforms: { uCard: [flags, grey, 0.7, 0], uBlend: [1], uCells: [4], uFrom: [0] } });
+  // High's details: two octaves of the smoke's billows, and the light of fire, into a light target.
+  const detailsHigh = PROGRAMS.details!(high, "rgba", false, true);
   // A flame at full power a moment after it lit; a lobe a third through its life, when fire, soot and edge all show.
   const flame = [1, 0.3, 0.37, 0.2], lobe = [0.35, 1, 0.37, 0], blaze = [1, 0, 0.37, 0.1];
   const runs = [
@@ -142,6 +144,7 @@ export async function fireCost(): Promise<FireCost> {
     fire("blaze, bands", medium, false, 0, FIRE_BLAZE, blaze, [2.3, 2]),
     // A puff of smoke, a length of a rope of it eight times as long as wide, and a scorch.
     card("smoke card", DETAIL_SMOKE, 16 / 255),
+    card("smoke card, high", DETAIL_SMOKE, 16 / 255, detailsHigh),
     card("rope card", DETAIL_SMOKE, 128 / 255),
     card("scorch card", DETAIL_SCORCH, 1),
     // A puff of dust from the atlas, lit: flat shape 1 with the lit and puff flags.
@@ -260,7 +263,7 @@ if (import.meta.main) {
   let passed = jet > 0 && Number.isFinite(jet);
   for (const [name, ms] of Object.entries(cost.ms)) {
     if (name.startsWith("links")) continue;
-    const most = name === "jet" || name.endsWith("card") ? 0 : name.startsWith("flame") ? FLAME_MOST : LOBE_MOST;
+    const most = name === "jet" || name.includes("card") ? 0 : name.startsWith("flame") ? FLAME_MOST : LOBE_MOST;
     const fits = most === 0 || ms / jet <= most;
     if (!fits) passed = false;
     console.log(`  ${name.padEnd(22)} ${ms.toFixed(4)}${most ? `  ${(ms / jet).toFixed(2)} times the jet (at most ${most})${fits ? "" : "  MISS"}` : ""}`);

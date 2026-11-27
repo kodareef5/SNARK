@@ -405,6 +405,42 @@ test("a thick puff of smoke is whole at its middle, nothing at its card's edge, 
   expect(differ).toBeGreaterThan(30);
 });
 
+test("a puff that billows has its outline broken into folds, still never shows its card, and the text is the twin's", () => {
+  const out = [0, 0, 0];
+  {
+    for (const seed of [0, 0.3, 0.77]) {
+      smokeOf(0, 0, seed, out, 1, 0, true);
+      expect(out[0]!).toBeGreaterThan(0.85);
+      // Round a circle most of the way out, a plain puff's edge is all but even; a billowing one's comes and goes.
+      const ring = Array.from({ length: 72 }, (_, k) => {
+        const a = (k / 72) * 2 * Math.PI;
+        smokeOf(0.62 * Math.cos(a), 0.62 * Math.sin(a), seed, out, 1, 0, true);
+        return out[0]!;
+      });
+      expect(Math.max(...ring) - Math.min(...ring)).toBeGreaterThan(0.5);
+      for (let k = 0; k < 64; k++) {
+        const a = (k / 64) * 2 * Math.PI, m = Math.max(Math.abs(Math.cos(a)), Math.abs(Math.sin(a)));
+        smokeOf(Math.cos(a) / m, Math.sin(a) / m, seed, out, 1, 0, true);
+        expect(out[0]!).toBeLessThan(0.02);
+        expect([out[2]! >= 0.44, out[2]! <= 1]).toEqual([true, true]);
+      }
+    }
+  }
+  // A rope's length is as it was: the noise is a puff's alone.
+  smokeOf(0.1, 0.3, 0.3, out, 8, 0, true);
+  const rope = [...out];
+  smokeOf(0.1, 0.3, 0.3, out, 8);
+  expect(out).toEqual(rope);
+  // High and ultra read the noise, at the twin's cells and weights; medium, low poly and a phone keep the plain puff.
+  for (const tier of [...TIERS, forTouch(tierOf("high"), true)]) {
+    const text = PROGRAMS.details!(tier, "rgba", false, tier.post !== null);
+    expect([tier.name, text.defines.includes("#define SMOKE_NOISE\n")]).toEqual([tier.name, tier.lit && tier.bursts.noise > 1]);
+  }
+  expect(TIERS.filter((t) => t.lit && t.bursts.noise > 1).map((t) => t.name)).toEqual(["high", "ultra"]);
+  expect(DETAIL_LIT_FRAGMENT).toContain("float n = tiled(2.4 * c.x + 8.0 + 7.0 * fract(seed * 3.7), 2.4 * c.y + 8.0 + 7.0 * fract(seed * 9.1), 16, 16, k + 3);");
+  expect(DETAIL_LIT_FRAGMENT).toContain("lump = 0.35 * lump + 0.65 * n;\n    r += 0.22 * (0.5 - n);");
+});
+
 test("a length of a rope of smoke runs the whole of its card, ends thinned into the next, and tears where it is thinnest; a scorch is a patch with rays", () => {
   const out = [0, 0, 0];
   // Along its middle it is there from end to end but for the last of it, and nothing at its card's sides.

@@ -11,7 +11,7 @@ import type { Tier } from "./assets/tiers.ts";
 import { FIRE_BLAZE } from "./render/fire-light.ts";
 import { HAND_NEAR } from "./render/hand.ts";
 import { ORB_SEEN } from "./render/orb-light.ts";
-import { DETAIL, DETAIL_FLOATS, DRAW_DETAILS, DRAW_FIRE, DRAW_WATER, FRAME, ROOF_AT, type FramePacket } from "./render/packet.ts";
+import { DETAIL, DETAIL_FLOATS, DRAW_DETAILS, DRAW_FIRE, DRAW_WATER, FIRES_AT, FIRE_LIGHTS, FRAME, ROOF_AT, type FramePacket } from "./render/packet.ts";
 import { withoutGlass } from "./render/vehicle-glass.ts";
 
 /**
@@ -169,12 +169,12 @@ export const BENCH_TURN_MS = 15000;
  * the walls with none of their weathering (world-surfaces.ts `weathered`), its masks made as ever. "bursts" draws nothing
  * that burns (render/blasts.ts): no rocket's flame, smoke or glow, no blast's fire, and none of what a blast or a
  * launcher threw up among the small details. "fires" draws no fire that stands (render/fires.ts): no wreck's or lit
- * hearth's flames, smoke or embers. An orb's light comes off in its parts: "orbglow" draws no halo
+ * hearth's flames, smoke or embers; "firelight" lights nothing by fire (render/fire-lights.ts). An orb's light comes off in its parts: "orbglow" draws no halo
  * (render/passes/orb.ts), "orbmirror" shows no ball in what mirrors, "orblight" draws the lit programs without its
  * light, the ground's too, and "orbshade" without the shadow the ball casts (render/orb-light.ts `orbMirror`, `orbSees`,
  * `orbShade`).
  */
-export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections", "roofs", "bounce", "moon", "lamp", "glass", "pools", "streets", "kerbs", "weather", "bursts", "fires", "orbglow", "orbmirror", "orblight", "orbshade"] as const;
+export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections", "roofs", "bounce", "moon", "lamp", "glass", "pools", "streets", "kerbs", "weather", "bursts", "fires", "firelight", "orbglow", "orbmirror", "orblight", "orbshade"] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 export function effectsOff(text: string | null): ReadonlySet<Effect> {
@@ -223,6 +223,7 @@ export function packetWithout(p: FramePacket, off: ReadonlySet<Effect>): void {
   if (off.has("bounce")) p.frame[ROOF_AT + 3] = Math.min(1, p.frame[ROOF_AT + 3]!);
   if (off.has("facades")) p.frame[FRAME.facade + 1] = 0;
   if (off.has("orbmirror")) p.frame.fill(0, ORB_SEEN, ORB_SEEN + 4);
+  if (off.has("firelight")) p.frame.fill(0, FIRES_AT, FIRES_AT + 8 * FIRE_LIGHTS);
   p.frame[FRAME.edgesOff] = (off.has("edges") ? 1 : 0) + (off.has("weather") ? 2 : 0);
   p.frame[FRAME.roadOff] = (off.has("road") ? 1 : 0) + (off.has("walks") ? 2 : 0) + (off.has("streets") ? 4 : 0) + (off.has("kerbs") ? 8 : 0);
   const bursts = off.has("bursts"), fires = off.has("fires");

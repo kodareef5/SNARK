@@ -14,10 +14,12 @@ import { LOW } from "./atmosphere.ts";
 import type { Camera } from "./camera.ts";
 import type { Draws } from "./draws.ts";
 import { BLAZE_REACH, FIRE_BLAZE, blazePhase, putBlaze } from "./fire-light.ts";
+import { FIRE_BY_DAY, FIRE_COLOUR, FIRE_LIGHT, type FireLights } from "./fire-lights.ts";
 import { DETAIL, DETAIL_GLOW, DETAIL_SMOKE, DRAW_BLEND, DRAW_FIRE, DRAW_PLAIN, GLOW_STEPS, SMOKE_STEPS, TRANSIENT_BUFFER, type FramePacket } from "./packet.ts";
+import { lampsOn } from "./surface.ts";
 import { VehicleCards } from "./vehicle-cards.ts";
 
-/** Metres out to which a fire is drawn, and from which it fades to nothing there. */
+/** Metres out to which a fire's flames are drawn, and from which they fade to nothing there; its smoke is the tier's. */
 export const FIRE_REACH = 320;
 const FADE_FROM = 260;
 /** Fires drawn at once at the most whatever the tier, tongues of one flame, puffs of one fire's smoke, and embers of one fire. */
@@ -25,8 +27,8 @@ export const MOST_FIRES = 16;
 const TONGUES = 4, PUFFS = 20, THIN_PUFFS = 7, EMBERS = 8;
 /** Fires that throw embers at once. */
 const EMBER_FIRES = 2;
-/** Cards held at the most: each fire's puffs and a glow for each of two flames, and the embers. */
-const CARDS = MOST_FIRES * (PUFFS + 2) + EMBER_FIRES * EMBERS;
+/** Cards held at the most: each fire's puffs, a glow and a pool for each of two flames, and the embers. */
+const CARDS = MOST_FIRES * (PUFFS + 4) + EMBER_FIRES * EMBERS;
 /** Pixels high on the screen past which each tongue in turn is drawn, and the share either side over which it comes in. */
 export const TONGUE_AT = [40, 90, 160, 230] as const;
 const TONGUE_BAND = 0.25;
@@ -68,6 +70,8 @@ interface Layout {
   sooty: boolean;
   /** How far its flames reach out from its middle. */
   spread: number;
+  /** The square metres of its flames, which its light is by. */
+  area: number;
 }
 
 interface Held { version: number; at: Float32Array }
@@ -104,6 +108,8 @@ export function layFlame(hold: (x: number, y: number, z: number, high: number, w
 export class Fires extends VehicleCards {
   /** Off, nothing of it is drawn: a page's before and after (client/core/passes.ts "fires"). */
   on = true;
+  /** The hour, which says when a pool stands in for a fire's light on low poly, whose frame holds no sky. The scene sets it. */
+  hour = 12;
   /** False where no kind burns: the pass then does nothing at all. */
   readonly any: boolean;
   /** Fires drawn in the last frame, the blazes of their flames, their draws, and the share of the screen they cover. */
@@ -145,9 +151,10 @@ export class Fires extends VehicleCards {
 
   /**
    * The frame's fires near the camera at `cam` at the scene's clock `now` ms, at the detail each takes by how high it is
-   * on a screen `viewHeight` pixels high: their flames held for `draw`, and their cards. Before the details are written.
+   * on a screen `viewHeight` pixels high: their flames held for `draw`, and their cards. Each near enough to light what is
+   * round the eye is handed to `lights`, in view or not. Before the details are written.
    */
-  build(_p: FramePacket, cam: Camera, structs: StructureStore, chunksX: number, chunksZ: number, now: number, tier: Tier, viewHeight = 720): void {
+  build(p: FramePacket, cam: Camera, structs: StructureStore, chunksX: number, chunksZ: number, now: number, tier: Tier, viewHeight = 720, lights: FireLights | null = null): void {
     this.begin();
     this.held = this.fires = this.spent = 0;
     this.fill = 0;
@@ -155,8 +162,10 @@ export class Fires extends VehicleCards {
     this.low = structs.low;
     const near = this.near, found = this.found;
     near.length = found.length = 0;
-    const c0 = Math.max(0, Math.floor((cam.x - FIRE_REACH) / CHUNK_SIZE)), c1 = Math.min(chunksX - 1, Math.floor((cam.x + FIRE_REACH) / CHUNK_SIZE));
-    const r0 = Math.max(0, Math.floor((cam.z - FIRE_REACH) / CHUNK_SIZE)), r1 = Math.min(chunksZ - 1, Math.floor((cam.z + FIRE_REACH) / CHUNK_SIZE));
+    // Its smoke may be seen farther than its flames.
+    const reach = Math.max(FIRE_REACH, tier.fires.plume);
+    const c0 = Math.max(0, Math.floor((cam.x - reach) / CHUNK_SIZE)), c1 = Math.min(chunksX - 1, Math.floor((cam.x + reach) / CHUNK_SIZE));
+    const r0 = Math.max(0, Math.floor((cam.z - reach) / CHUNK_SIZE)), r1 = Math.min(chunksZ - 1, Math.floor((cam.z + reach) / CHUNK_SIZE));
     const pixels = viewHeight / (2 * Math.tan(cam.fovY / 2));
     for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
       const at = this.firesOf(structs, r * chunksX + c);
@@ -164,7 +173,8 @@ export class Fires extends VehicleCards {
         const kind = at[i + 4]!, lay = this.layoutOf(kind, structs)!;
         const x = at[i]! - cam.x, z = at[i + 2]! - cam.z, bottom = at[i + 1]! + structs.low[kind]! - cam.y;
         const d = Math.hypot(x, bottom + 0.5 * lay.tip, z);
-        if (d >= FIRE_REACH) continue;
+        if (d >= reach) continue;
+        if (lights && d < FIRE_REACH) this.light(lights, at, i, lay, x, bottom, z, d);
         // Seen by a box round its flames and the first of its smoke.
         const s = lay.spread + Math.hypot(lay.slideX, lay.slideZ) + lay.wide, top = bottom + Math.max(lay.tip, lay.smoke) + 4 * lay.wide;
         if (!cam.boxVisible(x - s, bottom, z - s, x + s, top, z + s)) continue;
@@ -184,16 +194,18 @@ export class Fires extends VehicleCards {
     const wx = LOW.wind[0] * WIND_SHARE * gust, wz = LOW.wind[1] * WIND_SHARE * gust;
     this.screen = 4 * Math.tan(cam.fovY / 2) ** 2 * cam.aspect;
     const room = FIRE_SHARE * tier.details.fill;
+    // Where the tier carries no light from fire, a warm pool on what a fire stands on stands in for it by night.
+    this.pools = tier.lit && tier.fires.lights > 0 ? 0 : tier.lit ? lampsOn(p.frame) : 1 - smooth(-0.15, 0.1, Math.sin(((this.hour - 6) / 12) * Math.PI));
     let embers = 0;
     for (let o = 0, most = Math.min(MOST_FIRES, tier.fires.most, count); o < most; o++) {
       const k = order[o]!, f = near[k * 3]! * HELD, d = near[k * 3 + 1]!, px = near[k * 3 + 2]!;
       const lay = this.layoutOf(found[f + 4]!, structs)!;
-      const fade = Math.min(1, Math.max(0, (FIRE_REACH - d) / (FIRE_REACH - FADE_FROM)));
+      const fade = Math.min(1, Math.max(0, (FIRE_REACH - d) / (FIRE_REACH - FADE_FROM))), fades = Math.min(1, Math.max(0, (reach - d) / (0.2 * reach)));
       // A seed of its own from where it stands, so no two fires flicker, lean or puff together.
       const seed = fract(Math.abs(Math.sin(found[f]! * 12.9898 + found[f + 2]! * 78.233)) * 43758.5453);
       // Past their share of the screen the rest are drawn plainer: a bed alone and half the smoke.
       const plain = this.spent > room;
-      this.fire(cam, f, lay, seed, px, fade, plain ? 0 : Math.min(TONGUES, tier.fires.tongues), t, wx, wz, plain);
+      this.fire(cam, f, lay, seed, px, fade, fades, plain ? 0 : Math.min(TONGUES, tier.fires.tongues), t, wx, wz, plain);
       if (px > EMBERS_OVER && embers < EMBER_FIRES && !plain) {
         this.embers(cam, f, lay, seed, t, wx, wz, fade * smooth(EMBERS_OVER, 1.5 * EMBERS_OVER, px));
         embers++;
@@ -203,8 +215,8 @@ export class Fires extends VehicleCards {
     this.fill = this.spent;
   }
 
-  /** Holds one fire's blazes and writes its glows and smoke. */
-  private fire(cam: Camera, f: number, lay: Layout, seed: number, px: number, fade: number, tongues: number, t: number, wx: number, wz: number, plain: boolean): void {
+  /** Holds one fire's blazes and writes its glows and smoke, its flames shown `fade` of themselves and its smoke `fades`. */
+  private fire(cam: Camera, f: number, lay: Layout, seed: number, px: number, fade: number, fades: number, tongues: number, t: number, wx: number, wz: number, plain: boolean): void {
     const found = this.found, yaw = found[f + 3]!, co = Math.cos(yaw), si = Math.sin(yaw);
     const bottom = found[f + 1]! + this.low![found[f + 4]!]! - cam.y;
     const flames = lay.flames, slide = seed - 0.5;
@@ -217,8 +229,38 @@ export class Fires extends VehicleCards {
       const x = found[f]! - cam.x + co * fx + si * fz, y = bottom + flames[q + 1]!, z = found[f + 2]! - cam.z + co * fz - si * fx;
       layFlame(this.holder, x, y, z, high, wide, px, tongues, fract(seed + q * 0.1309), fade);
       if (cross < 0.99) this.glow(x, y + 0.45 * high, z, 0.5 * wide + 0.2 * high, 0.55 * high, FLAME, 2.4, (1 - cross) * fade);
+      if (this.pools > 0.01) this.pool(x, y + 0.03, z, wide + 1.5 * high, this.pools * fade);
     }
-    this.smoke(cam, f, lay, seed, bottom, t, wx, wz, fade, px, plain);
+    this.smoke(cam, f, lay, seed, bottom, t, wx, wz, fades, px, plain);
+  }
+
+  /** How much a pool of light stands in for a fire's own this frame: 0 where the tier carries its light, or by day. */
+  private pools = 0;
+
+  /** A warm pool of light lying on what a fire stands on, `half` across, `shows` of it. */
+  private pool(x: number, y: number, z: number, half: number, shows: number): void {
+    const i = this.card(x, y, z, half, half, FLAME, (DETAIL_GLOW << 8) | (Math.round(0.9 * GLOW_STEPS) << 24), shows, 0);
+    if (i < 0) return;
+    const card = this.cards;
+    card[i + DETAIL.along] = 0;
+    card[i + DETAIL.along + 1] = 0;
+    card[i + DETAIL.along + 2] = half;
+    card[i + DETAIL.across] = half;
+    card[i + DETAIL.across + 1] = 0;
+    card[i + DETAIL.across + 2] = 0;
+  }
+
+  /**
+   * Hands `lights` the light of the fire at `i` of `at`: from its first flame's middle, as strong as its flames are
+   * large, flickering. `x`, `bottom` and `z` are its place from the eye, and `d` how far it is, by which it fades out.
+   */
+  private light(lights: FireLights, at: Float32Array, i: number, lay: Layout, x: number, bottom: number, z: number, d: number): void {
+    const fl = lay.flames, yaw = at[i + 3]!, co = Math.cos(yaw), si = Math.sin(yaw);
+    const seed = fract(Math.abs(Math.sin(at[i]! * 12.9898 + at[i + 2]! * 78.233)) * 43758.5453), slide = seed - 0.5;
+    const fx = fl[0]! + slide * lay.slideX, fz = fl[2]! + slide * lay.slideZ;
+    const fade = Math.min(1, Math.max(0, (FIRE_REACH - d) / (FIRE_REACH - FADE_FROM)));
+    const [r, g, b] = FIRE_COLOUR;
+    lights.add(x + co * fx + si * fz, bottom + fl[1]! + 0.45 * fl[3]!, z + co * fz - si * fx, FIRE_LIGHT * lay.area * fade, r, g, b, FIRE_BY_DAY, 0.16, seed);
   }
 
   /** The lean of the fire being laid, for `holder`. */
@@ -397,8 +439,9 @@ export class Fires extends VehicleCards {
       slideX = alongX ? 0.4 * long : 0;
       slideZ = alongX ? 0 : 0.4 * long;
     }
-    let tip = 0, wide = 0, spread = 0;
+    let tip = 0, wide = 0, spread = 0, area = 0;
     for (let q = 0; q < flames.length; q += FLAME_FLOATS) {
+      area += flames[q + 3]! * flames[q + 4]!;
       tip = Math.max(tip, flames[q + 1]! + flames[q + 3]!);
       wide = Math.max(wide, flames[q + 4]!);
       spread = Math.max(spread, Math.hypot(flames[q]!, flames[q + 2]!));
@@ -406,7 +449,7 @@ export class Fires extends VehicleCards {
     // A hearth's smoke leaves by its chimney, the top of its box; a wreck's and an open fire's off its tips.
     const height = structs.top[kind]! - structs.low[kind]!;
     const smoke = listed && height > tip ? height : tip;
-    return (this.layouts[kind] = { flames, smoke, tip, wide, slideX, slideZ, sooty: ablaze, spread });
+    return (this.layouts[kind] = { flames, smoke, tip, wide, slideX, slideZ, sooty: ablaze, spread, area });
   }
 
   /** A chunk's burning things, HELD numbers each: where its box's middle is, its yaw in radians and its kind. Read again only when its table has changed. */

@@ -51,6 +51,7 @@ import { Characters, riderFitScratch, seatScratch, type RiderFit, type VehicleRe
 import { exhaustPhase } from "./suit-finish.ts";
 import { Blasts } from "./blasts.ts";
 import { Fires } from "./fires.ts";
+import { FireLights } from "./fire-lights.ts";
 import { Clouds } from "./clouds.ts";
 import { Dropped } from "./dropped.ts";
 import type { FarSource } from "./far.ts";
@@ -305,6 +306,8 @@ export class Scene {
   readonly streetLamps: StreetLamps;
   /** Fire that burns where it stands: wrecks ablaze and lit campfires, torches and hearths (fires.ts). */
   readonly fires: Fires;
+  /** The light fire throws on what is near it: the fires' and the blasts' (fire-lights.ts). */
+  readonly fireLights = new FireLights();
   /** The wires between the utility poles still standing (street-wires.ts). */
   readonly streetWires: StreetWires;
   /** What hides what this frame. */
@@ -1073,8 +1076,10 @@ export class Scene {
   private showDetails(cam: Camera, remote: RemoteSample | null): void {
     const p = this.packet;
     const { rotorBlur, patrolLights, thrusterPlumes, windscreens, tireContacts } = this.characters;
-    const { streetLamps, streetWires, fires } = this;
-    fires.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ, this.now, this.assets.tier, this.viewHeight);
+    const { streetLamps, streetWires, fires, fireLights } = this;
+    fireLights.begin();
+    fires.hour = this.hour;
+    fires.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ, this.now, this.assets.tier, this.viewHeight, fireLights);
     const fields = this.shots?.tekImpacts;
     fields?.build(this.world.structs, cam, this.now);
     const orbCards = this.world.orbs ? (this.orbs?.cards ?? null) : null;
@@ -1084,6 +1089,8 @@ export class Scene {
     this.dust.build(cam, this.now);
     this.blasts.viewHeight = this.viewHeight;
     this.blasts.cards(cam, this.now, this.own?.firstPerson);
+    this.blasts.light(fireLights, cam, this.now);
+    fireLights.write(p.frame, p.tier.lit ? p.tier.fires.lights : 0, this.now, lampsOn(p.frame));
     const beacons = this.supplyDrops.beacons;
     const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, beacons.count + tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count + fires.count + this.dust.count + this.blasts.count + (orbCards?.count ?? 0) + (fields?.count ?? 0));
     const particles = p.detailCount;

@@ -64,11 +64,13 @@ test("a burning wreck in view smokes, and one out of view, far off or not burnin
   const first = Array.from(p.details.subarray(0, p.detailCount * DETAIL_FLOATS));
   const later = cards(fires, s, cam, 1700);
   expect(Array.from(later.details.subarray(0, later.detailCount * DETAIL_FLOATS))).not.toEqual(first);
-  // Turned away, it is not drawn; past its reach, neither.
+  // Turned away, it is not drawn. Past its flames' reach, high draws its smoke alone, and medium nothing.
   expect(cards(fires, s, looking(200, 3, 200, 180, 2, 180), 1000).detailCount).toBe(0);
   const far = store();
   far.add(burning, 20 + FIRE_REACH + 5, 1, 20, 0, 0, 1);
-  expect(cards(fires, far, looking(20, 3, 20, 400, 2, 20), 1000).detailCount).toBe(0);
+  const smoke = kindsOf(cards(fires, far, looking(20, 3, 20, 400, 2, 20), 1000));
+  expect([smoke.length > 3, smoke.every((k) => k === DETAIL_SMOKE), high.fires.plume > FIRE_REACH + 5]).toEqual([true, true, true]);
+  expect(cards(fires, far, looking(20, 3, 20, 400, 2, 20), 1000, medium).detailCount).toBe(0);
 });
 
 test("a lit campfire, torch, pot, hearth and forge burn; the same out, or a lit fabricator, do not", () => {
