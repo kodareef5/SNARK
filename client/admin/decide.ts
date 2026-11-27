@@ -14,11 +14,26 @@ async function act(body: object): Promise<void> {
   void refresh();
 }
 
+/**
+ * Draws the points again. With a select of the table in hand it is drawn cell by cell around the selects, since drawing
+ * one again would shut its list; a select not in hand takes the value the server holds.
+ */
+function paintPoints(el: HTMLElement, html: string): void {
+  if (!el.contains(document.activeElement)) return paintHtml(el, html);
+  const next = document.createElement("div");
+  next.innerHTML = html;
+  const was = el.querySelectorAll("td"), now = next.querySelectorAll("td");
+  if (was.length !== now.length) return paintHtml(el, html);
+  now.forEach((cell, i) => {
+    const old = was[i]!, held = old.querySelector("select");
+    if (!held) old.innerHTML = cell.innerHTML;
+    else if (held !== document.activeElement) held.value = cell.querySelector("select")?.value ?? held.value;
+  });
+}
+
 async function refresh(): Promise<void> {
   const s = (await (await ask("decide.json?look=1")).json()) as DecideJson;
-  // A table with a select open is drawn again only once it is closed (paintHtml keeps the focus).
-  const points = $("points");
-  if (!points.contains(document.activeElement)) paintHtml(points, pointsHtml(s));
+  paintPoints($("points"), pointsHtml(s));
   paintHtml($("tiles"), tilesHtml(s));
   paintHtml($("scorers"), scorersHtml(s));
   paintHtml($("recent"), recentHtml(s));

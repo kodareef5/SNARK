@@ -128,6 +128,19 @@ test("the lab's scoreboard leads with whole episodes, then each entry's decision
   expect(html.match(/<caption>Single decisions/g)!.length).toBe(1);
 });
 
+test("the lab's part draws a board whose unmeasured numbers came as null", () => {
+  // NaN does not pass through JSON: a board with nothing held out or no arrival reaches the page with nulls.
+  const read = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+  const none = read<EpisodeScore>({ name: "today", scenes: 24, arrived: 0, ticks: NaN, healthLost: 0, stuckTicks: NaN, searches: 0, cells: 0, cost: NaN, decideMicros: NaN });
+  const blind = read({ ...score(), decisions: 0, scenes: 0, regret: NaN, regretRatio: NaN, interval: [NaN, NaN] as [number, number], worstFamily: NaN, disagreeRatio: NaN, ece: NaN, microsFast: NaN, microsSlow: NaN });
+  const html = labHtml({ made: "2026-11-27", revision: "abc", points: [{ point: "nav.ring", profile: "ring.far", headroom: read(NaN), episodes: [none], scores: [blind] }] });
+  expect(html).toContain("<td>today</td><td>0 of 24</td><td>–</td><td>–</td><td>–</td><td>– µs</td>");
+  expect(html).toContain("<td>– ticks, –</td><td>–</td><td>–</td><td>–</td>");
+  expect(html).toContain("– / – µs");
+  expect(html).toContain("headroom at one decision not measured");
+  expect(html).not.toMatch(/NaN|null|undefined/);
+});
+
 test("the lab's status reads as one line", () => {
   expect(statusText({ step: "fit", point: "nav.ring", done: 1200, of: 4000, at: "09:00" })).toBe("The lab is at fit for nav.ring: 1,200 of 4,000 (said at 09:00).");
   expect([statusText(null), statusText({ step: "idle", point: "", done: 0, of: 0, at: "09:00" })]).toEqual(["No lab run has said what it is doing.", "The lab is idle (said at 09:00)."]);

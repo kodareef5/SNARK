@@ -2,7 +2,7 @@
 // answers kept only while a page looks, the weights read again, and the lab's files where the checkout has them.
 
 import { afterAll, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DecideAdmin, LOOK_TICKS } from "../../server/admin/decide.ts";
@@ -17,7 +17,7 @@ import { COUNT_NAMES, type DecideJson } from "../../shared/admin-decide.ts";
 import { answer } from "../../shared/decide/forward.ts";
 import { PROFILES, RING_MID } from "../../shared/decide/profiles.ts";
 import { RULE_MID } from "../../shared/decide/rules.ts";
-import type { LabStatus, Scoreboard, Score } from "../../shared/decide/scoreboard.ts";
+import type { EpisodeScore, LabStatus, Scoreboard, Score } from "../../shared/decide/scoreboard.ts";
 import { tableFor } from "../../shared/decide/table.ts";
 import { writeModel } from "../../shared/decide/weights.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
@@ -199,6 +199,34 @@ test("the lab's scoreboard and status are given where the checkout has them", as
   const broken = folder();
   writeFileSync(join(broken, "scoreboard.json"), "{\"made\":");
   expect(await read({ lab: broken })).toEqual({ scoreboard: null, status: null });
+});
+
+test("the page gets the lab's board without its row for every layout, read once", async () => {
+  const { h } = world();
+  const lab = folder(), file = join(lab, "scoreboard.json");
+  const episode = (arrived: number): EpisodeScore => ({
+    name: "rule", scenes: 2, arrived, ticks: 900, healthLost: 0, stuckTicks: 0, searches: 1, cells: 40, cost: 30, decideMicros: 50,
+    layouts: [{ family: "pen", seed: 1, route: 40, arrived: true, ticks: 900, healthLost: 0, acted: 1 }],
+  });
+  const board = (arrived: number): Scoreboard => ({ made: "2026-11-27T09:00:00Z", revision: "abc123", points: [{ point: "test.ring", profile: "ring.mid", headroom: 0.2, episodes: [episode(arrived)], fresh: [episode(arrived)], scores: [] }] });
+  // Written at a whole second, so the time can be given back exactly.
+  const at = new Date("2026-11-27T09:00:00Z");
+  writeFileSync(file, JSON.stringify(board(1)));
+  utimesSync(file, at, at);
+  let now = 0;
+  const admin = new DecideAdmin(h.host, { lab, now: () => now });
+  const read = async () => (JSON.parse(await admin.json(false)) as DecideJson).lab.scoreboard!.points[0]!;
+  const first = await read();
+  expect([first.episodes[0]!.arrived, first.episodes[0]!.layouts, first.fresh![0]!.layouts]).toEqual([1, undefined, undefined]);
+  // The same bytes' length at the same time is the same file to the page: it is not read again.
+  writeFileSync(file, JSON.stringify(board(2)));
+  utimesSync(file, at, at);
+  now += 60_000;
+  expect((await read()).episodes[0]!.arrived).toBe(1);
+  // A board written later is read.
+  utimesSync(file, at, new Date(at.getTime() + 2000));
+  now += 60_000;
+  expect((await read()).episodes[0]!.arrived).toBe(2);
 });
 
 test("a world in no cluster refuses to copy its settings", async () => {

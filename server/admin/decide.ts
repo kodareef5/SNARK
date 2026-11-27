@@ -3,6 +3,7 @@
 //   GET  /admin/decide.json        each point's policy and counts, the caps and the queue, the log, the three settings,
 //                                  every profile with its hand rule and its trained scorer, the decide part's time, the
 //                                  recent answers, and the lab's scoreboard and status where this checkout has them.
+//                                  The board comes without its row for every layout played, which no page shows.
 //                                  ?look=1 keeps answers for the next ten seconds, so they are kept only while a page looks
 //   POST /admin/decide             {"op":"policy","point":"nav.ring","policy":"rule"}   one point's policy, or `*`'s; "" lets `*` decide it
 //                                  {"op":"set","name":"DecideSample","value":"64"}     one of the three Decide settings
@@ -11,7 +12,7 @@
 //
 // Every file here is read off the tick's thread: the handlers share it.
 
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { DECIDE_SETTINGS, POLICY_NAMES, STAR, withPolicy, type DecideJson, type ProfileJson } from "../../shared/admin-decide.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
@@ -66,6 +67,17 @@ async function jsonOf<T>(path: string): Promise<T | null> {
   }
 }
 
+/** The lab's board as the page shows it: each episode's rows for every layout, most of the file, are left out. */
+async function boardOf(path: string): Promise<Scoreboard | null> {
+  const b = await jsonOf<Scoreboard>(path);
+  try {
+    for (const p of b?.points ?? []) for (const e of [...p.episodes, ...(p.fresh ?? [])]) delete e.layouts;
+    return b;
+  } catch {
+    return null;
+  }
+}
+
 /** What each of a scorer's inputs reads, in its order (shared/decide/forward.ts inputsAt). */
 export function inputNames(p: Profile): string[] {
   const side = (at: string) => p.columns.map((c) => `${at} ${c}`);
@@ -87,9 +99,13 @@ export class DecideAdmin {
     this.host = host;
     this.now = o.now ?? Date.now;
     const lab = o.lab ?? LAB;
+    // A board is a megabyte with its layouts, so it is read again only once its file has changed.
+    let stamp = "", board: Scoreboard | null = null;
     this.lab = new Lately(async () => {
-      const [scoreboard, status] = await Promise.all([jsonOf<Scoreboard>(join(lab, "scoreboard.json")), jsonOf<LabStatus>(join(lab, "status.json"))]);
-      return { scoreboard, status };
+      const file = join(lab, "scoreboard.json");
+      const [now, status] = await Promise.all([stat(file).then((f) => `${f.mtimeMs} ${f.size}`, () => ""), jsonOf<LabStatus>(join(lab, "status.json"))]);
+      if (now !== stamp) [stamp, board] = [now, now === "" ? null : await boardOf(file)];
+      return { scoreboard: board, status };
     });
   }
 

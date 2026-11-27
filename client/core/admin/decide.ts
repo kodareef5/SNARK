@@ -79,10 +79,17 @@ export function eceText(ece: number): string {
   return Number.isFinite(ece) ? ece.toFixed(3) : "–";
 }
 
+/** A number the lab measured, or a dash: what it could not measure is NaN there and null once it has been JSON. */
+function numText(v: number | null, places = 0): string {
+  return v === null || !Number.isFinite(v) ? "–" : places > 0 ? v.toFixed(places) : Math.round(v).toLocaleString("en");
+}
+
+/** Microseconds to one place under ten. */
+const microText = (v: number | null): string => numText(v, v !== null && v < 10 ? 1 : 0);
+
 /** Microseconds an answer takes on a fast core and a slow one. */
 export function microsText(fast: number, slow: number): string {
-  const one = (v: number) => (v < 10 ? v.toFixed(1) : String(Math.round(v)));
-  return `${one(fast)} / ${one(slow)} µs`;
+  return `${microText(fast)} / ${microText(slow)} µs`;
 }
 
 /** When a file's `about` says it was made, as a date, or "". */
@@ -191,6 +198,8 @@ export function ringSvg(ring: Ring, size = 96): string {
 }
 
 function tableHtml(t: AnsweredJson["tables"][number], pick: number): string {
+  // A table that was not asked, as the "are you sure" of an action that needs none, has nothing to show.
+  if (t.k === 0) return "";
   if (t.k === 1) return `<p>${esc(t.profile)}: <b>${Math.round((t.out[0] ?? 0) * 100)}%</b> <span class="dim">score ${t.score[0] ?? 0}</span></p>`;
   const rows = Array.from({ length: t.k }, (_, i) => `<tr${i === pick ? ' class="warn"' : ""}><td>${i}${i === pick ? " ◂" : ""}</td><td>${t.score[i]}</td><td>${t.bias[i]}</td><td>${t.mask[i] ? "masked" : ""}</td><td>${Math.round((t.out[i] ?? 0) * 100)}%</td></tr>`).join("");
   return `<table class="candidates"><caption>${esc(t.profile)}</caption><thead><tr><th>Candidate</th><th>Score</th><th>Bias</th><th></th><th>Chance</th></tr></thead><tbody>${rows}</tbody></table>`;
@@ -244,8 +253,8 @@ export function statusText(st: LabStatus | null): string {
 /** Whole episodes as a table: each policy's arrivals, seconds, ticks stuck, cost and the decide part's time. */
 function episodesHtml(title: string, rows: readonly EpisodeScore[] | undefined): string {
   if (!rows || rows.length === 0) return "";
-  const body = rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${r.arrived.toLocaleString("en")} of ${r.scenes.toLocaleString("en")}</td><td>${(r.ticks / TICK_RATE).toFixed(1)} s</td>` +
-    `<td>${Math.round(r.stuckTicks).toLocaleString("en")}</td><td>${Math.round(r.cost).toLocaleString("en")}</td><td>${r.decideMicros < 10 ? r.decideMicros.toFixed(1) : Math.round(r.decideMicros)} µs</td></tr>`).join("");
+  const body = rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${r.arrived.toLocaleString("en")} of ${r.scenes.toLocaleString("en")}</td><td>${Number.isFinite(r.ticks) ? `${(r.ticks / TICK_RATE).toFixed(1)} s` : "–"}</td>` +
+    `<td>${numText(r.stuckTicks)}</td><td>${numText(r.cost)}</td><td>${microText(r.decideMicros)} µs</td></tr>`).join("");
   return `<div class="scroll"><table><caption>${esc(title)}</caption><thead><tr><th>Policy</th><th>Arrived</th><th>Mean time</th><th>Ticks stuck</th><th>Mean cost</th><th>Decide, 99th</th></tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
@@ -258,12 +267,12 @@ export function labHtml(board: Scoreboard | null): string {
   const head = ["Entry", "Decisions", "Regret", "Worst family", "Where the rule is wrong", "ECE", "Reliability", "Latency", "Size", "Gate"];
   const points = board.points.map((p) => {
     const rows = p.scores.map((sc) => `<tr><td>${esc(sc.name)} <span class="dim">${esc(sc.kind)}</span></td><td>${sc.decisions.toLocaleString("en")} in ${sc.scenes.toLocaleString("en")} scenes</td>` +
-      `<td>${sc.regret.toFixed(2)} ticks, ${regretText(sc.regretRatio)}${sc.interval ? ` (${Math.round(sc.interval[0] * 100)} to ${Math.round(sc.interval[1] * 100)}%)` : ""}</td><td>${regretText(sc.worstFamily)}</td><td>${regretText(sc.disagreeRatio)}</td><td>${eceText(sc.ece)}</td>` +
+      `<td>${numText(sc.regret, 2)} ticks, ${regretText(sc.regretRatio)}${sc.interval?.every(Number.isFinite) ? ` (${Math.round(sc.interval[0] * 100)} to ${Math.round(sc.interval[1] * 100)}%)` : ""}</td><td>${regretText(sc.worstFamily)}</td><td>${regretText(sc.disagreeRatio)}</td><td>${eceText(sc.ece)}</td>` +
       `<td>${reliabilitySvg(sc.reliability)}</td><td>${microsText(sc.microsFast, sc.microsSlow)}</td><td>${bytesText(sc.bytes)}</td>${gateCell(sc.gate)}</tr>`).join("");
     const a = p.agreement;
     const again = a ? `<p class="dim">Stored answers made again as the server makes them: ${a.agreed.toLocaleString("en")} of ${a.checked.toLocaleString("en")}.</p>` : "";
     const decisions = p.scores.length ? `<div class="scroll"><table><caption>Single decisions</caption><thead><tr>${head.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>` : "";
-    return `<h3>${esc(p.point)} <span class="dim">${esc(p.profile)}, headroom at one decision ${Math.round(p.headroom * 100)}% of the median cost</span></h3>` +
+    return `<h3>${esc(p.point)} <span class="dim">${esc(p.profile)}, headroom at one decision ${Number.isFinite(p.headroom) ? `${Math.round(p.headroom * 100)}% of the median cost` : "not measured"}</span></h3>` +
       `${episodesHtml("Whole episodes on layouts held out", p.episodes)}${episodesHtml("Fresh scenes of every family", p.fresh)}${again}${decisions}`;
   }).join("");
   const notes = board.notes?.length ? `<ul class="dim">${board.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : "";
