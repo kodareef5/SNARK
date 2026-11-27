@@ -17,7 +17,7 @@ import { DETOUR_HALF, PICK, PICK_HALF } from "../../shared/decide/profiles.ts";
 import { tableFor } from "../../shared/decide/table.ts";
 import { soon } from "../../shared/decide/units.ts";
 import { F_AWAKE } from "../../shared/sim/entities.ts";
-import { PRIORITY_MOST, WAYPOINT_KINDS, worthOf, type Waypoint } from "../../shared/world/course.ts";
+import { PRIORITY_MOST, WAYPOINT_KINDS, worthOf, type Objective, type Waypoint } from "../../shared/world/course.ts";
 import { PATH_FOUND, PATH_LEG, PATH_NONE, PathFinder } from "../../shared/world/path.ts";
 import type { Behavior } from "../behavior.ts";
 import type { Lane } from "../lane.ts";
@@ -30,14 +30,16 @@ import { COST_RING, type Decide, type Point } from "./decide.ts";
 export const PICK_MOST = 16;
 /**
  * Cells the pricing of every mover may expand in one tick, one search out from a mover, and one back from a choice. A
- * search's start is counted as SEARCH_START cells and a straight walk tried as one cell for each SIGHT_METRES of it.
+ * search's start is counted as SEARCH_START cells, its end (the way made straight) as SEARCH_END, and a straight walk
+ * tried as one cell for each SIGHT_METRES of it. Among walls a cell measured 3.6 µs, so a tick's pricing is about 0.2 ms.
  */
-export const PICK_TICK_CELLS = 150;
+export const PICK_TICK_CELLS = 60;
 export const PICK_SEARCH = 2500;
 export const PICK_BACK = 400;
 /** Movers waiting to be priced at the most; one past it is asked with its trips priced by sight and line alone. */
 export const PICK_QUEUE = 256;
 const SEARCH_START = 10;
+const SEARCH_END = 50;
 const SIGHT_METRES = 5;
 /** Ticks a mover's prices are good for. */
 const PRICED_TICKS = TICK_RATE;
@@ -109,6 +111,8 @@ class Pricing {
   /** False for a pricing done at once, by sight and line alone. */
   searches = true;
   pins: readonly Pin[] = [];
+  /** The objective priced: one taken in its place is priced afresh. */
+  objective: Objective | null = null;
   readonly open = new Int32Array(PICK_MOST);
   readonly lines = new Float64Array(PICK_MOST);
   readonly ways: Way[] = Array.from({ length: PICK_MOST }, way);
@@ -173,7 +177,10 @@ export class Pick implements Picker {
       still: (e) => (world.ents.flags[e]! & F_AWAKE) !== 0 && courses.objectiveOf(e) !== null,
       answer: (e, _tick, _rung, ask) => (pick.fill(e) ? choose("choice", pick.table, ask(PICK, pick.table)) : -1),
       apply: (e, _tick, _rung, k) => void courses.take(e, pick.aimOf[k]!, pick.detourOf[k]!),
-      release: () => pick.clear(),
+      release: () => {
+        pick.clear();
+        courses.letGo();
+      },
     };
   }
 
@@ -188,7 +195,7 @@ export class Pick implements Picker {
   /** `e` is to be priced; its question is put once it is. */
   ask(e: number): void {
     const gen = this.world.ents.gen[e]!;
-    if (this.job?.e === e && this.job.gen === gen) this.job = null;
+    if (this.job?.e === e) this.job = null;
     for (let i = 0; i < this.queue.length; i++) if (this.queue[i] === e) {
       this.queue.splice(i, 1);
       this.queueGen.splice(i, 1);
@@ -216,12 +223,14 @@ export class Pick implements Picker {
   /** Prices movers in turn for PICK_TICK_CELLS, putting the question of each one done. Courses calls it each tick. */
   step(tick: number): void {
     if (this.job === null && this.queue.length === 0) return;
+    // Watched and then turned off: nothing is put any more, so nothing is priced.
+    if (!this.on()) return this.clear();
     let left = PICK_TICK_CELLS;
     while (left > 0) {
+      if (this.lane !== null && left < PICK_TICK_CELLS && !this.lane.may()) break;
       const job = this.job ?? this.take(tick);
       if (job === null) break;
       if (this.phase !== 0) {
-        if (this.lane !== null && left < PICK_TICK_CELLS && !this.lane.may()) break;
         left -= this.advance(left) + this.charge;
         this.charge = 0;
         if (this.phase !== 0) break;
@@ -234,6 +243,8 @@ export class Pick implements Picker {
       if (!more) {
         this.finish(job);
         this.job = null;
+        // One pricing is kept for its answer, so one is finished a tick.
+        break;
       }
     }
     this.charge = 0;
@@ -276,6 +287,7 @@ export class Pick implements Picker {
     }
     if (ends === 0) return false;
     p.e = e;
+    p.objective = o;
     p.gen = ents.gen[e]!;
     p.tick = tick;
     p.x = x;
@@ -294,14 +306,14 @@ export class Pick implements Picker {
   /** Starts `p`'s next trip, settling it at once where no search is needed. False once every trip is priced. */
   private begin(p: Pricing): boolean {
     const o = this.courses.objectiveOf(p.e);
-    if (!o) return false;
+    if (!o || o !== p.objective || this.world.ents.gen[p.e] !== p.gen) return false;
     const body = this.mind.walkerOf(p.e);
     if (!body) return false;
     // Water is swum where the body swims, at its walk over its swim and never under dry ground's price.
     this.sighter.body = body;
     this.sighter.swim = body.swimSpeed > 0 ? Math.max(1, body.walkSpeed / body.swimSpeed) : 0;
     while (p.next < 2 * p.n) {
-      if (p.next === p.n) p.aim = this.aimOf_(p, o.choices);
+      if (p.next === p.n) p.aim = this.weighedAgainst(p, o.choices);
       const j = p.next++;
       const detour = j >= p.n;
       const k = detour ? j - p.n : j, ch = o.choices[p.open[k]!]!;
@@ -320,12 +332,12 @@ export class Pick implements Picker {
       if (this.start(p, x0, z0, x1, z1, r, out, search)) return true;
       this.settle(p, j);
     }
-    if (p.aim < 0) p.aim = this.aimOf_(p, o.choices);
+    if (p.aim < 0) p.aim = this.weighedAgainst(p, o.choices);
     return false;
   }
 
   /** The open list's index of the aim the detours are weighed against: priority, then seconds by a way, none last. */
-  private aimOf_(p: Pricing, choices: readonly { place: Waypoint; detour: boolean }[]): number {
+  private weighedAgainst(p: Pricing, choices: readonly { place: Waypoint; detour: boolean }[]): number {
     let a = -1;
     for (let j = 0; j < p.n; j++) {
       const c = choices[p.open[j]!]!;
@@ -339,7 +351,7 @@ export class Pick implements Picker {
   private settle(p: Pricing, j: number): void {
     if (j >= p.n) return;
     const o = this.courses.objectiveOf(p.e);
-    const ch = o?.choices[p.open[j]!];
+    const ch = o === p.objective ? o?.choices[p.open[j]!] : undefined;
     const w = p.ways[j]!;
     if (!ch || ch.detour || w.none || !w.byWay) return;
     if (ch.place.priority > p.top) {
@@ -354,7 +366,8 @@ export class Pick implements Picker {
     const d = this.done;
     d.e = p.e;
     d.gen = p.gen;
-    d.tick = p.tick;
+    d.objective = p.objective;
+    d.tick = this.world.tick;
     d.x = p.x;
     d.z = p.z;
     d.pace = p.pace;
@@ -405,11 +418,12 @@ export class Pick implements Picker {
   /** Runs the search under way for at most `cells`; returns the cells spent. Settles the trip when the search is over. */
   private advance(cells: number): number {
     const f = this.finder, before = f.expanded, job = this.job!;
-    const over = f.run(cells < 250 ? cells : 250);
+    const over = f.run(cells);
     const spent = f.expanded - before;
     this.cells += spent;
     if (!over) return spent;
     const status = f.finish(), out = this.trip;
+    this.charge += SEARCH_END;
     const reached = status === PATH_FOUND || status === PATH_LEG;
     if (this.phase === 1 && !reached && status !== PATH_NONE && f.expanded >= f.budget) {
       // Nothing shuts the end in that close: out from the mover, with the full budget.
@@ -452,7 +466,7 @@ export class Pick implements Picker {
     if (!fresh) {
       p = this.now;
       if (!this.setup(p, e, this.world.tick, false)) return false;
-      while (this.begin(p)) this.phase = 0;
+      this.begin(p);
     }
     const o = this.courses.objectiveOf(e)!;
     const n = p.n, aim = p.open[p.aim]!, A = o.choices[aim]!.place, wa = p.ways[p.aim]!, kept = this.courses.keptAim(e);
@@ -496,9 +510,9 @@ export class Pick implements Picker {
   /** Whether the choices open to `p`'s mover are still those it priced. */
   private same(p: Pricing): boolean {
     const o = this.courses.objectiveOf(p.e);
-    if (!o || p.aim < 0) return false;
+    if (!o || o !== p.objective || p.aim < 0) return false;
     let open = 0;
-    for (let i = 0; i < o.choices.length; i++) if (this.courses.open(p.e, i)) open++;
+    for (let i = 0; i < o.choices.length && open < PICK_MOST; i++) if (this.courses.open(p.e, i)) open++;
     if (open !== p.n) return false;
     for (let j = 0; j < p.n; j++) if (!this.courses.open(p.e, p.open[j]!)) return false;
     return true;

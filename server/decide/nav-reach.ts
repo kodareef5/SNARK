@@ -20,6 +20,8 @@ import { Pool } from "./pool.ts";
 export const REACH_SECONDS = 30;
 /** What became of a goal: still open, reached, or given up by whoever set it. */
 const OPEN = 0, REACHED = 1, MISSED = 2;
+/** Horizons a logged answer waits at the most, so long deadlines do not fill the decider's waiting ring. */
+const DUE_MOST = 10;
 /** A goal with no time of its own allows this many times its straight run at its pace, and this many seconds more. */
 export const REACH_SLACK = 3;
 export const REACH_EXTRA = 10;
@@ -88,25 +90,26 @@ export class Reach {
     };
   }
 
-  /** How likely `e` is to arrive within its goal's time, 0 to 1, or -1 where that is not known or was of another place. */
+  /** How likely `e` is to reach the place it makes for in time, 0 to 1; -1 where not known, or said of another goal. */
   reachOf(e: number): number {
     const s = this.pool.find(e, this.world.ents.gen[e]!);
     if (s < 0) return -1;
     const mind = this.mind;
-    if (this.mode[s] === 1 && Math.abs(mind.goalX[e]! - this.gx[s]!) + Math.abs(mind.goalZ[e]! - this.gz[s]!) > SAME_GOAL) return -1;
+    if (this.mode[s] !== 1 || Math.abs(mind.goalX[e]! - this.gx[s]!) + Math.abs(mind.goalZ[e]! - this.gz[s]!) > SAME_GOAL) return -1;
     return this.value[s]!;
   }
 
-  /** Whoever set `e`'s goal says it was reached, or given up. */
-  ended(e: number, ok: boolean): void {
+  /** Whoever set `e`'s goal of a place at (x, z) says it was reached, or given up. */
+  ended(e: number, ok: boolean, x: number, z: number): void {
     const s = this.pool.find(e, this.world.ents.gen[e]!);
-    if (s >= 0 && this.fate[s] === OPEN) this.fate[s] = ok ? REACHED : MISSED;
+    if (s < 0 || this.mode[s] !== 1 || this.fate[s] !== OPEN || Math.abs(x - this.gx[s]!) + Math.abs(z - this.gz[s]!) > SAME_GOAL) return;
+    this.fate[s] = ok ? REACHED : MISSED;
   }
 
-  /** The tick an answer given now about `e` is judged at: its goal's deadline, and never before the next tick. */
+  /** The tick an answer given now about `e` is judged at: its goal's deadline, from the next tick to DUE_MOST horizons on. */
   private due(e: number, tick: number): number {
-    const s = this.pool.find(e, this.world.ents.gen[e]!);
-    return s < 0 ? tick + REACH_SECONDS * TICK_RATE : Math.max(tick + 1, this.from[s]! + this.allow[s]!);
+    const s = this.pool.find(e, this.world.ents.gen[e]!), horizon = REACH_SECONDS * TICK_RATE;
+    return s < 0 ? tick + horizon : Math.min(tick + DUE_MOST * horizon, Math.max(tick + 1, this.from[s]! + this.allow[s]!));
   }
 
   private readonly fresh = (s: number): void => {

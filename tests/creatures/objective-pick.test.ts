@@ -204,3 +204,14 @@ test("a pin's pull reaches the far pass of a tame of its tribe on the ladder", (
   expect((w.host.creatures.mind.ladder as Nav).rings.pullOf).not.toBeNull();
   w.host.shutdown();
 });
+
+test("a mover the rule sent elsewhere goes back to the plain pick when the rule is turned off", () => {
+  const s = walled("nav.pick=rule");
+  s.w.host.courses.aim(s.e, s.o, {});
+  for (let t = 0; t < 2 * TICK_RATE; t++) s.w.tick();
+  expect(s.w.host.courses.making(s.e)).toBe(1);
+  s.w.host.decide.set("");
+  s.w.tick();
+  expect(s.w.host.courses.making(s.e)).toBe(0);
+  s.w.host.shutdown();
+});

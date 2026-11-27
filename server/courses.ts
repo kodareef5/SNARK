@@ -37,8 +37,9 @@ const WATCH_EVERY = TICK_RATE;
  * once; where the point is on it is asked too, and an answer acted on comes back through `take` in the same tick.
  */
 export interface Picker {
-  /** Whether it is asked at all, and whether its answers are acted on: then it chooses the detours too. */
+  /** Whether it is asked at all. */
   on(): boolean;
+  /** Whether its answers are acted on. */
   acts(): boolean;
   ask(e: number): void;
   /** Its own work for the tick, after the movers are stepped. */
@@ -68,8 +69,10 @@ class Mover {
   /** The choice made for, and a detour taken on the way to it, or -1. */
   aim = -1;
   detour = -1;
-  /** 1 where the aim was kept from before a detour rather than picked afresh. */
+  /** Whether the aim was kept from before a detour rather than picked afresh. */
   kept = false;
+  /** Whether a pick acted on chose this leg: then it chose its detours too, and none is looked for aside. */
+  picked = false;
   /** The leg: where, how near counts, the awake ticks spent on it and allowed, and the ticks `reach` has been low. */
   x = 0;
   z = 0;
@@ -95,7 +98,7 @@ export class Courses {
   /** Picks among an objective's choices besides the plain pick, where it is on. */
   pick: Picker | null = null;
   /** Told of each leg's end: reached, or given up. */
-  legEnded: ((e: number, ok: boolean) => void) | null = null;
+  legEnded: ((e: number, ok: boolean, x: number, z: number) => void) | null = null;
   private readonly ctx: CoursesContext;
   private readonly list: Mover[] = [];
   private readonly byEnt = new Map<number, Mover>();
@@ -208,6 +211,7 @@ export class Courses {
     if (!m || !m.live || !m.objective) return false;
     const c = m.objective.choices;
     if (!this.open(e, aim) || c[aim]!.detour || (detour >= 0 && (!this.open(e, detour) || !c[detour]!.detour))) return false;
+    m.picked = true;
     if (m.aim === aim && m.detour === detour) return true;
     m.aim = aim;
     m.detour = detour;
@@ -250,16 +254,29 @@ export class Courses {
         this.reached(m, false);
         continue;
       }
-      // A pick that is acted on chooses the detours itself, where it picks.
-      if (m.objective !== null && m.detour < 0 && (tick + e) % DETOUR_EVERY === 0 && !(this.pick !== null && this.pick.acts())) this.lookAside(m);
+      if (m.objective !== null && m.detour < 0 && !m.picked && (tick + e) % DETOUR_EVERY === 0) this.lookAside(m);
     }
     if (this.dirty) {
       this.dirty = false;
       let n = 0;
       for (const m of this.list) if (m.live) this.list[n++] = m;
       this.list.length = n;
-    }    // Pricing for a pick asked in this step is done in it, so the question is answered this tick.
-    this.pick?.step?.(tick);
+    }    this.pick?.step?.(tick);
+  }
+
+  /** Every mover a pick re-aimed goes back to the plain pick: the point's answers are no longer acted on. */
+  letGo(): void {
+    for (const m of this.list) {
+      if (!m.live || !m.objective || !m.picked) continue;
+      const was = m.detour;
+      m.picked = false;
+      m.kept = false;
+      m.detour = -1;
+      const plain = this.choose(m);
+      if (plain < 0 || (plain === m.aim && was < 0)) continue;
+      m.aim = plain;
+      this.leg(m);
+    }
   }
 
   private add(e: number, owner: CourseOwner, pace: number): Mover {
@@ -320,7 +337,7 @@ export class Courses {
     else if (m.detour >= 0) at = m.detour;
     else at = m.aim;
     if (m.objective) m.done[at] = 1;
-    this.legEnded?.(e, ok);
+    this.legEnded?.(e, ok, m.x, m.z);
     if (ok) m.owner.arrived?.(e, at);
     else m.owner.failed?.(e, at);
     // The owner may have stopped it, or given it another.
@@ -337,6 +354,7 @@ export class Courses {
       more = m.aim >= 0;
     }
     if (!more) return this.end(m, ok);
+    m.picked = false;
     this.leg(m);
     if (m.objective) this.askPick(m);
   }
