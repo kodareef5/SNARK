@@ -335,6 +335,8 @@ export interface Ladder {
   held(e: number, tick: number): number;
   /** Whether `e`'s next question of which way to go is due. */
   due(e: number, tick: number): boolean;
+  /** Whether an action holds `e` this tick (server/decide/actions.ts); if so it has pressed what it needs. */
+  act(e: number, tick: number): boolean;
   /** Whether `e` has meant to turn and has not, for a while: a long body caught in a corner. */
   wedged(e: number, tick: number): boolean;
   /** `e` would be told there is no way, or would give its hunt up: true where the ladder takes it on instead. */
@@ -909,6 +911,7 @@ export class Behavior {
     const ladder = this.ladder;
     if (this.rung[e] === 0 || ladder === null || this.way[e] === WAY_ON) return false;
     if (ladder.due(e, tick)) this.decide?.put(this.ringPoint, e, this.rung[e]!, this.back(e));
+    if (ladder.act(e, tick)) return true;
     const yaw = ladder.held(e, tick);
     if (yaw < 0) return false;
     const facing = this.world.ents.yaw[e]!;
@@ -956,6 +959,25 @@ export class Behavior {
       this.buttons[e] = 0;
       this.until[e] = until;
     } else if (this.way[e] === WAY_STRAIGHT) this.ask(e, tick, ASK_LATER);
+  }
+
+  /** Turns `e` to the middle of `o`, as a hunter aims at its prey. */
+  aimAt(e: number, o: number): void {
+    this.aim(e, o);
+  }
+
+  /** `e` bites, if it is not already in the middle of a blow (`act`, its ACT_ value). */
+  bite(e: number, act: number): void {
+    if (act !== ACT_NONE) return;
+    this.pressed[e] = BTN_PRIMARY;
+    this.bites++;
+  }
+
+  /** Metres from the eye of `e` to a piece its bite can harm standing between it and `prey`, or -1 where none stands. */
+  pieceBetween(e: number, prey: number): number {
+    if (this.between(e, prey) !== HIT_STRUCTURE) return -1;
+    const t = rayHit.t;
+    return this.walled(e, prey) ? -1 : t;
   }
 
   /** What `e` moves by: a tame by its tamed numbers. */

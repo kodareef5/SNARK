@@ -36,14 +36,25 @@ export function decideBy(w: Lab, way: Way): void {
   w.host.decide.set(way === "off" ? "" : way === "watch" ? "*=watch" : way);
 }
 
-/** A row of stone wall pieces from (x0, z) to (x1, z) along X, or from (x, z0) to (x, z1) along Z, `storeys` high. */
-export function wallX(w: Lab, x0: number, x1: number, z: number, storeys = 2): void {
-  const kind = w.world.reg.index.get("core:wall_stone")!;
-  for (let x = x0 + 1.5; x < x1; x += 3) for (let s = 0; s < storeys; s++) w.world.structs.add(kind, x, 1.5 + 3 * s, z, 0, 0, 10000);
+/**
+ * A row of wall pieces from (x0, z) to (x1, z) along X, or from (x, z0) to (x, z1) along Z, `storeys` high: stone walls
+ * unless `kind` names another piece, which stands `high` metres tall.
+ */
+export function wallX(w: Lab, x0: number, x1: number, z: number, storeys = 2, kind = "core:wall_stone", high = 3): void {
+  const k = w.world.reg.index.get(kind)!;
+  for (let x = x0 + 1.5; x < x1; x += 3) for (let s = 0; s < storeys; s++) w.world.structs.add(k, x, high / 2 + high * s, z, 0, 0, 10000);
 }
-export function wallZ(w: Lab, x: number, z0: number, z1: number, storeys = 2): void {
-  const kind = w.world.reg.index.get("core:wall_stone")!;
-  for (let z = z0 + 1.5; z < z1; z += 3) for (let s = 0; s < storeys; s++) w.world.structs.add(kind, x, 1.5 + 3 * s, z, QUARTER, 0, 10000);
+export function wallZ(w: Lab, x: number, z0: number, z1: number, storeys = 2, kind = "core:wall_stone", high = 3): void {
+  const k = w.world.reg.index.get(kind)!;
+  for (let z = z0 + 1.5; z < z1; z += 3) for (let s = 0; s < storeys; s++) w.world.structs.add(k, x, high / 2 + high * s, z, QUARTER, 0, 10000);
+}
+
+/** A closed square of walls of `kind`, `high` metres tall, from (x0, z0) to (x1, z1). */
+export function box(w: Lab, x0: number, z0: number, x1: number, z1: number, kind: string, high: number): void {
+  wallX(w, x0, x1, z0, 1, kind, high);
+  wallX(w, x0, x1, z1, 1, kind, high);
+  wallZ(w, x0, z0, z1, 1, kind, high);
+  wallZ(w, x1, z0, z1, 1, kind, high);
 }
 
 /** Flat ground `chunks` on a side with a shallow pond `depth` deep over the rectangle given, in metres. */
@@ -170,6 +181,43 @@ export function hunt(seed = 1): Scene {
   return { w, movers: [e], ticks: 30 * TICK_RATE, prey };
 }
 
+/**
+ * A raptor inside a closed square of quarter walls of stone, 12 m a side, sent to a point outside it. No way leads out, but
+ * the walls stand lower than a raptor jumps.
+ */
+export function lowPen(seed = 1): Scene {
+  const w = lab(flatMap(4), seed);
+  box(w, 122, 122, 134, 134, "core:quarter_wall_stone", 0.75);
+  const e = w.host.spawnCreature("core:raptor", 128, 128, 1);
+  const mind = w.host.creatures.mind;
+  mind.stay(e, w.world.tick + 300 * TICK_RATE);
+  w.world.ents.yaw[e] = mind.look[e] = 0;
+  const goal = { x: 128, z: 146 };
+  mind.goTo(e, goal.x, goal.z, GOAL_WALK);
+  return { w, movers: [e], ticks: 40 * TICK_RATE, goal };
+}
+
+/**
+ * A raptor ordered on a dodo standing in a closed hut of walls of `kind` (thatch by default), 9 m a side: the dodo stands
+ * out of its reach from any wall, so only a way through one would bring it near.
+ */
+export function walledPrey(seed = 1, kind = "core:wall_thatch"): Scene {
+  const w = lab(flatMap(4), seed);
+  box(w, 124, 140, 133, 149, kind, 3);
+  const prey = w.host.spawnCreature("core:dodo", 128.5, 144.5, 1);
+  const e = w.host.spawnCreature("core:raptor", 128.5, 128, 1);
+  const mind = w.host.creatures.mind;
+  mind.stay(prey, w.world.tick + 300 * TICK_RATE);
+  w.world.ents.yaw[e] = mind.look[e] = 0;
+  mind.attack(e, prey);
+  return { w, movers: [e], ticks: 40 * TICK_RATE, prey };
+}
+
+/** As `walledPrey`, the hut of stone, which a bite cannot harm. */
+export function stonedPrey(seed = 1): Scene {
+  return walledPrey(seed, "core:wall_stone");
+}
+
 /** A dodo hurt from the south while a wall stands across the way it flees. */
 export function flight(seed = 1): Scene {
   const w = lab(flatMap(4), seed);
@@ -231,7 +279,7 @@ export function corner(seed = 1): Scene {
   return { w, movers: [e], ticks: 20 * TICK_RATE, goal };
 }
 
-export const SCENES: Record<string, (seed?: number) => Scene> = { pen, pastWall, deadEnd, woodGoals, woodWander, ownedWander, hunt, flight, wet, blocker, corner };
+export const SCENES: Record<string, (seed?: number) => Scene> = { pen, pastWall, deadEnd, woodGoals, woodWander, ownedWander, hunt, lowPen, walledPrey, stonedPrey, flight, wet, blocker, corner };
 
 /** Runs `s` for its ticks, calling `each` after every tick; returns the hash of the world every 30 ticks, the last at its end. */
 export function hashes(s: Scene, each?: (tick: number) => void): number[] {

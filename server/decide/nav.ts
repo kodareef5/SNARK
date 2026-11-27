@@ -17,6 +17,7 @@ import type { BodyBlocking } from "../blocking.ts";
 import type { ServerWorld } from "../world.ts";
 import { COST_RING, COST_YES, type Ask, type Decide, type Point } from "./decide.ts";
 import { FAR_W, MID_W, NEAR_W, Rings, NEVER } from "./nav-ring.ts";
+import { Actions, type Held } from "./actions.ts";
 import { Probe } from "./nav-probe.ts";
 import { Reach } from "./nav-reach.ts";
 import { Pool } from "./pool.ts";
@@ -62,12 +63,15 @@ const GOAL_MOVED = 2;
 const GOAL_HALF = 5;
 const TAU = Math.PI * 2;
 
-export class Nav implements Ladder {
+export class Nav implements Ladder, Held {
   readonly k: number;
   readonly pool: Pool;
   /** The point numbers `put` names them by. */
   snag = -1;
   ring = -1;
+  /** What a stuck mover can do besides choose a heading, and its point's number (actions.ts). */
+  actions: Actions | null = null;
+  doId = -1;
   readonly snagPoint: Point;
   readonly ringPoint: Point;
   private readonly world: ServerWorld;
@@ -76,7 +80,7 @@ export class Nav implements Ladder {
   private readonly rings: Rings;
   // By slot. The last slot is scratch, for a mover asked about before it has one of its own.
   private readonly owner: Int32Array;
-  private readonly rungOf: Uint8Array;
+  private readonly rungs: Uint8Array;
   private readonly since: Int32Array;
   private readonly holdK: Int8Array;
   private readonly holdAt: Int32Array;
@@ -112,6 +116,13 @@ export class Nav implements Ladder {
   private readonly askX: Float32Array;
   private readonly askZ: Float32Array;
   private readonly askD: Float32Array;
+  /** By slot: when it came on the stuck rungs, and the share of headings its last ring left open. */
+  private readonly stuckAt: Int32Array;
+  /** By slot: the heading its last stuck answer asked what it could do along, in 65536ths of a turn. */
+  private readonly tryYaw: Uint16Array;
+  private readonly waysOf: Float32Array;
+  private lastWays = 1;
+  private wantPick = 0;
   private readonly dx: Float64Array;
   private readonly dz: Float64Array;
   private taking = -1;
@@ -128,7 +139,7 @@ export class Nav implements Ladder {
     this.dz = Float64Array.from({ length: k }, (_, i) => Math.cos((i / k) * TAU));
     this.rings = new Rings(world, mind, blocking, n, k, this.dx, this.dz);
     this.owner = new Int32Array(n).fill(-1);
-    this.rungOf = new Uint8Array(n);
+    this.rungs = new Uint8Array(n);
     this.since = new Int32Array(n);
     this.holdK = new Int8Array(n).fill(-1);
     this.holdAt = new Int32Array(n);
@@ -150,6 +161,9 @@ export class Nav implements Ladder {
     this.askX = new Float32Array(n);
     this.askZ = new Float32Array(n);
     this.askD = new Float32Array(n);
+    this.stuckAt = new Int32Array(n);
+    this.tryYaw = new Uint16Array(n);
+    this.waysOf = new Float32Array(n);
     const nav = this;
     this.snagPoint = {
       name: "nav.snag", cost: COST_YES, horizon: 0, tables: [{ profile: SNAG, table: this.snagTable }],
@@ -171,6 +185,34 @@ export class Nav implements Ladder {
     const s = this.slot(e);
     if (s < 0 || this.holdK[s]! < 0 || tick >= this.holdUntil[s]! || this.mind.pinned[e]! >= PINNED_TICKS) return -1;
     return this.yawOf(this.holdK[s]!);
+  }
+
+  act(e: number, tick: number): boolean {
+    return this.actions !== null && this.actions.act(e, tick);
+  }
+
+  slotOf(e: number): number {
+    return this.slot(e);
+  }
+
+  trying(e: number): number {
+    const s = this.slot(e);
+    return s < 0 || this.holdK[s]! < 0 ? -1 : this.tryYaw[s]!;
+  }
+
+  rungOf(e: number): number {
+    const s = this.slot(e);
+    return s < 0 ? 0 : this.rungs[s]!;
+  }
+
+  stuckFor(e: number, tick: number): number {
+    const s = this.slot(e);
+    return s < 0 || this.rungs[s]! < 2 ? 0 : tick - this.stuckAt[s]!;
+  }
+
+  ways(e: number): number {
+    const s = this.slot(e);
+    return s < 0 ? 1 : this.waysOf[s]!;
   }
 
   wedged(e: number, tick: number): boolean {
@@ -195,9 +237,9 @@ export class Nav implements Ladder {
     if (!this.decide.acts(this.ring)) return false;
     let s = this.slot(e);
     if (s < 0) s = this.take(e, tick);
-    const r = this.rungOf[s]! + 1;
+    const r = this.rungs[s]! + 1;
     this.rise(e, s, r < 2 ? 2 : r > 3 ? 3 : r, tick);
-    this.decide.put(this.ring, e, this.rungOf[s]!, this.mind.back(e));
+    this.decide.put(this.ring, e, this.rungs[s]!, this.mind.back(e));
     return true;
   }
 
@@ -227,7 +269,7 @@ export class Nav implements Ladder {
     if (s < 0) return null;
     let tried = 0;
     for (let i = 0; i < this.k; i++) if (this.tried(s, i, this.world.tick) > 0) tried |= 1 << i;
-    return { rung: this.rungOf[s]!, since: this.since[s]!, held: this.holdK[s]!, until: this.holdUntil[s]!, tried, lastPick: this.lastPick[s]!, sure: this.sureOf[s]! };
+    return { rung: this.rungs[s]!, since: this.since[s]!, held: this.holdK[s]!, until: this.holdUntil[s]!, tried, lastPick: this.lastPick[s]!, sure: this.sureOf[s]! };
   }
 
   private moving(e: number): boolean {
@@ -244,7 +286,7 @@ export class Nav implements Ladder {
     // A slot taken from a mover still on the ladder leaves it calm.
     if (was >= 0 && was !== e && this.pool.find(was, ents.gen[was]!) < 0) mind.rung[was] = 0;
     this.owner[s] = e;
-    this.rungOf[s] = 0;
+    this.rungs[s] = 0;
     this.since[s] = this.world.tick;
     this.holdK[s] = -1;
     this.holdUntil[s] = 0;
@@ -257,6 +299,8 @@ export class Nav implements Ladder {
     this.lastD[s] = this.best[s] = mode !== 0 ? Math.hypot(mind.want.x - ents.x[e]!, mind.want.z - ents.z[e]!) : 0;
     this.lastAt[s] = this.calmFrom[s] = this.faceSince[s] = this.world.tick;
     this.faceAt[s] = ents.yaw[e]!;
+    this.stuckAt[s] = this.world.tick;
+    this.actions?.clear(s);
     this.rings.clear(s, ents.x[e]!, ents.z[e]!, ents.yaw[e]!, this.world.tick);
   };
 
@@ -266,8 +310,9 @@ export class Nav implements Ladder {
   }
 
   private rise(e: number, s: number, rung: number, tick: number): void {
-    if (rung === this.rungOf[s]) return;
-    this.rungOf[s] = rung;
+    if (rung === this.rungs[s]) return;
+    if (rung >= 2 && this.rungs[s]! < 2) this.stuckAt[s] = tick;
+    this.rungs[s] = rung;
     this.since[s] = tick;
     this.mind.rung[e] = rung;
   }
@@ -326,7 +371,7 @@ export class Nav implements Ladder {
     const mode = mind.wants(e), want = mind.want;
     const found = this.slot(e);
     const s = found >= 0 ? found : this.pool.size;
-    const deep = found >= 0 && this.rungOf[s]! > rung ? this.rungOf[s]! : rung;
+    const deep = found >= 0 && this.rungs[s]! > rung ? this.rungs[s]! : rung;
     const pace = want.speed > want.walk * 0.5 ? want.speed : want.walk * 0.5;
     rings.begin(e, p, pace, mode, deep);
     const fresh = found < 0 || deep >= 2;
@@ -370,14 +415,20 @@ export class Nav implements Ladder {
     addPass(all, mid, MIX_MID / ask(RING_MID, mid));
     addPass(all, near, MIX_NEAR / ask(RING_NEAR, near));
     stick(all, held, STICK);
+    // Where it would go if nothing stood in the way: what it may act on, if it is stuck.
+    let wants = 0;
+    for (let i = 1; i < k; i++) if (far.score[i]! > far.score[wants]!) wants = i;
+    this.wantPick = wants;
     let pick = choose("choice", all, 1);
     this.rejected = 0;
     this.picked = -1;
+    this.lastWays = 1;
     this.sure.clear(0);
     if (deep < 2 || pick < 0) return pick;
     // Stuck, it asks whether the pick would free it, and takes the next best of one it doubts. Standing is never the answer.
     let open = 0;
     for (let i = 0; i < k; i++) if (all.mask[i] === 0) open++;
+    this.lastWays = open / k;
     const stuckSoon = soon((tick - (found >= 0 ? this.since[s]! : tick)) / TICK_RATE, STUCK_HALF);
     let best = pick, surest = -1;
     for (let tries = 0; ; tries++) {
@@ -447,7 +498,7 @@ export class Nav implements Ladder {
       s = this.take(e, tick);
       this.rings.copy(this.pool.size, s);
     }
-    if (rung > this.rungOf[s]!) this.rise(e, s, rung, tick);
+    if (rung > this.rungs[s]!) this.rise(e, s, rung, tick);
     if (this.tend(e, s, tick)) return;
     const ents = this.world.ents, mind = this.mind;
     mind.wants(e);
@@ -466,10 +517,15 @@ export class Nav implements Ladder {
     this.lastPick[s] = pick;
     for (let i = 0; i < this.k; i++) if ((this.rejected & (1 << i)) !== 0) this.triedAt[s * this.k + i] = tick;
     this.sureOf[s] = this.picked;
+    this.waysOf[s] = this.lastWays;
     this.askX[s] = ents.x[e]!;
     this.askZ[s] = ents.z[e]!;
     this.askD[s] = Math.hypot(mind.want.x - ents.x[e]!, mind.want.z - ents.z[e]!);
+    // Where it asks what it can do: into what it pressed on, else the way it was stuck facing, else the way it would go.
+    this.tryYaw[s] = mind.pinned[e]! >= PINNED_TICKS ? (mind.wallYaw[e]! + 32768) & 0xffff : mind.stuck[e]! >= STUCK_TICKS ? ents.yaw[e]! : this.yawOf(this.wantPick);
     mind.hold(e, this.yawOf(pick), this.holdUntil[s]!, tick);
+    // Stuck, it asks which of the things it can do would help.
+    if (this.rungs[s]! >= 2 && this.doId >= 0) this.decide.put(this.doId, e, this.rungs[s]!, mind.back(e));
   }
 
   /**
@@ -481,7 +537,7 @@ export class Nav implements Ladder {
     const mode = mind.wants(e), want = mind.want;
     const x = ents.x[e]!, z = ents.z[e]!;
     // The trail is the way it came in: kept until it is stuck, and not while it casts about.
-    if (this.rungOf[s]! < 2) this.rings.trace(s, x, z, tick);
+    if (this.rungs[s]! < 2) this.rings.trace(s, x, z, tick);
     const dt = tick - this.lastAt[s]!;
     if (dt >= NEAR_TICKS) {
       const d = mode !== 0 ? Math.hypot(want.x - x, want.z - z) : 0;
@@ -499,7 +555,7 @@ export class Nav implements Ladder {
       this.drop(e);
       return true;
     }
-    if (this.rungOf[s] === 2 && this.calmFrom[s] === tick && tick - this.since[s]! >= PATIENT_TICKS) {
+    if (this.rungs[s] === 2 && this.calmFrom[s] === tick && tick - this.since[s]! >= PATIENT_TICKS) {
       this.rise(e, s, 3, tick);
       mind.patient(e, tick);
     }
@@ -518,6 +574,8 @@ export function addNav(decide: Decide, world: ServerWorld, mind: Behavior, block
   mind.reachPoint = decide.add(reach.point);
   mind.reacher = reach;
   mind.probePoint = decide.add(new Probe(world, mind).point);
+  nav.actions = new Actions(world, mind, blocking, nav, nav.pool.size + 1);
+  nav.doId = decide.add(nav.actions.point);
   mind.ladder = nav;
   decide.describe = (e) => nav.describe(e);
   return nav;
