@@ -1,7 +1,7 @@
 // What a kind's handler holds of its event (server/api/event.ts EventRun): reads of the event, and acts the engine
 // carries out. On a preview the acts are written down and nothing is made, told or kept.
 
-import type { EventMap, EventRun, EventState, PartView, Plain } from "../api/event.ts";
+import type { EventMap, EventRun, EventState, PartView, Plain, WalkPoint, WalkerSpec } from "../api/event.ts";
 import { hashString } from "../../shared/hash.ts";
 import type { Tuned, Fields } from "../../shared/mapevent/fields.ts";
 import type { CraftSpec, CrateSpec, SiteSpec } from "../../shared/mapevent/parts.ts";
@@ -30,6 +30,8 @@ export interface RunHost {
   craft(ev: MapEvent, spec: CraftSpec): number;
   crate(ev: MapEvent, spec: CrateSpec): number;
   site(ev: MapEvent, spec: SiteSpec): number;
+  walker(ev: MapEvent, spec: WalkerSpec): number;
+  walk(ev: MapEvent, walker: number, points: readonly WalkPoint[], mode: "once" | "loop" | "back"): void;
   down(ev: MapEvent, id: number): void;
   remove(ev: MapEvent, id: number): void;
   view(ev: MapEvent, id: number): PartView | null;
@@ -141,6 +143,16 @@ export class Run implements EventRun {
   site(spec: SiteSpec): number {
     if (this.preview) return this.record(this.preview.sites, spec);
     return this.host.site(this.ev, spec);
+  }
+
+  /** A preview is of its start, before the event has come, when no walker may be placed. */
+  walker(spec: WalkerSpec): number {
+    if (this.preview) throw new Error("a walker is placed once its event has come");
+    return this.host.walker(this.ev, spec);
+  }
+
+  walk(walker: number, points: readonly WalkPoint[], mode: "once" | "loop" | "back" = "once"): void {
+    if (!this.preview) this.host.walk(this.ev, walker, points, mode);
   }
 
   down(craft: number): void {
