@@ -44,7 +44,7 @@ export function addClusterCommands(con: Console): void {
         if ((args[0] ?? "").toLowerCase() === "audit") return auditCluster(cluster.folder, ctx.host.world.reg).lines.join("\n");
         const out = [`cluster ${cluster.id} in ${cluster.folder.root}: this server is world ${cluster.world}`];
         for (const d of cluster.destinations()) out.push(`  world ${d.world}: ${d.name} (${d.map}), ${d.players} of ${d.max}`);
-        for (const [name, a] of cluster.away) out.push(`  ${name} left for ${cluster.serverName(a.to)} by transfer ${a.id}${a.settled ? "" : ", not yet taken"}`);
+        for (const [name, a] of cluster.away) out.push(`  ${name} left for ${cluster.serverName(a.to)} by transfer ${a.id}${a.lost === "gone" ? ", whose file is not in the folder" : a.lost === "damaged" ? ", whose file cannot be read" : a.settled ? "" : ", not yet taken"}`);
         return out.join("\n");
       },
     },

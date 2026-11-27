@@ -1,7 +1,9 @@
-// What travels between the servers of a cluster: one file, sealed. Its first line is the SHA-256 of the rest, which is JSON: a
-// head that says what it is, whose, from where to where, and what it carries, then the records themselves in the form a save
-// keeps them (server/persist/codec.ts), against a table of the content ids they name. It carries any record: a survivor and
-// the eggs it holds now, a creature with its saddle and inventory or a loose stack later.
+// What travels between the servers of a cluster: one file, sealed. Its first line is the SHA-256 of the rest, which is JSON,
+// gzipped: a head that says what it is, whose, from where to where, and what it carries, then the records themselves in the
+// form a save keeps them (server/persist/codec.ts), against the table of content ids their build had. That table is every
+// name the build knows, some 190 KB that pack to 20, which is why the JSON is packed. A file sealed before it was holds the
+// JSON as it is, and is read as well. It carries any record: a survivor and the eggs it holds now, a creature with its
+// saddle and inventory or a loose stack later.
 
 import type { Registry } from "../../shared/content/registry.ts";
 import { RecordCodec, idMap } from "../persist/codec.ts";
@@ -85,17 +87,27 @@ export function sealParcel(reg: Registry, head: ParcelHead, records: readonly En
     ids: [...reg.ids],
     records: records.map((rec) => ({ pid: rec.pid, kind: rec.kind, x: rec.x, y: rec.y, z: rec.z, yaw: rec.yaw, data: Buffer.from(codec.encode(rec)).toString("base64") })),
   };
-  const text = JSON.stringify(body);
-  return new TextEncoder().encode(`${sha256(text)}\n${text}`);
+  const packed = Bun.gzipSync(new TextEncoder().encode(JSON.stringify(body)));
+  const seal = new TextEncoder().encode(`${sha256(packed)}\n`);
+  const out = new Uint8Array(seal.length + packed.length);
+  out.set(seal);
+  out.set(packed, seal.length);
+  return out;
 }
 
 /** Throws if the file is not whole and as it was sealed. */
 export function openParcel(bytes: Uint8Array): Parcel {
-  const text = new TextDecoder().decode(bytes);
-  const cut = text.indexOf("\n");
-  const rest = cut < 0 ? "" : text.slice(cut + 1);
-  if (cut !== 64 || sha256(rest) !== text.slice(0, 64)) throw new Error("its seal does not match what it holds");
-  const body = JSON.parse(rest) as ParcelBody;
+  // 64 hex digits and a newline, then what they are the SHA-256 of.
+  const rest = bytes.subarray(65);
+  if (bytes.length < 66 || bytes[64] !== 0x0a || sha256(rest) !== new TextDecoder().decode(bytes.subarray(0, 64))) throw new Error("its seal does not match what it holds");
+  let body: ParcelBody;
+  try {
+    // A gzip stream begins with these two bytes, and JSON never does.
+    const packed = rest[0] === 0x1f && rest[1] === 0x8b;
+    body = JSON.parse(new TextDecoder().decode(packed ? Bun.gunzipSync(rest.slice()) : rest)) as ParcelBody;
+  } catch {
+    throw new Error("it is sealed, and what it holds is no transfer");
+  }
   if (body.format !== PARCEL_FORMAT) throw new Error(`it was written in form ${body.format}, and this build reads ${PARCEL_FORMAT}`);
   const { ids: _ids, records: _records, ...head } = body;
   return { head, body };
