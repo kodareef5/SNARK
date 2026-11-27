@@ -19,6 +19,11 @@ export class LineLog {
   private made = false;
   private writing: Promise<void> | null = null;
 
+  /** Whether there is anything to write or a write under way: a flush is worth making. */
+  get busy(): boolean {
+    return this.lines.length > 0 || this.writing !== null;
+  }
+
   /** Files are `<dir>/<name>-<day>.jsonl`. With no folder nothing is kept. */
   constructor(dir: string | null, name: string, megabytes = 64) {
     this.dir = dir;

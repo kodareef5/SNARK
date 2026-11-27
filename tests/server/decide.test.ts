@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CAPS, COST_PROBE, COST_RING, COST_YES, Decide, QUEUE, QUEUE_BACK, type Ask, type Point } from "../../server/decide/decide.ts";
+import { CAPS, COST_PROBE, COST_RING, COST_YES, Decide, LEAVE, QUEUE, QUEUE_BACK, SPARE, type Ask, type Point } from "../../server/decide/decide.ts";
 import { Pool } from "../../server/decide/pool.ts";
 import { LineLog } from "../../server/decide/log.ts";
 import { Lane } from "../../server/lane.ts";
@@ -85,6 +85,7 @@ test("the rule answers and acts; watching answers and does not act", () => {
   // Each mover's one free heading is its own number.
   expect(p.applied).toEqual([[3, 3]]);
   expect([q.asked, q.applied]).toEqual([[5], []]);
+  expect([d.acts(a), d.acts(b)]).toEqual([true, false]);
   expect(d.report().points.map((r) => [r.policy, r.counts.answered, r.counts.applied])).toEqual([["rule", 1, 1], ["watch", 1, 0]]);
 });
 
@@ -117,7 +118,7 @@ test("each cost has its own cap, and what is over it is cut and keeps today's be
 
 test("movers a player is close to are answered before the background, and the deepest in trouble first", () => {
   const { d } = decider();
-  const p = new Probe("ring", COST_RING);
+  const p = new Probe("ring", COST_PROBE);
   const id = d.add(p);
   d.set("ring=rule");
   d.put(id, 10, 3, true);
@@ -310,12 +311,15 @@ test("the lab may see every answer with its table and force another candidate", 
   d.set("a=rule");
   const seen: [number, number, number][] = [];
   d.tap = (point, e, _tick, _rung, pick) => void seen.push([point, e, Math.round(p.table.rows[(e % 8) * RING_MID.columns.length + RING_MID.c.run]!) + pick]);
-  d.force = (_point, e, pick) => (e === 2 ? 6 : -1);
+  d.force = (_point, e) => (e === 2 ? 6 : e === 3 ? SPARE : LEAVE);
   d.put(id, 1, 0);
   d.put(id, 2, 0);
+  d.put(id, 3, 0);
   d.step(1);
+  // The third is answered and seen, and nothing is done to its mover: today's code stands for that one answer.
   expect(p.applied).toEqual([[1, 1], [2, 6]]);
-  expect(seen).toEqual([[id, 1, 2], [id, 2, 7]]);
+  expect(seen).toEqual([[id, 1, 2], [id, 2, 7], [id, 3, 4]]);
+  expect(d.report().points[0]!.counts).toMatchObject({ answered: 3, applied: 2 });
 });
 
 test("answers are kept for a page only while it looks, and weights are read again when asked", () => {
@@ -333,13 +337,21 @@ test("answers are kept for a page only while it looks, and weights are read agai
       d.put(id, tick, 2);
       d.step(tick);
     }
-    expect(d.recent.map((r) => [r.t, r.point, r.rung, r.pick, r.id])).toEqual([[2, "a", 2, 2, 0], [3, "a", 2, 3, 0], [4, "a", 2, 4, 0]]);
+    // Kept while the look lasts, and let go once it has ended.
+    expect(d.recent).toEqual([]);
+    d.look(7, 3);
+    for (let tick = 7; tick <= 9; tick++) {
+      d.put(id, tick, 2);
+      d.step(tick);
+    }
+    expect(d.recent.map((r) => [r.t, r.point, r.rung, r.pick, r.id])).toEqual([[7, "a", 2, 7, 0], [8, "a", 2, 0, 0], [9, "a", 2, 1, 0]]);
     expect(d.recent[0]!.tables[0]!.profile).toBe("ring.mid");
     // A scorer written after the start decides once the weights are read again.
     expect(d.report().trained).toEqual([]);
-    writeFileSync(join(dir, "ring.mid.json"), JSON.stringify(writeModel(RULE_MID)));
+    writeFileSync(join(dir, "ring.mid.json"), JSON.stringify(writeModel(RULE_MID, { made: "today" })));
     d.reload();
     expect(d.report().trained).toEqual(["ring.mid"]);
+    expect(d.abouts.get("ring.mid")).toEqual({ made: "today" });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
