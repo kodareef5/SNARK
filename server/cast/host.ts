@@ -219,10 +219,16 @@ export class CastHost {
     if (was && !s.enabled) for (const st of [...this.cast.stories.values()]) if (st.phase !== "planned") this.cast.finish(st, this.ctx.world.tick);
   }
 
+  /** Cast was on, or its people were still walking off, at the last look. */
+  private live = false;
+
   step(): void {
     if (this.ctx.world.tick % (5 * TICK_RATE) === 0) {
       this.retune();
-      this.saved.dirty = true;
+      // Off with nobody left, nothing changes, so nothing is saved. The look after it stops keeps the last change.
+      const live = this.cast.settings.enabled || this.stage.count > 0;
+      if (live || this.live) this.saved.dirty = true;
+      this.live = live;
       this.forgetSaid();
     }
     if (!this.cast.settings.enabled) {
