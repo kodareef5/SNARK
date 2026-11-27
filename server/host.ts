@@ -24,6 +24,8 @@ import { Motion } from "./motion.ts";
 import { Fixtures } from "./fixtures.ts";
 import { Beds, type Place } from "./beds.ts";
 import { CastHost } from "./cast/host.ts";
+import { Decide } from "./decide/decide.ts";
+import { LineLog } from "./decide/log.ts";
 import type { CastSettings } from "../shared/cast/state.ts";
 import { Taming } from "./taming.ts";
 import { Riding } from "./riding.ts";
@@ -283,6 +285,8 @@ export interface Host {
   readonly urban: Urban;
   /** The city's background people (server/cast): always there, idle while CastEnabled is off. */
   readonly cast: CastHost;
+  /** Small choices for movers (server/decide): every point off unless DecidePolicy names it. */
+  readonly decide: Decide;
   readonly vehicles: VehicleService;
   readonly entangle: Entangle;
   readonly breeding: Breeding;
@@ -1090,6 +1094,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     rules,
     ...(typeof opts.cast === "object" ? { settings: { enabled: true, ...opts.cast } } : opts.cast === true ? { settings: { enabled: true } } : {}),
     logDir: opts.dbPath ? join(dirname(resolve(opts.dbPath)), "cast") : null,
+    logName: `decisions-w${records.worldId}`,
     people,
   });
   const fixtures = new Fixtures(world, records, items);
@@ -1940,6 +1945,13 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const seatedHead = new Float64Array(3);
   const parts = game.parts;
   const lane = game.lane;
+  // The decider (server/decide): every point is off, and costs nothing, until DecidePolicy names it.
+  const decide = new Decide({
+    world, lane, say,
+    settings: () => ({ policy: rules.text("DecidePolicy"), sample: rules.num("DecideSample"), megabytes: rules.num("DecideLogMegabytes") }),
+    log: opts.dbPath ? new LineLog(join(dirname(resolve(opts.dbPath)), "decide"), `decide-w${records.worldId}`) : null,
+  });
+  decide.sinks.push(castHost.log.lines);
   // A car door held open strikes whoever stands where it swings (server/urban.ts doorStrikes): a blow by the car's
   // driver, by its speed, told to everyone near as a car's (EVENT_IMPACT), and a creature it kills tumbles.
   // A survivor knocked off their feet (Knockdowns) goes limp as its ragdoll, thrown as the blow left it moving, and gets
@@ -2415,6 +2427,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     mark(PART.combat),
     creatures,
     mark(PART.creatures),
+    decide,
+    mark(PART.decide),
     physics({ step: contacts }, LANE_ROW.contacts),
     mark(PART.contacts),
     impale,
@@ -2487,6 +2501,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     riding,
     urban,
     cast: castHost,
+    decide,
     vehicles,
     entangle,
     breeding,

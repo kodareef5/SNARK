@@ -69,8 +69,9 @@ export interface CastHostContext {
   settings?: Partial<CastSettings>;
   /** The planner's model, when there is a key: an OpenRouter key (or a stand-in for tests). None keeps Cast on rules. */
   ask?: Ask | null;
-  /** Folder of the decision log; none keeps it in memory. */
+  /** Folder of the decision log, and its files' name before the day; no folder keeps it in memory. */
   logDir?: string | null;
+  logName?: string;
   /** The cluster's people store: admin populations, outfits and named people. None draws everyone from the content. */
   people?: PeopleStore | null;
 }
@@ -117,7 +118,7 @@ export class CastHost {
     const settings = this.cast.settings;
     this.gate = new ModelGate(null, { callsPerHour: settings.callsPerHour, tokensPerHour: settings.callsPerHour * 6000 });
     this.modelFor(settings);
-    this.log = new DecisionLog(ctx.logDir ?? null);
+    this.log = new DecisionLog(ctx.logDir ?? null, ctx.logName);
     this.planner = new Planner(this.cast, this.gate, this.log, () => Date.now());
     this.planner.model = settings.model;
     this.planner.views = () => this.views();

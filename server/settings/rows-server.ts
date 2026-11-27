@@ -316,6 +316,11 @@ new Sheet(SERVER_ROWS, "snark", "Cast")
   .i("CastCallsPerHour", 90, "Calls Cast's planner may make an hour at most.", live({ live: true, min: 0, max: 3600, note: "Ours. About $0.0006 a call with Claude Haiku 5.5." }))
   .i("CastHourlyBatch", 50, "Featured people the planner's hourly pass looks in on.", live({ live: true, min: 0, max: 500, note: "Ours." }));
 
+new Sheet(SERVER_ROWS, "snark", "Decide")
+  .t("DecidePolicy", "", "Who makes each of the movers' small choices, as point=policy pairs with a comma between; * is every point not named. off is today's behaviour, watch answers and logs without acting, rule acts on the hand rule, model on trained weights. Empty is all off.", live({ live: true, note: "Ours (planning/workstreams/decide.md). The points are listed at /admin/decide.json." }))
+  .i("DecideSample", 256, "One answer in this many is written to the decision log, with what became of the mover; 0 writes none.", live({ live: true, min: 0, max: 1000000, note: "Ours." }))
+  .i("DecideLogMegabytes", 64, "Megabytes of decision log a world may write in a day.", live({ live: true, min: 0, max: 4096, note: "Ours." }));
+
 new Sheet(SERVER_ROWS, "snark", "Loot")
   .b("WorldLootEnabled", true, "Loot lies in the world besides supply drops: in creatures' bodies, by the drop book's sources. Off, nothing of it is rolled.", live({ live: true, public: true, note: "Ours (planning/workstreams/loot.md)." }))
   .b("BodyLootEnabled", true, "A wild creature's body holds loot, more for a bigger creature of a higher level. Off, a body holds only what the creature carried.", live({ live: true, public: true, note: "Ours." }))

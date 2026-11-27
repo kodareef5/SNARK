@@ -1,9 +1,8 @@
 // Decision points for Cast, in grunt's shape (grunt/policy.ts, which the server may not import, D879): a narrow question
 // with its candidates and the state it is about, answered by a policy, rules or a model alike, and written to a log
-// (var/cast/decisions-<day>.jsonl) a decision model can later be fitted to. The two may become one shared module.
+// (<save's folder>/cast/decisions-w<world>-<day>.jsonl) through the decider's line log, which never writes inside a tick.
 
-import { appendFileSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { LineLog } from "../decide/log.ts";
 
 export interface DecisionInput {
   /** Which question: `story.plan`, `person.life`, ... */
@@ -26,25 +25,19 @@ export interface DecisionRecord extends DecisionInput, Choice {
   cost?: number;
 }
 
-/** Writes decisions a line each to a file per day, or keeps them in memory (tests, or no folder given). */
+/** Keeps the last decisions in memory for the admin page and gives each to the line log (none, with no folder). */
 export class DecisionLog {
   readonly kept: DecisionRecord[] = [];
-  private readonly dir: string | null;
+  /** The host flushes it with the decider's own log (server/decide/decide.ts, `sinks`). */
+  readonly lines: LineLog;
 
-  constructor(dir: string | null) {
-    this.dir = dir;
+  constructor(dir: string | null, name = "decisions") {
+    this.lines = new LineLog(dir, name);
   }
 
   write(d: DecisionRecord): void {
     this.kept.push(d);
     if (this.kept.length > 500) this.kept.shift();
-    if (!this.dir) return;
-    const file = `${this.dir}/decisions-${new Date().toISOString().slice(0, 10)}.jsonl`;
-    try {
-      mkdirSync(dirname(file), { recursive: true });
-      appendFileSync(file, JSON.stringify(d) + "\n");
-    } catch {
-      // A log that cannot be written loses its lines, never the game's tick.
-    }
+    this.lines.add(JSON.stringify(d));
   }
 }

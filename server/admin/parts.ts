@@ -14,7 +14,7 @@ import type { LaneReport } from "../lane.ts";
  * that none of the others account for: the engine's own timers and collections, or a core the machine gave elsewhere.
  */
 export const PARTS = [
-  "before", "bodies", "commands", "focus", "deadlines", "spawner", "life", "riders", "combat", "creatures", "contacts",
+  "before", "bodies", "commands", "focus", "deadlines", "spawner", "life", "riders", "combat", "creatures", "decide", "contacts",
   "build", "world", "modules", "save", "history", "own", "snapshot", "chunks",
   "sockets", "http", "idle", "stray",
 ] as const;
