@@ -29,6 +29,6 @@ https://github.com/user-attachments/assets/dd66a6e2-3d90-46d9-89e4-ec1469549d84
 
 [![Five building tiers line the Miami shore, from a thatch hut to a glowing Tek base behind the stone lookout and metal tower](docs/media/beach-buildings.webp)](docs/media/beach-buildings.webp)
 
-[![Two survivors in Meridian armor flee a Rex beneath the blue rings of the Tide Eye on Virginia Key](docs/media/tide-chase.webp)](docs/media/tide-chase.webp)
-
 [![A mounted Pteranodon crosses Biscayne Bay at sunset beside a map of SNARK’s 266.3 km² Miami, with four smaller areas drawn at the same scale](docs/media/map-size.webp)](docs/media/map-size.webp)
+
+[![Two survivors in Meridian armor flee a Rex beneath the blue rings of the Tide Eye on Virginia Key](docs/media/tide-chase.webp)](docs/media/tide-chase.webp)
