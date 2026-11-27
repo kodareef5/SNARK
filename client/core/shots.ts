@@ -147,6 +147,8 @@ function nearSquare(cx: number, cz: number): number {
 /** Shot ends kept for small details, which find what a shot struck (client/core/occasions.ts). */
 const ENDS = 32;
 
+interface Flash { x: number; y: number; z: number; dx: number; dy: number; dz: number; born: number; until: number; mesh: number; size: number; bore?: PlasmaBore; row: number }
+
 export class Shots {
   /** Where shots lately ended, newest last: where the last piece began, its way, and when, in milliseconds. */
   readonly ends: ShotEnd[] = [];
@@ -156,7 +158,7 @@ export class Shots {
   /** A tame going into a soul ball or coming out of one (EVENT_BALL): the middle of its body and its size. */
   readonly balls: { x: number; y: number; z: number; size: number; into: boolean; born: number }[] = [];
   /** Muzzle flashes of rounds from guns with no silencer: the blast's cube, or a bolt's own mesh at its size. */
-  readonly flashes: { x: number; y: number; z: number; dx: number; dy: number; dz: number; born: number; until: number; mesh: number; size: number; bore?: PlasmaBore }[] = [];
+  readonly flashes: Flash[] = [];
   /** Where a bolt of light ended on something: its burst's mesh and size. */
   readonly bursts: { x: number; y: number; z: number; born: number; mesh: number; size: number }[] = [];
   private flashOfAmmo: Int32Array = new Int32Array(0);
@@ -194,6 +196,8 @@ export class Shots {
   private readonly boreAxis: [number, number, number] = [0, 0, 0];
   private readonly boltHead = [0, 0, 0];
   private readonly boltTail = [0, 0, 0];
+  private readonly launchesToPose: Flying[] = [];
+  private readonly flashesToPose: Flash[] = [];
   private readonly closing: { flight: Flying; distance: number; until: number }[] = [];
   private readonly vent = [0, 0, 0];
   /** Rounds kept that have met something and wait for their blast. */
@@ -365,7 +369,7 @@ export class Shots {
   /** A flash at (x, y, z). The blast's cube looks the same every way; a bolt's own points along (dx, dy, dz), the way its shot left. */
   private flash(x: number, y: number, z: number, nowMs: number, mesh = this.blastMesh, size = FLASH_SIZE, ms = FLASH_MS, dx = 0, dy = 0, dz = 1, bore?: PlasmaBore): void {
     if (this.flashes.length >= MAX_TRACERS) this.flashes.shift();
-    this.flashes.push({ x, y, z, dx, dy, dz, born: nowMs, until: nowMs + ms, mesh, size, bore });
+    this.flashes.push({ x, y, z, dx, dy, dz, born: nowMs, until: nowMs + ms, mesh, size, bore, row: -1 });
   }
 
   /**
@@ -447,7 +451,7 @@ export class Shots {
     if (size > 0 && speed > 0) {
       const dx = vx / speed, dy = vy / speed, dz = vz / speed;
       bore = { x, y, z, dx, dy, dz, mx: x + dx * AHEAD, my: y + dy * AHEAD - BELOW, mz: z + dz * AHEAD,
-        bx: dx, by: dy, bz: dz, speed, born: nowMs, ammo, mine, shooter, posed: false };
+        bx: dx, by: dy, bz: dz, speed, born: nowMs, ammo, mine, shooter, posed: false, row: -1, end: PLASMA_LEAVE };
       if (this.drawn) this.poseLaunch(this.drawn, bore);
     }
     if (lit >= 0 && !silenced && bore) {
@@ -796,19 +800,51 @@ export class Shots {
     b.posed = true;
   }
 
-  private drawPlasma(ch: Characters, p: FramePacket, cam: Camera, f: Flying, travelled: number, end: number): boolean {
+  private drawPlasma(ch: Characters, p: FramePacket, cam: Camera, f: Flying, travelled: number, end: number, row = -1): boolean {
     const size = this.reg.ammoBoltSize[f.ammo]!, head = this.boltHead, tail = this.boltTail;
     plasmaSegment(f.bore!, travelled, end, BOLT_TAIL * size, this.now, head, tail);
     const x = head[0]! - cam.x, y = head[1]! - cam.y, z = head[2]! - cam.z;
     if (!cam.boxVisible(x - 1, y - 1, z - 1, x + 1, y + 1, z + 1)) return true;
     const dx = head[0]! - tail[0]!, dy = head[1]! - tail[1]!, dz = head[2]! - tail[2]!;
     const length = Math.hypot(dx, dy, dz);
-    return length < 0.001 || ch.loose(p, f.mesh, x, y, z, dx / length, dy / length, dz / length, length, size);
+    if (length < 0.001) return true;
+    if (row >= 0) {
+      ch.poseLoose(p, row, x, y, z, dx / length, dy / length, dz / length, length, size);
+      return true;
+    }
+    const first = p.boneCount;
+    if (!ch.loose(p, f.mesh, x, y, z, dx / length, dy / length, dz / length, length, size)) return false;
+    this.keepLaunch(f, first, end);
+    return true;
+  }
+
+  private keepLaunch(f: Flying, row: number, end: number): void {
+    if (!f.bore || f.bore.born !== this.now) return;
+    f.bore.row = row;
+    f.bore.end = end;
+    this.launchesToPose.push(f);
+  }
+
+  /** Effects keep their bone slots while the scene poses the guns which carry them. */
+  posePlasma(ch: Characters, p: FramePacket, cam: Camera): void {
+    for (const f of this.launchesToPose) {
+      const b = f.bore!;
+      this.poseLaunch(ch, b);
+      if (b.posed) this.drawPlasma(ch, p, cam, f, 0, b.end, b.row);
+    }
+    for (const f of this.flashesToPose) {
+      if (!this.socket(ch, f.bore!)) continue;
+      [f.x, f.y, f.z] = this.muzzle;
+      [f.dx, f.dy, f.dz] = this.boreAxis;
+      ch.poseLoose(p, f.row, f.x - cam.x, f.y - cam.y, f.z - cam.z, f.dx, f.dy, f.dz, f.size, f.size);
+    }
   }
 
   /** `tick` may be fractional. A flight is drawn that far along its next piece. */
   draw(ch: Characters, p: FramePacket, cam: Camera, tick: number): void {
     this.drawn = ch;
+    this.launchesToPose.length = 0;
+    this.flashesToPose.length = 0;
     ch.ownRounds = this.ownRounds;
     // Asked for every frame as a draw asks, shot or no shot, so that each mesh is on the card with its surface and its
     // materials before the first shot needs them: a surface is not sent for until its level is there.
@@ -863,7 +899,9 @@ export class Shots {
       // A bolt of light is its head with a tail behind it, no longer than it has flown.
       const size = this.reg.ammoBoltSize[f.ammo]!;
       const tail = size > 0 ? Math.max(0.2 * size, Math.min(BOLT_TAIL * size, f.flown + speed * along)) : 1;
+      const first = p.boneCount;
       room = ch.loose(p, f.mesh, x, y, z, f.vx / speed, f.vy / speed, f.vz / speed, tail, size > 0 ? size : 1, 0, roll);
+      if (room && f.bore) this.keepLaunch(f, first, f.met || f.gone ? f.flown + f.clear : PLASMA_LEAVE);
     }
     if (!room) return;
     for (const b of this.closing) {
@@ -889,7 +927,10 @@ export class Shots {
         [f.x, f.y, f.z] = this.muzzle;
         [f.dx, f.dy, f.dz] = this.boreAxis;
       }
-      if (f.mesh >= 0 && !ch.loose(p, f.mesh, f.x - cam.x, f.y - cam.y, f.z - cam.z, f.dx, f.dy, f.dz, f.size, f.size)) return;
+      if (f.mesh < 0) continue;
+      f.row = p.boneCount;
+      if (!ch.loose(p, f.mesh, f.x - cam.x, f.y - cam.y, f.z - cam.z, f.dx, f.dy, f.dz, f.size, f.size)) return;
+      if (f.bore) this.flashesToPose.push(f);
     }
     // A burst swells from a third of its size to all of it, turning a quarter turn.
     for (const b of this.bursts) {

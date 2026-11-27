@@ -6,6 +6,8 @@ export interface PlasmaBore {
   bx: number; by: number; bz: number;
   mine: boolean; ammo: number; shooter?: number;
   posed: boolean;
+  row: number;
+  end: number;
   speed: number;
   born: number;
 }
