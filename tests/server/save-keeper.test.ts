@@ -28,6 +28,7 @@ function world(name: string, extra: ConstructorParameters<typeof Harness>[3] = {
 const MINUTE = 60_000;
 const END = Date.UTC(2026, 10, 30);
 const MB = 1e6;
+const extended = { days: 180, hours: 48, bytes: 0 };
 /** A backup every quarter of an hour for `days` days, the last at 23:45 on 29 November, each a megabyte. */
 function quarterly(days: number): BackupFile[] {
   const out: BackupFile[] = [];
@@ -36,7 +37,7 @@ function quarterly(days: number): BackupFile[] {
 }
 /** What the rule leaves of `files` when it may remove as many as it likes. */
 function left(files: readonly BackupFile[], made: string, days: number, bytes = 0): string[] {
-  const gone = new Set(backupsToRemove(files, made, { days, bytes }, Infinity));
+  const gone = new Set(backupsToRemove(files, made, { ...extended, days, bytes }, Infinity));
   return files.map((f) => f.name).filter((n) => !gone.has(n));
 }
 
@@ -53,7 +54,7 @@ test("backups are kept by a rule: the newest dozen, the newest of each of 48 hou
   // Fewer days keep fewer of the old ones, and none keeps only the dozen and the hours.
   expect([left(files, made, 7).length, left(files, made, 0).length]).toEqual([KEEP_NEWEST + 45 + 5 + 2, KEEP_NEWEST + 45 + 2]);
   // What is not a backup is never touched, and the oldest go first.
-  const gone = backupsToRemove(files, made, { days: 180, bytes: 0 }, Infinity);
+  const gone = backupsToRemove(files, made, extended, Infinity);
   expect(gone.includes("making") || gone.includes("notes.txt")).toBe(false);
   expect(gone.slice(0, 2)).toEqual(["2026-11-20T00-00-00Z-t960", "2026-11-20T00-15-00Z-t959"]);
 });
@@ -63,11 +64,11 @@ test("days and hours are counted by the backups there are, so a world switched o
   const old: BackupFile[] = [];
   for (let d = 1; d <= 30; d++) old.push({ name: backupName(new Date(Date.UTC(2025, 5, d, 12)), d), bytes: MB });
   const now = backupName(new Date(END), 99);
-  expect(backupsToRemove([...old, { name: now, bytes: MB }], now, KEEP, Infinity)).toEqual([]);
+  expect(backupsToRemove([...old, { name: now, bytes: MB }], now, extended, Infinity)).toEqual([]);
   // Twenty dated ten years on, a minute apart: they sort newest. The one just made stays, and only the oldest of those go.
   const ahead: BackupFile[] = [];
   for (let m = 0; m < 20; m++) ahead.push({ name: backupName(new Date(Date.UTC(2036, 0, 1, 0, m)), 500 + m), bytes: MB });
-  const gone = backupsToRemove([...old, ...ahead, { name: now, bytes: MB }], now, KEEP, Infinity);
+  const gone = backupsToRemove([...old, ...ahead, { name: now, bytes: MB }], now, extended, Infinity);
   expect(gone).toEqual(ahead.slice(0, 8).map((f) => f.name));
 });
 
@@ -90,12 +91,12 @@ test("over the gigabytes the hourly ones go first, then the oldest days, then th
 test("no backup removes more than two dozen, so a limit typed wrong is seen before it has cost much", () => {
   let files = quarterly(10);
   const made = files[959]!.name;
-  const first = backupsToRemove(files, made, { days: 0, bytes: 0 });
+  const first = backupsToRemove(files, made, { ...extended, days: 0 });
   expect(first.length).toBe(REMOVE_MOST);
   expect(first).toEqual(files.slice(0, REMOVE_MOST).map((f) => f.name));
   // Backup after backup it comes to the same as one pass would.
   for (let pass = 0; pass < 100; pass++) {
-    const gone = new Set(backupsToRemove(files, made, { days: 0, bytes: 0 }));
+    const gone = new Set(backupsToRemove(files, made, { ...extended, days: 0 }));
     if (gone.size === 0) break;
     files = files.filter((f) => !gone.has(f.name));
   }
@@ -143,15 +144,15 @@ test("a disk short of room gives up its oldest backups for a new one, down to th
   const names = oldBackups(db, 20);
   expect(backupsForRoom(names.map((name) => ({ name, bytes: 64 })), KEEP)).toEqual(names.slice(0, 8));
   // Room comes once three are gone.
-  const roomy = takeBackup(p.store.db, db, new Date(), KEEP, { free: () => (listBackups(db).length <= 17 ? 1e12 : 0) });
+  const roomy = takeBackup(p.store.db, db, new Date(), extended, { free: () => (listBackups(db).length <= 17 ? 1e12 : 0) });
   expect([roomy.why, roomy.removed, roomy.kept]).toEqual(["", 3, 18]);
   expect(listBackups(db).map((path) => path.slice(backupsFolder(db).length + 1)).slice(-2).reverse()).toEqual(names.slice(3, 5));
   // No room however many go: the old ones beyond the dozen went for it, no copy is made, and nothing is left half done.
-  const none = takeBackup(p.store.db, db, new Date(), KEEP, { free: () => 0 });
+  const none = takeBackup(p.store.db, db, new Date(), extended, { free: () => 0 });
   expect([none.path, none.why.includes("free is under twice the save's"), none.removed, none.kept]).toEqual(["", true, 6, KEEP_NEWEST]);
   expect(existsSync(join(backupsFolder(db), "making"))).toBe(false);
   // With no room and limits that keep less, the rule still removes what it no longer holds, and leaves the newest there is.
-  const ruled = takeBackup(p.store.db, db, new Date(), { days: 0, bytes: 200 }, { free: () => 0 });
+  const ruled = takeBackup(p.store.db, db, new Date(), { ...extended, days: 0, bytes: 200 }, { free: () => 0 });
   expect([ruled.path, ruled.removed, ruled.kept]).toEqual(["", 11, 1]);
   expect(listBackups(db)).toEqual([roomy.path]);
   h.host.shutdown();
@@ -238,9 +239,10 @@ test("the limits set are the ones a backup is kept by, on the keeper's own threa
   const { db, h, reports, p } = world("limits", { keeper: "worker" });
   expect(p.backupKeep).toEqual(KEEP);
   expect(h.host.exec("setting BackupKeepDays 0")).not.toContain("cannot");
+  expect(h.host.exec("setting BackupKeepHours 6")).not.toContain("cannot");
   expect(h.host.exec("setting BackupMaxGigabytes 0.000001")).not.toContain("cannot");
   h.run(100);
-  expect(p.backupKeep).toEqual({ days: 0, bytes: 1074 });
+  expect(p.backupKeep).toEqual({ days: 0, hours: 6, bytes: 1074 });
   oldBackups(db, 5);
   expect(h.host.exec("backup")).toContain("a backup was started");
   expect(p.backingUp).toBe(true);

@@ -1390,7 +1390,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
    * Gives again what was copied out of the settings at start, where a setting has changed: the game's options, the
    * sizes, the spawn tables. What is already made is left as it is, and a size made smaller only stops more being added.
    */
-  const keepNow = (): BackupKeep => ({ days: rules.num("BackupKeepDays"), bytes: Math.round(rules.num("BackupMaxGigabytes") * 2 ** 30) });
+  const keepNow = (): BackupKeep => ({
+    days: rules.num("BackupKeepDays"),
+    hours: rules.num("BackupKeepHours"),
+    bytes: Math.round(rules.num("BackupMaxGigabytes") * 2 ** 30),
+  });
   const reoption = (): void => {
     const o = game.opts;
     if (turned("ServerPassword")) o.password = rules.text("ServerPassword");
@@ -1412,7 +1416,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       backupAt = nextBackup(world.tick);
     }
     // The next backup is made, and the old ones kept, by the limits as they now stand.
-    if (turned("BackupKeepDays", "BackupMaxGigabytes") && persistence) persistence.backupKeep = keepNow();
+    if (turned("BackupKeepDays", "BackupKeepHours", "BackupMaxGigabytes") && persistence) persistence.backupKeep = keepNow();
     if (turned("OxygenSwimSpeedStatMultiplier")) creatures.swimGain = rules.num("OxygenSwimSpeedStatMultiplier");
     if (turned("HairGrowthSpeedMultiplier")) {
       world.hairRate = hairRate(rules.num("HairGrowthSpeedMultiplier"));

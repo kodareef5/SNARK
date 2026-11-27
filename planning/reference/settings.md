@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 640 of them: 277 take effect,
+is listed here, 641 of them: 278 take effect,
 173 wait for a feature that is not built yet, and 190 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -143,8 +143,9 @@ the admin's settings page may change a setting without a restart.
 | `SurvivorLogMegabytes` | 1024 | The most disk the survivor log may take, in megabytes: where each survivor in the world was, what it held and when it played, kept in a folder beside the save for admins to look back over, the oldest dropped first. At the other two settings' defaults a gigabyte holds about 9 days of 200 survivors, 5 weeks of 50 and half a year of 10. 0 keeps none. Lowered while the server runs, the oldest goes at once; set to 0, the log stops and what it holds stays. *Ours. ARK has no such log. A server with no save keeps none.* | yes |
 | `SurvivorLogPositionSeconds` | 1 | Seconds between two notes of where each survivor is, and what it rides or sits in. *Ours. ARK has no key.* | yes |
 | `SurvivorLogInventorySeconds` | 5 | Seconds the survivor log waits once a survivor's inventory changes before it notes what it holds, so a burst of changes is one entry. *Ours. ARK has no key.* | yes |
-| `BackupKeepDays` | 180 | Days of backups kept. The newest dozen backups and the newest of each of the last 48 hours are always kept; beyond those, the newest backup of each day is kept for this many days on which one was made, so days a world is switched off or unchanged do not use them up. 0 keeps no daily ones. *Ours. ARK has no key. It takes hold at the next backup, and no backup removes more than 24 old ones.* | yes |
-| `BackupMaxGigabytes` | 100 | The most disk one world's backups may take, in gigabytes. Over it the hourly ones go first, oldest first, then the oldest days, then the newest; the one just made stays. 0 is no limit. *Ours. ARK has no key. Each world of a cluster has its own. A disk with no room left gives up old backups before this is reached.* | yes |
+| `BackupKeepDays` | 7 | Keep the newest backup on each of this many days with backups, in addition to the newest dozen. 0 keeps recent copies only unless hourly retention is set. *Takes effect at the next backup.* | yes |
+| `BackupKeepHours` | 0 | Keep the newest backup in each of this many hours with backups. 0 turns off hourly retention. *Takes effect at the next backup.* | yes |
+| `BackupMaxGigabytes` | 0 | Disk limit for one world's backups in GiB. 0 leaves retention to the copy counts. When backups exceed this limit the oldest hourly copies go first, then daily and recent copies. The newest stays. *Each backup removes at most 24 old copies.* | yes |
 | `CreativeForAll` | True | While bShowCreativeMode is on, every survivor who joins has the admin role without the password, as enablecheats gives it, and so has cheats from the moment it is in the world. A server open to strangers sets this False, or bShowCreativeMode False. Switched on while the server runs, those already in get it too; switched off, those with no other reason for it lose it at once, with whatever a cheat left running. *Ours. ARK has no key; off is its behaviour, and was ours until D956 made it on unless set. It gives the role in the game only: the admin pages still ask for the password. Each grant is told to modules as session.admin, and who shows it.* | yes |
 | `HeadMultipliers` | True | Where a hit lands matters: a head counts for more. Off, every part counts once. *Ours. ARK has no key; this is its behaviour.* | yes |
 | `SelfDamageMultiplier` | 1 | What a survivor's own blast does to them. *Ours. ARK has no key; 1 is its behaviour.* | yes |

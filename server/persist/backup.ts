@@ -6,15 +6,15 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, s
 import { dirname, join } from "node:path";
 import { holdSave } from "./lock.ts";
 
-/** How long backups are kept and how much disk they may take (BackupKeepDays, BackupMaxGigabytes). No bytes is no limit. */
+/** A world keeps one copy per selected day and hour. A zero byte limit leaves retention to the copy counts. */
 export interface BackupKeep {
   days: number;
+  hours: number;
   bytes: number;
 }
-export const KEEP: BackupKeep = { days: 180, bytes: 100 * 2 ** 30 };
-/** Backups kept whatever their age, and the hours of which the newest backup is kept as well. */
+export const KEEP: BackupKeep = { days: 7, hours: 0, bytes: 0 };
+/** Recent backups kept regardless of their age. */
 export const KEEP_NEWEST = 12;
-export const KEEP_HOURS = 48;
 /** The most removed at one backup, so a setting typed wrong costs little before it is seen. */
 export const REMOVE_MOST = 24;
 const NAME = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})Z-t(\d+)$/;
@@ -62,11 +62,11 @@ const NEWEST = 3;
 /**
  * Every backup but `made` and the newest by name, in the order they are given up: those nothing keeps, then the hourly
  * ones, then the days, then the newest, each oldest first. Kept are the newest KEEP_NEWEST, the newest of each of the last
- * KEEP_HOURS hours that have one, and the newest of each of the last `days` days that have one. Hours and days are counted
+ * selected hours that have one, and the newest of each of the last `days` days that have one. Hours and days are counted
  * by the backups there are and not from the clock, so a world that was switched off, or a clock set wrong, gives up
  * nothing. One backup is always left, whatever the limits and whether or not one was just made.
  */
-function givenUp(files: readonly BackupFile[], made: string, days: number): (BackupFile & { hold: number })[] {
+function givenUp(files: readonly BackupFile[], made: string, keep: BackupKeep): (BackupFile & { hold: number })[] {
   const sorted = files.filter((f) => NAME.test(f.name)).sort((a, b) => (a.name < b.name ? 1 : a.name > b.name ? -1 : 0));
   const hoursSeen = new Set<string>();
   const daysSeen = new Set<string>();
@@ -75,11 +75,11 @@ function givenUp(files: readonly BackupFile[], made: string, days: number): (Bac
     let hold = i < KEEP_NEWEST ? NEWEST : UNKEPT;
     const hour = f.name.slice(0, 13);
     const day = f.name.slice(0, 10);
-    if (!hoursSeen.has(hour) && hoursSeen.size < KEEP_HOURS) {
+    if (!hoursSeen.has(hour) && hoursSeen.size < keep.hours) {
       hoursSeen.add(hour);
       hold = Math.max(hold, HOURLY);
     }
-    if (!daysSeen.has(day) && daysSeen.size < days) {
+    if (!daysSeen.has(day) && daysSeen.size < keep.days) {
       daysSeen.add(day);
       hold = Math.max(hold, DAILY);
     }
@@ -98,7 +98,7 @@ export function backupsToRemove(files: readonly BackupFile[], made: string, keep
   let bytes = 0;
   for (const f of files) if (NAME.test(f.name)) bytes += f.bytes;
   const out: string[] = [];
-  for (const f of givenUp(files, made, keep.days)) {
+  for (const f of givenUp(files, made, keep)) {
     if (out.length >= most) break;
     if (f.hold !== UNKEPT && !(keep.bytes > 0 && bytes > keep.bytes)) break;
     out.push(f.name);
@@ -109,7 +109,7 @@ export function backupsToRemove(files: readonly BackupFile[], made: string, keep
 
 /** Which backups to give up, in order, for room on a disk that has none: any but the newest KEEP_NEWEST. */
 export function backupsForRoom(files: readonly BackupFile[], keep: BackupKeep): string[] {
-  return givenUp(files, "", keep.days).filter((f) => f.hold !== NEWEST).map((f) => f.name);
+  return givenUp(files, "", keep).filter((f) => f.hold !== NEWEST).map((f) => f.name);
 }
 
 /**
