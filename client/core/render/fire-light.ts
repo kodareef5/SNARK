@@ -1,10 +1,11 @@
-// Fire with no texture read (planning/workstreams/rocket.md): a rocket's flame on a lathed cone and a blast's fireball on
-// lumpy spheres, each worked out from where a point is on its mesh, how its surface faces the eye, its age and its seed.
-// One ramp turns a temperature into light: white, yellow, orange, deep red, and nothing at all for soot.
+// Fire with no texture read (planning/workstreams/rocket.md, fire.md): a rocket's flame on a lathed cone, a blast's
+// fireball on lumpy spheres, and the tongues of a fire that stands on the same cone stood up (fires.ts), each worked out
+// from where a point is on its mesh, how its surface faces the eye, its age or clock, and its seed. One ramp turns a
+// temperature into light: white, yellow, orange, deep red, and nothing at all for soot.
 //
 // A draw of fire (packet.ts DRAW_FIRE) is instances of `core:fire_cone` or `core:fire_lobe` (tools/pack/fire.ts). An
-// instance's twenty bytes say where it is and how it burns (`putFlame`, `putLobe`), and the draw's effect says which of
-// the two it is, a flame's phase of the frame, and a blast's soot's shade and its heat. The vertex text shapes the mesh: a flame's length flutters, a
+// instance's twenty bytes say where it is and how it burns (`putFlame`, `putLobe`, `putBlaze`), and the draw's effect
+// says which of the three it is, the phase of its clock, and a blast's soot's shade and its heat. The vertex text shapes the mesh: a flame's length flutters, a
 // fireball's outline boils. The fragment text gives light already weighed by how much of it shows, and how much of what
 // is behind it it hides, which is little for fire and most for the soot it cools to.
 //
@@ -16,9 +17,10 @@ import { tiled, TILED_GLSL } from "../tiled-noise.ts";
 import { FRAME, FRAME_BLOCK } from "./packet.ts";
 import { AMBIENT, DIFFUSE } from "./shading.ts";
 
-/** What a draw of fire is, in its effect's x: a rocket's flame or a lobe of a fireball. */
+/** What a draw of fire is, in its effect's x: a rocket's flame, a lobe of a fireball, or a tongue of a fire that stands (fires.ts). */
 export const FIRE_FLAME = 0;
 export const FIRE_LOBE = 1;
+export const FIRE_BLAZE = 2;
 
 /** A flame's flutter, bands and flecks all come round in this long, so its phase never jumps. */
 export const FLAME_TURN_MS = 2560;
@@ -49,6 +51,23 @@ export const LOBE_SWELL = 0.16;
 
 /** A cone vertex's colour byte at the seam's far side, a whole turn: under the palette's regions, and a multiple of every level's columns. */
 export const CONE_TURN = 228;
+
+/** A blaze rises and sways on a clock of its own, slower than a motor's flame: once round in this long, at its slowest pace. */
+export const BLAZE_TURN_MS = 8192;
+/** A blaze's height is told in these to a metre, and its width in these. */
+export const BLAZE_HIGH_STEPS = 24;
+export const BLAZE_WIDE_STEPS = 48;
+/** The share of its height a blaze's tip is carried downwind at the most. */
+export const BLAZE_LEAN = 0.7;
+/** Its cone reaches this many times its height, so a lick torn off its tip has a surface to show on. */
+export const BLAZE_REACH = 1.45;
+/** Noise cells across a blaze's width and up its height. */
+export const BLAZE_ACROSS = 1.8;
+export const BLAZE_UP = 3;
+/** The shade of the soot a blaze's tips cool to. */
+export const BLAZE_SOOT = 0.045;
+/** Waves in a blaze's closed-form noise rise by whole turns over one period of its cells, so its clock comes round with no jump. */
+const RISE = (2 * Math.PI) / LOBE_PERIOD;
 
 const TAU = 6.2831853;
 /** The cone's outline: its radius at `t` along it, from 0 at the nozzle to 1 at its tip, 1 at its widest; and its slope. */
@@ -188,6 +207,56 @@ export function lobeLight(out: Float64Array | number[], u: number, v: number, fa
   for (let c = 0; c < 3; c++) {
     const dark = target ? tone * light[c]! : lit ? Math.sqrt(Math.min(1, tone * light[c]!)) : Math.sqrt(tone) * light[c]!;
     out[c] = cover * (hot[c]! * rim + dark * soot * SOOT_HIDES);
+  }
+  out[3] = cover * (FIRE_HIDES + (SOOT_HIDES - FIRE_HIDES) * soot);
+}
+
+/** A blaze's clock, radians: once round in BLAZE_TURN_MS, so its rise and sway never jump. */
+export function blazePhase(ms: number): number {
+  return ((((ms % BLAZE_TURN_MS) + BLAZE_TURN_MS) % BLAZE_TURN_MS) / BLAZE_TURN_MS) * TAU;
+}
+
+/**
+ * The noise at a blaze's cell (x, y) risen `flow` cells, 0 to 1: with `noise` octaves of the value noise, the finer
+ * rising twice as fast, or closed-form bands for none. Risen a whole period of the cells, it is where it began.
+ */
+export function blazeNoise(x: number, y: number, flow: number, seed: number, noise: number): number {
+  const s = TAU * seed, r = y - flow;
+  // Bent across as it rises, so the noise's square cells do not show.
+  const wx = x + 0.4 * Math.sin(3 * RISE * r + s);
+  if (noise <= 0) return 0.5 + 0.2 * Math.sin(1.9 * wx + 2.2 * Math.sin(3 * RISE * r + 2 * s)) + 0.16 * Math.sin(7 * RISE * r - 1.1 * wx + 2 * s);
+  const k = Math.floor(seed * 255) + 11;
+  const coarse = tiled(wx, r, LOBE_PERIOD, LOBE_PERIOD, k);
+  if (noise > 1) return 0.62 * coarse + 0.38 * tiled(2 * wx + 1.3 * coarse, 2 * y - 4 * flow, 2 * LOBE_PERIOD, 2 * LOBE_PERIOD, k + 31);
+  return 0.62 * coarse + 0.38 * (0.5 + 0.5 * Math.sin(3.3 * wx + 9 * RISE * r - s) * Math.sin(2.9 * wx - 5 * RISE * r + 1.7 * s));
+}
+
+/**
+ * A point of a blaze, into `out` as `lobeLight` gives a lobe's. `across` is where it is across the blaze as the eye
+ * sees it, in half its width; `along` up its cone, 0 at its foot to 1 at the cone's tip; `facing` how squarely its
+ * surface faces the eye; `power` how much of it shows; `axial` how nearly the eye looks down on it; `phase` its clock
+ * at its pace; and (lr, lg, lb) the light on its soot. It is whole and hottest at its foot, and thins upward into
+ * tongues that tear off past its height, yellow cooling through orange to red, and its last tips to soot.
+ */
+export function blazeLight(out: Float64Array | number[], across: number, along: number, facing: number, power: number, seed: number, axial: number, phase: number, lr: number, lg: number, lb: number, noise: number, target: boolean, lit: boolean): void {
+  const h = along * BLAZE_REACH;
+  const flow = phase * (LOBE_PERIOD / TAU);
+  const n = blazeNoise(across * BLAZE_ACROSS + LOBE_PERIOD * fract(seed * 3.7), h * BLAZE_UP + LOBE_PERIOD * fract(seed * 9.1), flow, seed, noise);
+  const front = clamp(facing);
+  const a2 = axial * axial;
+  // Seen from over it, its tip is its middle, and is not eaten away.
+  const eaten = h * (1 - 0.6 * a2 * a2);
+  const field = (0.25 + 0.95 * front) * (1.1 - eaten * eaten) + (0.7 + 1.5 * eaten) * (n - 0.5);
+  const cover = smooth(0.25, 0.55, field) * (0.72 + 0.28 * smooth(0.3, 0.7, n)) * smooth(0, 0.1, along) * power;
+  const t = clamp(0.78 - 0.55 * eaten + 0.3 * (front - 0.6) + 0.6 * (n - 0.5)) * (0.7 + 0.3 * smooth(0, 0.12, along));
+  const soot = 1 - smooth(0.04, 0.16, t);
+  fireRamp(t, hot);
+  fireShown(hot, target);
+  const light = [lr, lg, lb];
+  // Its thin parts give more light than they hide, so a lick is orange and no brown veil.
+  for (let c = 0; c < 3; c++) {
+    const dark = target ? BLAZE_SOOT * light[c]! : lit ? Math.sqrt(Math.min(1, BLAZE_SOOT * light[c]!)) : Math.sqrt(BLAZE_SOOT) * light[c]!;
+    out[c] = cover * (hot[c]! * (2 - cover) + dark * soot * SOOT_HIDES);
   }
   out[3] = cover * (FIRE_HIDES + (SOOT_HIDES - FIRE_HIDES) * soot);
 }
@@ -366,6 +435,81 @@ export function flameVertex(out: Float64Array, lx: number, ly: number, lz: numbe
 }
 
 /**
+ * A blaze's vertex at (lx, ly, lz) of the cone as it is modelled, into `out` and `fireFlat`. The instance is at `at` of
+ * `bytes`, as `putBlaze` wrote it, and `phase` is the frame's (`blazePhase`).
+ */
+export function blazeVertex(out: Float64Array, lx: number, ly: number, lz: number, bytes: Uint8Array, at: number, phase: number, env: FireSun): void {
+  const view = new DataView(bytes.buffer, bytes.byteOffset + at, INSTANCE_BYTES);
+  const px = view.getFloat32(0, true), py = view.getFloat32(4, true), pz = view.getFloat32(8, true);
+  const seed = view.getUint16(12, true) / 65535;
+  const high = bytes[at + 14]! / BLAZE_HIGH_STEPS, girth = bytes[at + 15]! / (2 * BLAZE_WIDE_STEPS);
+  const leanX = ((bytes[at + 16]! - 128) / 127) * BLAZE_LEAN, leanZ = ((bytes[at + 17]! - 128) / 127) * BLAZE_LEAN;
+  const s = TAU * seed, q = phase * bytes[at + 19]!;
+  const reach = high * BLAZE_REACH * (1 + 0.07 * Math.sin(3 * q + s) + 0.05 * Math.sin(7 * q + 4.1 * s));
+  // Carried downwind more the higher up, and its tip sways.
+  const bend = lz * (0.35 + 0.65 * lz), up2 = lz * lz;
+  const ox = (leanX * bend + up2 * (0.09 * Math.sin(2 * q + s) + 0.05 * Math.sin(5 * q + 2.3 * s))) * reach;
+  const oz = (leanZ * bend + up2 * (0.09 * Math.cos(3 * q + 1.7 * s) + 0.05 * Math.sin(4 * q + 0.6 * s))) * reach;
+  // The cone stood up, turned and not mirrored, so its faces still face out.
+  const x = px + lx * girth + ox, y = py + lz * reach, z = pz - ly * girth + oz;
+  const rl = Math.hypot(lx, ly) || 1;
+  let nx = lx / rl, ny = -(coneSlope(lz) * girth) / reach, nz = -ly / rl;
+  const nl = Math.hypot(nx, ny, nz) || 1;
+  nx /= nl;
+  ny /= nl;
+  nz /= nl;
+  const d = Math.hypot(x, y, z) || 1;
+  out[0] = x;
+  out[1] = y;
+  out[2] = z;
+  // Across it as the eye sees it: level and square to the way to its foot.
+  const bl = Math.hypot(px, py, pz) || 1, wx = px / bl, wz = pz / bl;
+  let rx = wz, rz = -wx;
+  const rr = Math.hypot(rx, rz);
+  if (rr < 1e-4) {
+    rx = 1;
+    rz = 0;
+  } else {
+    rx /= rr;
+    rz /= rr;
+  }
+  out[3] = lx * rx - ly * rz;
+  out[4] = lz;
+  out[5] = -(nx * x + ny * y + nz * z) / d;
+  sootLight(light3, nx, ny, nz, env);
+  out[6] = light3[0]!;
+  out[7] = light3[1]!;
+  out[8] = light3[2]!;
+  out[9] = 1;
+  fireFlat[0] = bytes[at + 18]! / 255;
+  fireFlat[1] = 0;
+  fireFlat[2] = seed;
+  fireFlat[3] = Math.abs(py / bl);
+  fireFlat[4] = q;
+  fireFlat[5] = high;
+}
+
+/**
+ * Writes a blaze as instance `i` of `bytes`: its foot at (x, y, z) from the eye, `high` metres high and `wide` across,
+ * its tip carried (leanX, leanZ), -1 to 1, of BLAZE_LEAN of its height downwind, `power` of it shown, its clock's `pace`
+ * (1 to 4 turns a turn: a small fire is quicker) and its seed from 0 to 1.
+ */
+export function putBlaze(bytes: Uint8Array, i: number, x: number, y: number, z: number, high: number, wide: number, leanX: number, leanZ: number, power: number, pace: number, seed: number): void {
+  const at = i * INSTANCE_BYTES;
+  const view = new DataView(bytes.buffer, bytes.byteOffset + at, INSTANCE_BYTES);
+  view.setFloat32(0, x, true);
+  view.setFloat32(4, y, true);
+  view.setFloat32(8, z, true);
+  view.setUint16(12, Math.round(clamp(seed) * 65535), true);
+  bytes[at + 14] = Math.max(1, Math.min(255, Math.round(high * BLAZE_HIGH_STEPS)));
+  bytes[at + 15] = Math.max(1, Math.min(255, Math.round(wide * BLAZE_WIDE_STEPS)));
+  bytes[at + 16] = Math.round(Math.max(-1, Math.min(1, leanX)) * 127) + 128;
+  bytes[at + 17] = Math.round(Math.max(-1, Math.min(1, leanZ)) * 127) + 128;
+  bytes[at + 18] = Math.round(clamp(power) * 255);
+  bytes[at + 19] = Math.max(1, Math.min(4, Math.round(pace)));
+}
+
+/**
  * Writes a flame as instance `i` of `bytes`: its nozzle at (x, y, z) from the eye, the unit way (dx, dy, dz) it blows,
  * `metres` long, `power` from 0 for out to 1, `ignite` from 1 as its motor lights to 0, and its seed from 0 to 1.
  */
@@ -497,6 +641,39 @@ vec4 lobeLight(float u, float v, float facing, float lift, float age, float heat
   float dim = soot * ${f(SOOT_HIDES)};
   return vec4(cover * (fireShown(hot.r) * more + lobeDark(tone, lr) * dim), cover * (fireShown(hot.g) * more + lobeDark(tone, lg) * dim), cover * (blue * more + lobeDark(tone, lb) * dim), cover * (${f(FIRE_HIDES)} + ${f(SOOT_HIDES - FIRE_HIDES)} * soot));
 }
+float blazeGrain(float x, float y, float flow, float seed) {
+  float s = ${f(TAU)} * seed;
+  float r = y - flow;
+  float wx = x + 0.4 * sin(${f(3 * RISE)} * r + s);
+#ifdef FIRE_NOISE
+  int k = int(floor(seed * 255.0)) + 11;
+  float coarse = tiled(wx, r, ${LOBE_PERIOD}, ${LOBE_PERIOD}, k);
+#ifdef FIRE_FINE
+  return 0.62 * coarse + 0.38 * tiled(2.0 * wx + 1.3 * coarse, 2.0 * y - 4.0 * flow, ${2 * LOBE_PERIOD}, ${2 * LOBE_PERIOD}, k + 31);
+#else
+  return 0.62 * coarse + 0.38 * (0.5 + 0.5 * sin(3.3 * wx + ${f(9 * RISE)} * r - s) * sin(2.9 * wx - ${f(5 * RISE)} * r + 1.7 * s));
+#endif
+#else
+  return 0.5 + 0.2 * sin(1.9 * wx + 2.2 * sin(${f(3 * RISE)} * r + 2.0 * s)) + 0.16 * sin(${f(7 * RISE)} * r - 1.1 * wx + 2.0 * s);
+#endif
+}
+vec4 blazeLight(float across, float along, float facing, float power, float seed, float axial, float phase, float lr, float lg, float lb) {
+  float h = along * ${f(BLAZE_REACH)};
+  float flow = phase * ${f(LOBE_PERIOD / TAU)};
+  float n = blazeGrain(across * ${f(BLAZE_ACROSS)} + ${f(LOBE_PERIOD)} * fract(seed * 3.7), h * ${f(BLAZE_UP)} + ${f(LOBE_PERIOD)} * fract(seed * 9.1), flow, seed);
+  float front = clamp(facing, 0.0, 1.0);
+  float a2 = axial * axial;
+  float eaten = h * (1.0 - 0.6 * a2 * a2);
+  float field = (0.25 + 0.95 * front) * (1.1 - eaten * eaten) + (0.7 + 1.5 * eaten) * (n - 0.5);
+  float cover = smoothstep(0.25, 0.55, field) * (0.72 + 0.28 * smoothstep(0.3, 0.7, n)) * smoothstep(0.0, 0.1, along) * power;
+  float t = clamp(0.78 - 0.55 * eaten + 0.3 * (front - 0.6) + 0.6 * (n - 0.5), 0.0, 1.0) * (0.7 + 0.3 * smoothstep(0.0, 0.12, along));
+  float soot = 1.0 - smoothstep(0.04, 0.16, t);
+  vec3 hot = fireRamp(t);
+  float blue = fireShown(hot.b);
+  float more = fireBlooms(blue) * (2.0 - cover);
+  float dim = soot * ${f(SOOT_HIDES)};
+  return vec4(cover * (fireShown(hot.r) * more + lobeDark(${f(BLAZE_SOOT)}, lr) * dim), cover * (fireShown(hot.g) * more + lobeDark(${f(BLAZE_SOOT)}, lg) * dim), cover * (blue * more + lobeDark(${f(BLAZE_SOOT)}, lb) * dim), cover * (${f(FIRE_HIDES)} + ${f(SOOT_HIDES - FIRE_HIDES)} * soot));
+}
 `;
 
 /**
@@ -534,7 +711,27 @@ vec3 sootLight(vec3 n) {
 void main() {
   vec3 l = uCenter + aPos * uHalf;
   vec3 p;
-  if (uEffect.x > 0.5) {
+  if (uEffect.x > 1.5) {
+    float high = float(iRegA.x) / ${f(BLAZE_HIGH_STEPS)}, girth = float(iRegA.y) / ${f(2 * BLAZE_WIDE_STEPS)};
+    vec2 lean = (vec2(iRegA.zw) - 128.0) / 127.0 * ${f(BLAZE_LEAN)};
+    float s = ${f(TAU)} * iYaw, q = uEffect.y * float(iRegB.y);
+    float reach = high * ${f(BLAZE_REACH)} * (1.0 + 0.07 * sin(3.0 * q + s) + 0.05 * sin(7.0 * q + 4.1 * s));
+    float bend = l.z * (0.35 + 0.65 * l.z), up2 = l.z * l.z;
+    vec2 off = (lean * bend + up2 * vec2(0.09 * sin(2.0 * q + s) + 0.05 * sin(5.0 * q + 2.3 * s), 0.09 * cos(3.0 * q + 1.7 * s) + 0.05 * sin(4.0 * q + 0.6 * s))) * reach;
+    p = iPos + vec3(l.x * girth + off.x, l.z * reach, -l.y * girth + off.y);
+    vec2 rim = l.xy / max(length(l.xy), 1.0e-6);
+    vec3 n = normalize(vec3(rim.x, -(${f(2.25 / WIDEST)} - ${f(5.2 / WIDEST)} * l.z) * girth / reach, -rim.y));
+    vFacing = -dot(n, normalize(p));
+    vec3 w = normalize(iPos);
+    vec2 r = vec2(w.z, -w.x);
+    float rl = length(r);
+    r = rl < 1.0e-4 ? vec2(1.0, 0.0) : r / rl;
+    vUv = vec2(l.x * r.x - l.y * r.y, l.z);
+    vLight = sootLight(n);
+    vLift = 1.0;
+    vA = vec4(float(iRegB.x) / 255.0, 0.0, iYaw, abs(w.y));
+    vB = vec2(q, high);
+  } else if (uEffect.x > 0.5) {
     float radius = iYaw * ${f(65535 / LOBE_STEPS)};
     float age = (float(iRegA.x) + float(iRegA.y) * 256.0) / 65535.0, seed = float(iRegA.z) / 255.0;
     float under = iRegA.w == ${LOBE_NO_FLOOR}u ? 100.0 : float(iRegA.w) / ${f(FLOOR_STEPS)};
@@ -602,7 +799,8 @@ ${TILED_GLSL}#endif
 ${FIRE_GLSL}void main() {
   float z = 1.0 / gl_FragCoord.w;
   if (z + 0.5 * fwidth(z) < uFrom) discard;
-  o = uEffect.x > 0.5 ? lobeLight(vUv.x, vUv.y, vFacing, vLift, vA.x, uEffect.w, vA.z, uEffect.z, vA.y, vLight.r, vLight.g, vLight.b)
+  if (uEffect.x > 1.5) o = blazeLight(vUv.x, vUv.y, vFacing, vA.x, vA.z, vA.w, vB.x, vLight.r, vLight.g, vLight.b);
+  else o = uEffect.x > 0.5 ? lobeLight(vUv.x, vUv.y, vFacing, vLift, vA.x, uEffect.w, vA.z, uEffect.z, vA.y, vLight.r, vLight.g, vLight.b)
     : flameLight(vUv.x, vUv.y, vFacing, vA.x, vA.y, vA.z, vA.w, vB.x, vB.y);
 #ifdef LIGHT_TARGET
   o.rgb = ${UNGRADED("o.rgb")};

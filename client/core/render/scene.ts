@@ -36,7 +36,6 @@ import { StreetDraws } from "./street-draws.ts";
 import { streetTextureBytes } from "./street-finish.ts";
 import { StreetReflections } from "./street-reflections.ts";
 import { StreetLamps } from "./street-lamps.ts";
-import { WreckFires } from "./wreck-fires.ts";
 import { DamageNumbers } from "./damage-numbers.ts";
 import { DustColumns } from "./dust-columns.ts";
 import { StreetWires } from "./street-wires.ts";
@@ -51,6 +50,7 @@ import { farPlane, type Camera } from "./camera.ts";
 import { Characters, riderFitScratch, seatScratch, type RiderFit, type VehicleRenderPose, type VehicleSeatPose } from "./characters.ts";
 import { exhaustPhase } from "./suit-finish.ts";
 import { Blasts } from "./blasts.ts";
+import { Fires } from "./fires.ts";
 import { Clouds } from "./clouds.ts";
 import { Dropped } from "./dropped.ts";
 import type { FarSource } from "./far.ts";
@@ -303,8 +303,8 @@ export class Scene {
   }
   /** The light of the street lamps that still work (street-lamps.ts). */
   readonly streetLamps: StreetLamps;
-  /** The fires on wrecks that burn where they stand (wreck-fires.ts). */
-  readonly wreckFires: WreckFires;
+  /** Fire that burns where it stands: wrecks ablaze and lit campfires, torches and hearths (fires.ts). */
+  readonly fires: Fires;
   /** The wires between the utility poles still standing (street-wires.ts). */
   readonly streetWires: StreetWires;
   /** What hides what this frame. */
@@ -361,6 +361,9 @@ export class Scene {
     this.blasts.on = on;
     this.details.muting = !on;
   }
+  /** Whether fire that stands is drawn, its flames, smoke and embers (passes.ts "fires"). */
+  get burning(): boolean { return this.fires.on; }
+  set burning(on: boolean) { this.fires.on = on; }
   /** What assets there are and which are loaded. */
   readonly assets: Assets;
   private readonly trisOfMesh: readonly (readonly number[])[];
@@ -682,7 +685,6 @@ export class Scene {
     this.transientU16 = new Uint16Array(t.buffer, t.byteOffset, t.byteLength >> 1);
     this.characters = new Characters(reg, pack, this.assets);
     this.streetLamps = new StreetLamps(reg);
-    this.wreckFires = new WreckFires(reg);
     this.casting.join(this.characters, this.streetLamps);
     this.streetWires = new StreetWires(reg);
     this.details = new Details(reg, pack.header.details, pack.palette, (kind) => this.characters.creature(kind), (id, kind, tick) => this.characters.drawnGait(id, kind, tick), (id, kind, tick) => this.characters.drawnPose(id, kind, tick));
@@ -701,6 +703,7 @@ export class Scene {
     this.supplyDrops = new SupplyDrops(reg, this.assets, pack.palette, this.details);
     this.palette = pack.palette;
     this.blasts = new Blasts(reg, this.assets, this.put, this.details);
+    this.fires = new Fires(reg, this.assets, this.put);
     this.screens = new Screens(reg.screenFace);
     this.prints = new Prints(pack.palette);
     this.characters.printByte = (edition, flat) => {
@@ -1010,6 +1013,8 @@ export class Scene {
       ["ghost", this.placing],
       ["things", this.loose],
       ["details", { draw: (f) => this.showDetails(f.cam, f.remote) }],
+      // After the details, so a fire's flames are drawn over its own smoke and what lies round it.
+      ["fires", { draw: (f) => this.fires.draw(p, f.cam, f.now) }],
       // After the details, so fire is drawn over the dust and smoke round it.
       ["blasts", { draw: (f) => this.blasts.draw(p, f.cam, f.now) }],
       // Last but the viewer's own body: screens are the least of a frame.
@@ -1068,8 +1073,8 @@ export class Scene {
   private showDetails(cam: Camera, remote: RemoteSample | null): void {
     const p = this.packet;
     const { rotorBlur, patrolLights, thrusterPlumes, windscreens, tireContacts } = this.characters;
-    const { streetLamps, streetWires, wreckFires } = this;
-    wreckFires.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ, this.now);
+    const { streetLamps, streetWires, fires } = this;
+    fires.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ, this.now, this.assets.tier, this.viewHeight);
     const fields = this.shots?.tekImpacts;
     fields?.build(this.world.structs, cam, this.now);
     const orbCards = this.world.orbs ? (this.orbs?.cards ?? null) : null;
@@ -1080,7 +1085,7 @@ export class Scene {
     this.blasts.viewHeight = this.viewHeight;
     this.blasts.cards(cam, this.now, this.own?.firstPerson);
     const beacons = this.supplyDrops.beacons;
-    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, beacons.count + tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count + wreckFires.count + this.dust.count + this.blasts.count + (orbCards?.count ?? 0) + (fields?.count ?? 0));
+    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, beacons.count + tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count + fires.count + this.dust.count + this.blasts.count + (orbCards?.count ?? 0) + (fields?.count ?? 0));
     const particles = p.detailCount;
     // An orb's halo first of the cards, so what is nearer is drawn over it.
     orbCards?.write(p);
@@ -1096,8 +1101,8 @@ export class Scene {
     streetWires.write(p);
     const street = p.detailCount;
     streetLamps.write(p);
-    const fires = p.detailCount;
-    wreckFires.write(p);
+    const burning = p.detailCount;
+    fires.write(p);
     const dust = p.detailCount;
     this.dust.write(p);
     const smoke = p.detailCount;
@@ -1124,8 +1129,8 @@ export class Scene {
     this.put.drawDetails(lamps, plumes - lamps, DRAW_BLEND, patrolLights.passes(cam));
     this.put.drawDetails(plumes, wires - plumes, DRAW_BLEND, thrusterPlumes.passes(cam));
     this.put.drawDetails(wires, street - wires, DRAW_BLEND, streetWires.passes(cam));
-    this.put.drawDetails(street, fires - street, DRAW_BLEND, streetLamps.passes(cam));
-    if (wreckFires.count > 0) this.put.drawDetails(fires, dust - fires, DRAW_BLEND, wreckFires.passes(cam));
+    this.put.drawDetails(street, burning - street, DRAW_BLEND, streetLamps.passes(cam));
+    if (fires.count > 0) this.put.drawDetails(burning, dust - burning, DRAW_BLEND, fires.passes(cam));
     this.put.drawDetails(dust, smoke - dust, DRAW_BLEND, this.dust.passes(cam));
     this.put.drawDetails(smoke, wheelsAndGlass - smoke, DRAW_BLEND, this.blasts.passes(cam));
     this.put.drawDetails(wheelsAndGlass, numbers - wheelsAndGlass, DRAW_BLEND, tireContacts.passes(cam) | windscreens.passes(cam) | (fields?.count ? fields.passes(cam) : 0));

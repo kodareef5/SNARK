@@ -3,7 +3,7 @@
 
 import { expect, test } from "bun:test";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
-import { CONE_TURN, FIRE_GLSL, FIRE_VERTEX_FLOATS, coneRadius, coneSlope, fireFlat, fireRamp, flameLight, flamePhase, flameVertex, lobeBands, lobeLight, lobeNoise, lobeSwell, lobeVertex, putFlame, putLobe, FLAME_TURN_MS, type FireSun } from "../../client/core/render/fire-light.ts";
+import { BLAZE_TURN_MS, CONE_TURN, FIRE_GLSL, blazeLight, blazeNoise, blazePhase, blazeVertex, putBlaze, FIRE_VERTEX_FLOATS, coneRadius, coneSlope, fireFlat, fireRamp, flameLight, flamePhase, flameVertex, lobeBands, lobeLight, lobeNoise, lobeSwell, lobeVertex, putFlame, putLobe, FLAME_TURN_MS, type FireSun } from "../../client/core/render/fire-light.ts";
 import { DETAIL_LIT_FRAGMENT, scorchOf, smokeOf } from "../../client/core/render/detailtext.ts";
 import { FIRE_FRAGMENT, fireShown } from "../../client/core/render/fire-light.ts";
 import { tone } from "../../client/core/render/surface.ts";
@@ -46,7 +46,7 @@ function compiled(defines: readonly string[]): Record<string, (...v: number[]) =
     const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
     const fract = (v) => v - Math.floor(v);
     const smoothstep = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };`;
-  return new Function("tiled", `${helpers}\n${js}\nreturn { fireRamp, flameLight, lobeLight };`)(tiled);
+  return new Function("tiled", `${helpers}\n${js}\nreturn { fireRamp, flameLight, lobeLight, blazeLight };`)(tiled);
 }
 
 /** Numbers spread over 0 to 1 that never repeat a row. */
@@ -63,7 +63,7 @@ test("the ramp runs from nothing for soot through deep red, orange and yellow to
   for (let t = 0; t < 1; t += 0.01) for (let c = 0; c < 3; c++) expect(ramp(t + 0.01)[c]!).toBeGreaterThanOrEqual(ramp(t)[c]!);
 });
 
-test("the card's text and its twin agree at sampled points: the ramp, a flame, and a lobe with two octaves of the noise, one and bands, for a display and for a light target", () => {
+test("the card's text and its twin agree: the ramp, a flame, a lobe and a blaze, by noise, light and target", () => {
   for (const target of [false, true]) {
     for (const lit of [false, true]) {
       for (const noise of [0, 1, 2]) {
@@ -81,6 +81,10 @@ test("the card's text and its twin agree at sampled points: the ramp, a flame, a
           const lobe = [16 * spread(k, 0.618), 16 * spread(k, 0.377) - 2, spread(k, 0.233) * 1.2 - 0.1, 0.6 * spread(k, 0.67) - 0.1, spread(k, 0.91), 0.5 + 0.5 * spread(k, 0.53), spread(k, 0.147), 0.1 * spread(k, 0.71), spread(k, 0.29), 2 * spread(k, 0.83), 2 * spread(k, 0.43), 2 * spread(k, 0.57)] as const;
           lobeLight(out, ...lobe, noise, target, lit);
           (glsl.lobeLight!(...lobe) as number[]).forEach((v, c) => expect(v).toBeCloseTo(out[c]!, 6));
+          // A blaze: across it, up it, how it faces, how much shows, its seed, how nearly from over it, its clock at a pace of three, and the light on it.
+          const blaze = [2 * spread(k, 0.618) - 1, spread(k, 0.377), spread(k, 0.233) * 1.2 - 0.1, spread(k, 0.91), spread(k, 0.147), spread(k, 0.71), 3 * 6.283 * spread(k, 0.29), 2 * spread(k, 0.83), 2 * spread(k, 0.43), 2 * spread(k, 0.57)] as const;
+          blazeLight(out, ...blaze, noise, target, lit);
+          (glsl.blazeLight!(...blaze) as number[]).forEach((v, c) => expect(v).toBeCloseTo(out[c]!, 6));
         }
       }
     }
@@ -111,6 +115,98 @@ test("a flame is hottest at its nozzle's middle, gone by its tip and at its edge
   // The phase comes round with no jump: the same light a whole turn on.
   expect(at(0.3, 0.4, 0.8, 1, 0, 0, flamePhase(123))).toEqual(at(0.3, 0.4, 0.8, 1, 0, 0, flamePhase(123 + FLAME_TURN_MS)));
   expect(flamePhase(FLAME_TURN_MS - 1) + flamePhase(1)).toBeCloseTo(2 * Math.PI, 3);
+});
+
+test("a blaze is whole and hot at its foot, tears into tongues past its height, cools to red and soot, and comes round", () => {
+  const out = [0, 0, 0, 0];
+  // Over its face between two heights, as shares of its cone: its mean cover, red and green, and the share that is soot.
+  const band = (from: number, to: number, noise: number, axial = 0): { cover: number; red: number; green: number; soot: number } => {
+    let [cover, red, green, soot, n] = [0, 0, 0, 0, 0];
+    for (let along = from; along < to; along += 0.01) for (let across = -0.9; across <= 0.9; across += 0.05) for (const phase of [0.3, 2.1, 4.4]) {
+      blazeLight(out, across, along, 0.85 * Math.sqrt(1 - across * across), 1, 0.37, axial, phase, 1, 1, 1, noise, false, true);
+      cover += out[3]!;
+      red += out[0]!;
+      green += out[1]!;
+      if (out[3]! > 0.05 && out[0]! < 0.1 * out[3]!) soot++;
+      n++;
+    }
+    return { cover: cover / n, red: red / n, green: green / n, soot: soot / n };
+  };
+  for (const noise of [0, 1, 2]) {
+    // Its height is the cone's to 0.69: BLAZE_REACH is 1.45.
+    const [foot, middle, tip, past] = [band(0.1, 0.25, noise), band(0.3, 0.45, noise), band(0.62, 0.72, noise), band(0.9, 1, noise)];
+    expect([noise, foot.cover > 0.65, middle.cover > 0.45, tip.cover > 0.04, tip.cover < 0.5, past.cover < 0.12]).toEqual([noise, true, true, true, true, true]);
+    // Yellow at its foot, redder toward its tip, and soot only up there.
+    expect([foot.green / foot.red > 0.6, tip.green / Math.max(tip.red, 1e-6) < foot.green / foot.red, foot.soot < 0.02]).toEqual([true, true, true]);
+    // Seen from over it, its tip is its middle and is not eaten away as it is from the side.
+    expect(band(0.62, 0.72, noise, 1).cover).toBeGreaterThan(1.5 * tip.cover);
+    for (let k = 0; k < 200; k++) {
+      const args = [2 * spread(k, 0.61) - 1, spread(k, 0.37), spread(k, 0.23), 1, spread(k, 0.71), spread(k, 0.53)] as const;
+      blazeLight(out, ...args, 6.283 * spread(k, 0.29), 1, 1, 1, noise, true, true);
+      expect([out[3]! >= 0, out[3]! <= 1, out.every((c) => c >= 0 && Number.isFinite(c))]).toEqual([true, true, true]);
+      // A whole turn on at a pace of three, its noise has risen whole periods of its cells and it is where it began.
+      const now = [...out];
+      blazeLight(out, ...args, 6.283 * spread(k, 0.29) + 2 * Math.PI * 3, 1, 1, 1, noise, true, true);
+      now.forEach((v, c) => expect(out[c]!).toBeCloseTo(v, 4));
+      expect(blazeNoise(args[0], args[1] * 3, 5.5 + 16, 0.4, noise)).toBeCloseTo(blazeNoise(args[0], args[1] * 3, 5.5, 0.4, noise), 6);
+    }
+  }
+  // Half shown is half of it, and none is nothing.
+  blazeLight(out, 0.1, 0.15, 0.9, 1, 0.3, 0, 1, 1, 1, 1, 2, false, true);
+  const whole = [...out];
+  blazeLight(out, 0.1, 0.15, 0.9, 0.5, 0.3, 0, 1, 1, 1, 1, 2, false, true);
+  expect(out[3]!).toBeCloseTo(whole[3]! / 2, 9);
+  blazeLight(out, 0.1, 0.15, 0.9, 0, 0.3, 0, 1, 1, 1, 1, 2, false, true);
+  expect(out).toEqual([0, 0, 0, 0]);
+  expect([blazePhase(0), blazePhase(BLAZE_TURN_MS), blazePhase(-1) > 6.28]).toEqual([0, 0, true]);
+});
+
+test("a blaze's twenty bytes hold it whole, and its vertex twin stands the cone up over its foot, facing out and leaning", () => {
+  const bytes = new Uint8Array(INSTANCE_BYTES * 2);
+  const out = new Float64Array(FIRE_VERTEX_FLOATS);
+  const frame = new Float32Array(FRAME_FLOATS);
+  frame.set([0, 1, 0], FRAME.sun);
+  frame.set([2, 2, 2, 0.5], FRAME.sunColor);
+  const env: FireSun = { lit: true, frame, sun: [0, 1, 0], light: 1 };
+  // A blaze 2 m high and 1.2 m wide, its foot 10 m ahead and a metre down, with no wind.
+  putBlaze(bytes, 1, 0, -1, 10, 2, 1.2, 0, 0, 0.8, 2, 0.25);
+  const at = INSTANCE_BYTES;
+  expect([bytes[at + 14], bytes[at + 15], bytes[at + 16], bytes[at + 17], bytes[at + 18], bytes[at + 19]]).toEqual([48, 58, 128, 128, 204, 2]);
+  blazeVertex(out, 0, 0, 0, bytes, at, 0, env);
+  expect([out[0], out[1], out[2]].map((v) => Math.round(v! * 1e4) / 1e4)).toEqual([0, -1, 10]);
+  // Its tip is its cone's height over its foot, give or take its flutter and sway; with no wind it does not lean.
+  blazeVertex(out, 0, 0, 1, bytes, at, 0, env);
+  expect([Math.abs(out[1]! + 1 - 2 * 1.45) < 0.4, Math.abs(out[0]!) < 0.5, Math.abs(out[2]! - 10) < 0.5]).toEqual([true, true, true]);
+  expect([fireFlat[0]!, fireFlat[2]!, fireFlat[5]!].map((v) => Math.round(v * 100) / 100)).toEqual([0.8, 0.25, 2]);
+  // Its side toward the eye faces the eye and the far side away.
+  blazeVertex(out, 0, coneRadius(0.3), 0.3, bytes, at, 0, env);
+  const toward = out[5]!;
+  blazeVertex(out, 0, -coneRadius(0.3), 0.3, bytes, at, 0, env);
+  expect([toward > 0.6, out[5]! < -0.6]).toEqual([true, true]);
+  // Stood up, the cone is turned and not mirrored: its faces' windings still face out, so the back ones are culled.
+  const cone = fireMeshes()[0]!.lods[0]!;
+  let outward = 0, faces = 0;
+  for (let t = 0; t < cone.indices.length; t += 3) {
+    const v = [0, 1, 2].map((k) => {
+      const i = cone.indices[t + k]! * 3;
+      blazeVertex(out, cone.positions[i]!, cone.positions[i + 1]!, cone.positions[i + 2]!, bytes, at, 0, env);
+      return [out[0]!, out[1]! + 1, out[2]! - 10] as const;
+    });
+    const [a, b, c] = [v[0]!, v[1]!, v[2]!];
+    const e1 = [b[0]! - a[0]!, b[1]! - a[1]!, b[2]! - a[2]!], e2 = [c[0]! - a[0]!, c[1]! - a[1]!, c[2]! - a[2]!];
+    const n = [e1[1]! * e2[2]! - e1[2]! * e2[1]!, e1[2]! * e2[0]! - e1[0]! * e2[2]!, e1[0]! * e2[1]! - e1[1]! * e2[0]!];
+    const mx = (a[0]! + b[0]! + c[0]!) / 3, mz = (a[2]! + b[2]! + c[2]!) / 3;
+    if (Math.hypot(n[0]!, n[1]!, n[2]!) < 1e-9 || Math.hypot(mx, mz) < 1e-3) continue;
+    faces++;
+    if (n[0]! * mx + n[2]! * mz > 0) outward++;
+  }
+  expect(outward / faces).toBeGreaterThan(0.95);
+  // Leaning toward +x, its tip is carried that way, and its middle less.
+  putBlaze(bytes, 0, 0, -1, 10, 2, 1.2, 1, 0, 0.8, 2, 0.25);
+  blazeVertex(out, 0, 0, 1, bytes, 0, 0, env);
+  const tip = out[0]!;
+  blazeVertex(out, 0, 0, 0.5, bytes, 0, 0, env);
+  expect([tip > 1.2, out[0]! > 0.2, out[0]! < tip]).toEqual([true, true, true]);
 });
 
 test("a lobe begins white, cools through fire to soot with glowing cracks, opens into holes and is gone", () => {

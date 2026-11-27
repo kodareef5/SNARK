@@ -12,7 +12,7 @@
 
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { airFrame } from "../../client/core/render/atmosphere.ts";
-import { FIRE_FLAME, FIRE_LOBE, LOBE_STEPS } from "../../client/core/render/fire-light.ts";
+import { BLAZE_HIGH_STEPS, BLAZE_REACH, BLAZE_WIDE_STEPS, FIRE_BLAZE, FIRE_FLAME, FIRE_LOBE, LOBE_STEPS } from "../../client/core/render/fire-light.ts";
 import { DETAIL, DETAIL_FLOATS, DETAIL_GLOW, DETAIL_SCORCH, DETAIL_SMOKE, DRAW_BLEND, DRAW_DETAILS, DRAW_FIRE, FRAME, FRAME_FLOATS, type FramePacket } from "../../client/core/render/packet.ts";
 import { PROGRAMS, withDefines } from "../../client/core/render/programs.ts";
 import { skyFrame, theSky } from "../../client/core/render/sky.ts";
@@ -48,7 +48,7 @@ void main() {
 
 /**
  * A triangle over the whole screen for the fire program: across it the face turns from edge-on toward the eye and away
- * again. A flame runs up it from its nozzle to its tip; a lobe's noise is six cells across it.
+ * again. A flame runs up it from its nozzle to its tip, and a blaze from its foot across its width; a lobe's noise is six cells across it.
  */
 const FACE = `#version 300 es
 uniform vec4 uEffect, uFlatA;
@@ -61,7 +61,7 @@ flat out vec2 vB;
 void main() {
   vec2 at = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)) * 2.0 - 1.0;
   vLift = 1.0;
-  vUv = uEffect.x > 0.5 ? at * 3.0 + 8.0 : at * 0.5 + 0.5;
+  vUv = uEffect.x > 1.5 ? vec2(at.x, at.y * 0.5 + 0.5) : uEffect.x > 0.5 ? at * 3.0 + 8.0 : at * 0.5 + 0.5;
   vFacing = 1.0 - 0.9 * abs(at.x);
   vLight = vec3(1.2, 1.1, 1.0);
   vA = uFlatA;
@@ -127,7 +127,7 @@ export async function fireCost(): Promise<FireCost> {
   const details = PROGRAMS.details!(medium, "rgba", false, false);
   const card = (name: string, flags: number, grey: number): Record<string, unknown> => ({ name, vertex: CARD, fragment: withDefines(details.fragment, details.defines), samplers: details.samplers, frame, matrix, uniforms: { uCard: [flags, grey, 0.7, 0], uBlend: [1], uCells: [4], uFrom: [0] } });
   // A flame at full power a moment after it lit; a lobe a third through its life, when fire, soot and edge all show.
-  const flame = [1, 0.3, 0.37, 0.2], lobe = [0.35, 1, 0.37, 0];
+  const flame = [1, 0.3, 0.37, 0.2], lobe = [0.35, 1, 0.37, 0], blaze = [1, 0, 0.37, 0.1];
   const runs = [
     { name: "jet", vertex: TUBE, fragment: surface.fragment, samplers: surface.samplers, frame, matrix, uniforms: { uTube: [GLOW_JET, 3], uStreetMaterial: [DROP_GLOW], uEffect: [12, 0xf03838, 1, packEffect(6, false, 3)], uFrom: [0] } },
     fire("flame", medium, false, 1, FIRE_FLAME, flame, [1.1, 0.9]),
@@ -136,6 +136,10 @@ export async function fireCost(): Promise<FireCost> {
     fire("lobe", medium, false, 1, FIRE_LOBE, lobe, [0, 0]),
     fire("lobe, two octaves", high, true, 2, FIRE_LOBE, lobe, [0, 0]),
     fire("lobe, bands", medium, false, 0, FIRE_LOBE, lobe, [0, 0]),
+    // A blaze seen from its side, at its height's middle of its clock, as each tier reads its noise.
+    fire("blaze", medium, false, 1, FIRE_BLAZE, blaze, [2.3, 2]),
+    fire("blaze, two octaves", high, true, 2, FIRE_BLAZE, blaze, [2.3, 2]),
+    fire("blaze, bands", medium, false, 0, FIRE_BLAZE, blaze, [2.3, 2]),
     // A puff of smoke, a length of a rope of it eight times as long as wide, and a scorch.
     card("smoke card", DETAIL_SMOKE, 16 / 255),
     card("rope card", DETAIL_SMOKE, 128 / 255),
@@ -161,8 +165,8 @@ export async function fireCost(): Promise<FireCost> {
 }
 
 /** The pixels a frame's fire and blended cards would fill, each whole, in megapixels by kind, for a view `width` by `height`. */
-export function burning(p: FramePacket, fovY: number, width: number, height: number): { lobe: number; flame: number; smoke: number; dust: number; glow: number; scorch: number } {
-  const out = { lobe: 0, flame: 0, smoke: 0, dust: 0, glow: 0, scorch: 0 };
+export function burning(p: FramePacket, fovY: number, width: number, height: number): { lobe: number; flame: number; blaze: number; smoke: number; dust: number; glow: number; scorch: number } {
+  const out = { lobe: 0, flame: 0, blaze: 0, smoke: 0, dust: 0, glow: 0, scorch: 0 };
   const screen = (width * height) / 1e6;
   // Pixels a metre at a metre.
   const focal = height / (2 * Math.tan(fovY / 2));
@@ -173,7 +177,9 @@ export function burning(p: FramePacket, fovY: number, width: number, height: num
       for (let k = 0; k < p.drawInstances[d]!; k++) {
         const at = (p.drawFirst[d]! + k) * 20;
         const far = Math.max(0.5, Math.hypot(view.getFloat32(at, true), view.getFloat32(at + 4, true), view.getFloat32(at + 8, true)));
-        if (p.drawEffect[d * 4]! > 0.5) out.lobe += Math.min(screen, (Math.PI * (view.getUint16(at + 12, true) / LOBE_STEPS) ** 2 * focal * focal) / (far * far) / 1e6);
+        // A blaze's cone, its height by its reach and some two thirds of its width, as it shows.
+        if (p.drawEffect[d * 4]! > 1.5) out.blaze += Math.min(screen, ((p.transient[at + 14]! / BLAZE_HIGH_STEPS) * BLAZE_REACH * 0.7 * (p.transient[at + 15]! / BLAZE_WIDE_STEPS) * focal * focal) / (far * far) / 1e6);
+        else if (p.drawEffect[d * 4]! > 0.5) out.lobe += Math.min(screen, (Math.PI * (view.getUint16(at + 12, true) / LOBE_STEPS) ** 2 * focal * focal) / (far * far) / 1e6);
         else out.flame += Math.min(screen, (((p.transient[at + 17]! / 32) ** 2 * 0.4 * focal * focal) / (far * far)) / 1e6);
       }
     } else if ((flags & DRAW_DETAILS) !== 0 && (flags & DRAW_BLEND) !== 0) {
@@ -215,7 +221,7 @@ async function blastFrame(cost: FireCost): Promise<boolean> {
   cam.pitch = 0.1;
   const ms = (p: FramePacket): { all: number; parts: ReturnType<typeof burning> } => {
     const b = burning(p, cam.fovY, W, H);
-    return { all: b.lobe * cost.ms.lobe! + b.flame * cost.ms.flame! + b.smoke * cost.ms["smoke card"]! + b.dust * cost.ms["dust card"]! + b.glow * cost.ms["glow card"]! + b.scorch * cost.ms["scorch card"]!, parts: b };
+    return { all: b.lobe * cost.ms.lobe! + b.flame * cost.ms.flame! + b.blaze * cost.ms.blaze! + b.smoke * cost.ms["smoke card"]! + b.dust * cost.ms["dust card"]! + b.glow * cost.ms["glow card"]! + b.scorch * cost.ms["scorch card"]!, parts: b };
   };
   const step = (): FramePacket => {
     scene.now += 1000 / 60;

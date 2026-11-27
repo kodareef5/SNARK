@@ -3,7 +3,7 @@
 // them. raster.ts draws a frame's fire with `drawFire`. Run alone, this file draws the two looks by themselves on a plain
 // ground, which takes a second: flames by seed, phase and view, and fireballs by age and seed.
 //
-//   bun tools/snap/fire.ts [--flames] [--bands|--coarse] [--night] [--level N] [--out FILE] [--gpu]
+//   bun tools/snap/fire.ts [--flames|--blazes] [--bands|--coarse] [--night] [--level N] [--out FILE] [--gpu]
 //
 // With --gpu the same sheet is then drawn by the fire program's own texts in headless Chrome on this machine's card, on
 // a plain ground and as low poly lights its soot, and the two pictures are compared: the twin against what it is twin of.
@@ -13,7 +13,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { Camera } from "../../client/core/render/camera.ts";
-import { CONE_TURN, FIRE_FLAME, FIRE_FRAGMENT, FIRE_VERTEX, FIRE_VERTEX_FLOATS, fireFlat, flameLight, flamePhase, flameVertex, lobeLight, lobeSwell, lobeVertex, putFlame, putLobe, type FireSun } from "../../client/core/render/fire-light.ts";
+import { CONE_TURN, FIRE_BLAZE, FIRE_FLAME, FIRE_FRAGMENT, FIRE_VERTEX, FIRE_VERTEX_FLOATS, blazeLight, blazePhase, blazeVertex, fireFlat, flameLight, flamePhase, flameVertex, lobeLight, lobeSwell, lobeVertex, putBlaze, putFlame, putLobe, type FireSun } from "../../client/core/render/fire-light.ts";
+import { blazePace, layFlame } from "../../client/core/render/fires.ts";
 import { FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
 import { INSTANCE_BYTES } from "../../shared/pack/pack.ts";
 import { withDefines } from "../../client/core/render/programs.ts";
@@ -69,6 +70,7 @@ export function drawFire(t: FireTarget, positions: Float32Array, colors: Uint8Ar
   for (let i = 0; i < count; i++) {
     const [x, y, z] = [positions[i * 3]!, positions[i * 3 + 1]!, positions[i * 3 + 2]!];
     if (kind === FIRE_FLAME) flameVertex(v, x, y, z, colors[i]! / CONE_TURN, bytes, at, phase);
+    else if (kind === FIRE_BLAZE) blazeVertex(v, x, y, z, bytes, at, phase, look.env);
     else lobeVertex(v, x, y, z, bytes, at, look.env);
     made.set(v, i * N);
     const w = m[3]! * v[0]! + m[7]! * v[1]! + m[11]! * v[2]!;
@@ -106,6 +108,7 @@ export function drawFire(t: FireTarget, positions: Float32Array, colors: Uint8Ar
         if (qs < t.from) continue;
         const carry = (j: number): number => (q0 * made[a * N + j]! + q1 * made[b * N + j]! + q2 * made[c * N + j]!) * qs;
         if (other) other(lit, carry(3), carry(4), carry(5));
+        else if (kind === FIRE_BLAZE) blazeLight(lit, carry(3), carry(4), carry(5), flat[0]!, flat[2]!, flat[3]!, flat[4]!, carry(6), carry(7), carry(8), look.noise, look.target, look.env.lit);
         else if (kind === FIRE_FLAME) flameLight(lit, carry(3), carry(4), carry(5), flat[0]!, flat[1]!, flat[2]!, flat[3]!, flat[4]!, flat[5]!, look.target);
         else lobeLight(lit, carry(3), carry(4), carry(5), carry(9), flat[0]!, heat, flat[2]!, tone, flat[1]!, carry(6), carry(7), carry(8), look.noise, look.target, look.env.lit);
         if (lit[3]! <= 0 && lit[0]! + lit[1]! + lit[2]! <= 0) continue;
@@ -122,6 +125,10 @@ interface Drawn {
   col: number;
   row: number;
   kind: number;
+  /** The mesh, where it is not the kind's own: a blaze is drawn on the cone. */
+  mesh?: number;
+  /** The cell's own view, where it is not the sheet's. */
+  matrix?: number[];
   phase: number;
   tone: number;
   heat: number;
@@ -186,7 +193,8 @@ try {
   gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
   gl.enable(gl.CULL_FACE);
   for (const d of s.drawn) {
-    const m = meshes[d.kind];
+    const m = meshes[d.mesh ?? d.kind];
+    gl.uniformMatrix4fv(u("uViewProj"), false, d.matrix ?? s.matrix);
     gl.viewport(d.col * s.CW, s.H - (d.row + 1) * s.CH, s.CW, s.CH);
     gl.bindVertexArray(m.vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, m.instance);
@@ -253,9 +261,9 @@ if (import.meta.main) {
   const GROUND = [96, 100, 108];
   const look: FireLook = { noise: args.includes("--bands") ? 0 : args.includes("--coarse") ? 1 : 2, target: false, env: { lit: !gpu, frame, sun: [0.35, 0.7, 0.62], light: 1 } };
   const drawn: Drawn[] = [];
-  const flames = args.includes("--flames");
-  const [CW, CH] = flames ? [440, 200] : [220, 200];
-  const cols = flames ? 4 : 8, rows = flames ? (gpu ? 6 : 7) : 4;
+  const flames = args.includes("--flames"), blazes = args.includes("--blazes");
+  const [CW, CH] = flames ? [440, 200] : blazes ? [320, 320] : [220, 200];
+  const cols = flames || blazes ? 4 : 8, rows = flames ? (gpu ? 6 : 7) : blazes ? 3 : 4;
   const [W, H] = [CW * cols, CH * rows];
   const pixels = new Uint8ClampedArray(W * H * 4);
   const cell = new Uint8ClampedArray(CW * CH * 4);
@@ -282,7 +290,36 @@ if (import.meta.main) {
     for (let y = 0; y < CH; y++) pixels.set(cell.subarray(y * CW * 4, (y + 1) * CW * 4), ((row * CH + y) * W + col * CW) * 4);
   };
   const t0 = performance.now();
-  if (!flames) {
+  if (blazes) {
+    // Whole fires as fires.ts lays them, a bed and four tongues: a campfire 3 m off at four moments; a wreck's fire 7 m
+    // off, leaning downwind at four moments; and the wreck's from 30 degrees over it, from 60, from right over it, and 25 m off.
+    const views: [number, number, number, number, number, number, number][] = [
+      [0.8, 0.52, 3, 0, 0, 0, 0], [0.8, 0.52, 3, 0, 0, 0, 700], [0.8, 0.52, 3, 0, 0, 0, 1500], [0.8, 0.52, 3, 0, 0, 0, 2600],
+      [1.75, 1.2, 7, 0.25, 0.1, 0, 0], [1.75, 1.2, 7, 0.25, 0.1, 0, 900], [1.75, 1.2, 7, 0.25, 0.1, 0, 1900], [1.75, 1.2, 7, 0.25, 0.1, 0, 3100],
+      [1.75, 1.2, 7, 0.25, 0.1, 0.52, 500], [1.75, 1.2, 7, 0.25, 0.1, 1.05, 500], [1.75, 1.2, 7, 0.25, 0.1, 1.5, 500], [1.75, 1.2, 25, 0.25, 0.1, 0, 500],
+    ];
+    const vp = new Camera();
+    vp.aspect = 1;
+    vp.fovY = 0.7;
+    for (let row = 0; row < rows; row++) for (let col = 0; col < cols; col++) {
+      const [high, wide, far, lx, lz, down, ms] = views[row * cols + col]!;
+      ground();
+      // The eye `far` metres from the flame's middle, `down` radians over it, looking at it.
+      const mid = 0.55 * high * 1.45;
+      vp.pitch = -down;
+      vp.update();
+      const fx = 0, fy = -Math.sin(down) * far - mid, fz = Math.cos(down) * far;
+      target.matrix = vp.viewProj;
+      const px = (high / far) * (CH / (2 * Math.tan(vp.fovY / 2)));
+      layFlame((x, y, z, h, w, power, seed) => {
+        putBlaze(bytes, 0, x, y, z, h, w, lx, lz, power, blazePace(h), seed);
+        const phase = blazePhase(ms);
+        drawFire(target, cone.positions, cone.colors, cone.indices, FIRE_BLAZE, bytes, 0, phase, look);
+        drawn.push({ col, row, kind: FIRE_BLAZE, mesh: 0, matrix: [...vp.viewProj], phase, tone: 0, heat: 1, bytes: [...bytes] });
+      }, fx, fy, fz, high, wide, px, 4, 0.37 + 0.11 * col, 1);
+      put(col, row);
+    }
+  } else if (!flames) {
     // Fireballs: a row a seed, a column an age.
     const ages = [0.02, 0.08, 0.16, 0.28, 0.42, 0.58, 0.74, 0.9];
     for (let row = 0; row < rows; row++) {
@@ -329,7 +366,7 @@ if (import.meta.main) {
       }
     }
   }
-  const out = resolve(arg("out") ?? `.cache/rocket-fx/${flames ? "flames" : "lobes"}${night ? "-night" : ""}.png`);
+  const out = resolve(arg("out") ?? `.cache/rocket-fx/${flames ? "flames" : blazes ? "blazes" : "lobes"}${night ? "-night" : ""}.png`);
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, encodePng(W, H, pixels));
   console.log(`${out}  ${W}x${H}  ${(performance.now() - t0).toFixed(0)} ms`);

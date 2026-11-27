@@ -54,7 +54,7 @@ export const STATIONS: readonly Def[] = [
   // Its size is the box its art was modelled to (Decided 7, D520).
   { type: "shape", id: "core:shape_forge", role: "thing", boxes: [{ at: [0, 0, 0], half: [0.6, 0.85, 0.6] }] },
   { type: "structure", class: "station", id: "core:forge", mesh: "shape", shape: "core:shape_forge", half: [0.6, 0.85, 0.6], color: 5, hp: 2500, material: "core:mat_wood", decayDays: 16, slots: 24, lights: "core:forge_lit", cooks: false, dry: true },
-  { type: "structure", class: "station", id: "core:forge_lit", mesh: "shape", shape: "core:shape_forge", half: [0.6, 0.85, 0.6], color: 8, hp: 2500, material: "core:mat_wood", decayDays: 16, slots: 24, lights: "core:forge", lit: true, cooks: false, dry: true },
+  { type: "structure", class: "station", id: "core:forge_lit", mesh: "shape", shape: "core:shape_forge", half: [0.6, 0.85, 0.6], color: 8, hp: 2500, material: "core:mat_wood", decayDays: 16, slots: 24, lights: "core:forge", lit: true, cooks: false, dry: true, flames: [[0, 0.21, 0.5, 0.34, 0.3]] },
   {
     type: "item",
     class: "structure",

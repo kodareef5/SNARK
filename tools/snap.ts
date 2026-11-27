@@ -10,6 +10,7 @@
 // --flight draws the pteranodon ridden through a flight, a picture at each moment (tools/snap/flight.ts), with --each DIR each on its own too.
 // --hud MODE draws the HUD or one of its screens in the whole client (tools/snap/hud.ts).
 // --blast LOOK (--surface WHAT, --at MS,MS) draws a blast at moments after it went off, and --rocket a rocket in flight (tools/snap/blast.ts).
+// --fire draws a lit campfire and burning hulls from near, farther, far off and over them (tools/snap/fires.ts).
 // --strikes fists|hatchet|pick draws a blow as a sheet of its moments (tools/snap/strikes.ts).
 
 import { zoomed } from "../client/core/optics.ts";
@@ -87,6 +88,7 @@ import { RIDE_MOMENTS, rideGame, rideScene, type Game, type RideMoment } from ".
 import { orbitScene } from "./snap/orbit.ts";
 import { launcherScene } from "./snap/launcher.ts";
 import { blastSnap } from "./snap/blast.ts";
+import { fireSnap } from "./snap/fires.ts";
 import { HUD_MODES, hudScene, type HudMode } from "./snap/hud.ts";
 import { saddleAsset, saddleMeshes, type Ways } from "../tests/fixtures/saddles.ts";
 import { frame as frameFlight, moments, recordFlight, stage } from "./snap/flight.ts";
@@ -1161,6 +1163,10 @@ if (import.meta.main) {
   };
   if (args.includes("--blast") || args.includes("--rocket")) {
     blastSnap(args, arg, provingView);
+    process.exit(0);
+  }
+  if (args.includes("--fire")) {
+    fireSnap(arg, provingView);
     process.exit(0);
   }
   const [w, h] = (arg("size") ?? "960x540").split("x").map(Number);
