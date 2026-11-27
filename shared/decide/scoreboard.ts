@@ -57,6 +57,8 @@ export interface EpisodeScore {
   cost: number;
   /** The 99th percentile of the tick's `decide` part, in microseconds. */
   decideMicros: number;
+  /** By family of scene: episodes, those that arrived, and mean ticks. */
+  families?: Record<string, { scenes: number; arrived: number; ticks: number }>;
 }
 
 export interface PointScores {
@@ -64,7 +66,9 @@ export interface PointScores {
   profile: string;
   /** The headline: each policy over whole episodes on unseen layouts. A scorer that wins single decisions and loses these fails. */
   episodes: EpisodeScore[];
-  /** How far the best candidate beats the rule, as a share of the median cost: under 0.05 nothing is trained. */
+  /** The same policies on fresh scenes of every family, held out or not, for a look at each family. */
+  fresh?: EpisodeScore[];
+  /** How far the best candidate beats the rule at one decision, as a share of the median cost. Gains compound over an episode, so a small one is no reason not to train. */
   headroom: number;
   scores: Score[];
 }

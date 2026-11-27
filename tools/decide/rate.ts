@@ -25,6 +25,9 @@ export interface Trained {
 
 /** One summary of a whole episode, as a world's runner returns it. */
 export interface EpisodeResult {
+  /** The scene's family, and whether it was not played for want of any way to its goal. */
+  family?: string;
+  skipped?: boolean;
   arrived: boolean;
   ticks: number;
   healthLost: number;
@@ -39,13 +42,18 @@ export interface EpisodeResult {
 }
 
 /** Means over episodes, and the 99th percentile of the decide part over all their ticks. */
-export function episodeScore(name: string, list: readonly EpisodeResult[]): EpisodeScore {
+export function episodeScore(name: string, all: readonly EpisodeResult[]): EpisodeScore {
+  const list = all.filter((e) => !e.skipped);
   const n = list.length || NaN, mean = (f: (e: EpisodeResult) => number) => list.reduce((s, e) => s + f(e), 0) / n;
   const parts = list.flatMap((e) => e.decideMicros).sort((a, b) => a - b);
   return {
     name, scenes: list.length, arrived: list.filter((e) => e.arrived).length, ticks: mean((e) => e.ticks), healthLost: mean((e) => e.healthLost),
     stuckTicks: mean((e) => e.stuckTicks), searches: mean((e) => e.searches), cells: mean((e) => e.cells), cost: mean((e) => e.cost),
     decideMicros: parts.length ? parts[Math.min(parts.length - 1, Math.floor(parts.length * 0.99))]! : NaN,
+    families: Object.fromEntries([...new Set(list.map((e) => e.family ?? ""))].map((f) => {
+      const of = list.filter((e) => (e.family ?? "") === f);
+      return [f, { scenes: of.length, arrived: of.filter((e) => e.arrived).length, ticks: of.reduce((s, e) => s + e.ticks, 0) / of.length }];
+    })),
   };
 }
 
@@ -97,9 +105,9 @@ export interface RateOptions {
 
 /** The scores of a point on what its split holds out. */
 export function ratePoint(o: RateOptions): PointScores {
-  const { profile: p, cat, reading } = o;
+  const { profile: p, cat, reading } = o, passes = cat.passes?.[o.point];
   const held = o.decisions.filter((d) => roleOf(cat.split, d.family, d.map) === "held");
-  const ex = examples(held, p, cat.profiles, cat.rules, reading);
+  const ex = examples(held, p, cat.profiles, cat.rules, reading, undefined, passes);
   const rule = cat.rules.get(p.name) ?? null;
   const seed = o.seed ?? 1;
   const scores: Score[] = [];
@@ -113,9 +121,9 @@ export function ratePoint(o: RateOptions): PointScores {
   if (rule) scores.push({ ...summarize("rule", "rule", grade(p.kind, ex, rule, rule), { seed }), gate: ruleGate(played("rule"), played("today")) });
   const hasState = p.state.length > 0;
   const blindSets = {
-    state: hasState ? examples(held, p, cat.profiles, cat.rules, reading, hide("state")) : null,
-    columns: examples(held, p, cat.profiles, cat.rules, reading, hide("rows")),
-    shuffled: hasState ? examples(held, p, cat.profiles, cat.rules, reading, shuffled(held, p.name, seed)) : null,
+    state: hasState ? examples(held, p, cat.profiles, cat.rules, reading, hide("state"), passes) : null,
+    columns: examples(held, p, cat.profiles, cat.rules, reading, hide("rows"), passes),
+    shuffled: hasState ? examples(held, p, cat.profiles, cat.rules, reading, shuffled(held, p.name, seed), passes) : null,
   };
   for (const t of o.trained) {
     const s = summarize(t.name, t.kind, grade(p.kind, ex, t.model, rule), { seed });
@@ -130,7 +138,7 @@ export function ratePoint(o: RateOptions): PointScores {
     s.gate = gateOf(s, { hasState, mine: played(t.name), rule: played("rule"), today: played("today") });
     scores.push(s);
   }
-  const all = examples(o.decisions, p, cat.profiles, cat.rules, reading);
+  const all = examples(o.decisions, p, cat.profiles, cat.rules, reading, undefined, passes);
   return { point: o.point, profile: p.name, episodes: [...(o.episodes ?? [])], headroom: p.kind === "choice" ? headroom(all, rule) : NaN, scores };
 }
 

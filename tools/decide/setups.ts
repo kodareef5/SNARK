@@ -3,18 +3,23 @@
 // headline) and a label's replay (label.ts): the replay forces a candidate at one answer of the point, reseeds the
 // mover's luck there when the movement code allows it, and reads the cost one second on, five, and at the end.
 
-import { GOAL_WALK } from "../../server/behavior.ts";
+import { GOAL_WALK, SEARCH_CELLS } from "../../server/behavior.ts";
+import { LEAVE, SPARE } from "../../server/decide/decide.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
+import { SNAG_SECONDS } from "../../shared/decide/profiles.ts";
+import { Rng } from "../../shared/rng.ts";
 import type { Model } from "../../shared/decide/forward.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
+import { PATH_FOUND, PATH_REACH, PathFinder } from "../../shared/world/path.ts";
 import type { MapData } from "../../shared/world/mapfile.ts";
 import { MapWater } from "../../shared/world/water.ts";
 import { miamiSlice } from "../../tests/fixtures/cityslice.ts";
 import { flatMap } from "../../tests/fixtures/map.ts";
+import { NAV_POINTS } from "./catalog.ts";
 import { READINGS } from "./dataset.ts";
 import { ALONE, type Answer, type Replay, type Replayer } from "./label.ts";
-import { bodyOf, type Scene } from "./random.ts";
+import { MIAMI_SIDE, bodyOf, type Scene } from "./random.ts";
 import type { EpisodeResult } from "./rate.ts";
 import { STANDIN, StandIn } from "./standin.ts";
 import { lab, stateHash, type Lab } from "./world.ts";
@@ -67,6 +72,8 @@ export interface Built {
   body: { radius: number; height: number; pace: number };
   /** Within this of its goal it has arrived. */
   arrive: number;
+  /** Metres of the oracle's way from start to goal; NaN where it found none, and the scene is not played. */
+  way: number;
   /** Bodies that stand, and when each is let go. */
   standers: { e: number; until: number; then?: { x: number; z: number } }[];
 }
@@ -84,14 +91,85 @@ function freeNear(b: Lab, x: number, z: number, r: number, h: number): { x: numb
   return { x, z };
 }
 
+/** Cells the oracle's search may expand: the whole of its grid. */
+const ORACLE_CELLS = (2 * PATH_REACH + 1) ** 2;
+
+/**
+ * Whether a body of `kind` can walk from (x0, z0) to within `arrive` of (x1, z1), by a search over the whole of the path
+ * grid, where today's movers search a ninth of it: the metres of the way, or NaN where there is none.
+ */
+export function reach(w: Lab, kind: string, x0: number, z0: number, x1: number, z1: number, arrive: number, cells = ORACLE_CELLS): number {
+  const reg = w.world.reg, body = reg.move[reg.index.get(kind)!]!;
+  // Water does not stop it: a mover may swim where today's search will not take it.
+  const f = new PathFinder(w.world, { ...body, swimDepth: 1e6 });
+  f.budget = cells;
+  f.doorways = reg.doorway;
+  if (f.find(x0, z0, x1, z1) !== PATH_FOUND || f.count === 0) return NaN;
+  if (Math.hypot(f.x[f.count - 1]! - x1, f.z[f.count - 1]! - z1) > arrive) return NaN;
+  let metres = 0;
+  for (let i = 1; i < f.count; i++) metres += Math.hypot(f.x[i]! - f.x[i - 1]!, f.z[i]! - f.z[i - 1]!);
+  return metres;
+}
+
+/**
+ * Tries at placing a scene's start and goal where the oracle finds a way, and the share of its horizon that way may take
+ * at the mover's pace. On the slice of the city, more tries, each kept only where today's search would not find the way.
+ */
+const TRIES = 12;
+const CITY_TRIES = 24;
+const WAY_SHARE = 0.8;
+const placed = new Map<string, Placed | null>();
+
+interface Placed {
+  start: { x: number; z: number };
+  goal: { x: number; z: number };
+  way: number;
+}
+
+/**
+ * Where a scene's mover starts and its goal is: as drawn, each moved to where the body stands free, if the oracle finds a
+ * way between them short enough; else, from the scene's seed, a goal a few metres off (on the slice of the city, a new
+ * start and goal as far apart). Null where no try finds one. Kept by scene, so every replay of it stands the same.
+ */
+function place(w: Lab, s: Scene, body: { radius: number; height: number; pace: number }, arrive: number): Placed | null {
+  const key = `${s.map}/${s.family}/${s.seed}`;
+  const kept = placed.get(key);
+  if (kept !== undefined) return kept;
+  const rng = new Rng((s.seed * 7919 + 17) >>> 0), line = Math.hypot(s.goal.x - s.start.x, s.goal.z - s.start.z);
+  let out: Placed | null = null, easy: Placed | null = null;
+  const city = s.map === "miami";
+  for (let i = 0; i < (city ? CITY_TRIES : TRIES) && !out; i++) {
+    let sx = s.start.x, sz = s.start.z, gx = s.goal.x, gz = s.goal.z;
+    if (i > 0 && s.map === "miami") {
+      const a = rng.float() * 2 * Math.PI;
+      sx = MIAMI_SIDE / 2 + rng.range(-100, 100);
+      sz = MIAMI_SIDE / 2 + rng.range(-100, 100);
+      gx = sx + Math.sin(a) * line;
+      gz = sz + Math.cos(a) * line;
+    } else if (i > 0) {
+      gx += rng.range(-8, 8);
+      gz += rng.range(-8, 8);
+    }
+    const start = freeNear(w, sx, sz, body.radius, body.height), goal = freeNear(w, gx, gz, body.radius, body.height);
+    const way = reach(w, s.kind, start.x, start.z, goal.x, goal.z, arrive);
+    if (!((way / body.pace) * TICK_RATE <= WAY_SHARE * s.horizon)) continue;
+    if (city && !Number.isNaN(reach(w, s.kind, start.x, start.z, goal.x, goal.z, arrive, SEARCH_CELLS))) easy ??= { start, goal, way };
+    else out = { start, goal, way };
+  }
+  out ??= easy;
+  if (placed.size > 4096) placed.clear();
+  placed.set(key, out);
+  return out;
+}
+
 /** A scene on its own lab world, its mover making for its goal. */
 export function build(s: Scene): Built {
   const w = lab(mapFor(s), s.seed);
   const reg = w.world.reg, wall = reg.index.get("core:wall_stone")!;
   for (const p of s.pieces) for (let y = 0; y < p.storeys; y++) w.world.structs.add(wall, p.x, w.world.hf.heightAt(p.x, p.z) + 1.5 + 3 * y, p.z, p.quarter * 16384, 0, 10000);
-  const body = bodyOf(s.kind), mind = w.host.creatures.mind;
-  const start = freeNear(w, s.start.x, s.start.z, body.radius, body.height);
-  const goal = s.map === "miami" ? freeNear(w, s.goal.x, s.goal.z, body.radius, body.height) : s.goal;
+  const body = bodyOf(s.kind), mind = w.host.creatures.mind, arrive = Math.max(1.5, body.radius + 0.5);
+  const at = place(w, s, body, arrive);
+  const start = at?.start ?? freeNear(w, s.start.x, s.start.z, body.radius, body.height), goal = at?.goal ?? s.goal;
   const standers: Built["standers"] = [];
   for (const st of s.standers) {
     const e = w.host.spawnCreature(st.kind, st.x, st.z, 1);
@@ -100,22 +178,21 @@ export function build(s: Scene): Built {
     standers.push({ e, until: st.until, then: st.then });
   }
   const mover = w.host.spawnCreature(s.kind, start.x, start.z, 1);
-  if (mover < 0) throw new Error(`${s.kind} could not be put down for ${s.family} ${s.seed}`);
+  if (mover < 0 && at) throw new Error(`${s.kind} could not be put down for ${s.family} ${s.seed}`);
   w.world.ents.yaw[mover] = mind.look[mover] = s.start.yaw;
   mind.stay(mover, s.horizon * 4);
   mind.goTo(mover, goal.x, goal.z, GOAL_WALK);
-  return { scene: s, lab: w, mover, goal, body, arrive: Math.max(1.5, body.radius + 0.5), standers };
+  return { scene: s, lab: w, mover, goal, body, arrive, standers, way: at?.way ?? NaN };
 }
 
 export interface Hooks {
   /** The point studied, and who decides it: "off" (today's code), "rule" or "model". */
   point: string;
   policy: "off" | "rule" | "model";
+  /** The trained scorers loaded; no other is, whatever the game's weights folder holds. */
   models?: readonly Model[];
-  /** Sees each answer of the point (`n` counts them from 0) while its tables are filled; returns a candidate to act on, or -1 for the chooser's. */
+  /** Sees each answer of the point for the mover (`n` counts them from 0) while its tables are filled; returns a candidate, LEAVE, or ALONE for today's code. */
   answered?(n: number, tick: number, pick: number): number;
-  /** Called before the tick in which answer `n` is due, so it may be left alone (ALONE). */
-  ahead?(n: number): boolean;
   /** Stops the play once this holds. */
   stop?(tick: number): boolean;
   extra?: Installer;
@@ -157,20 +234,28 @@ function install(b: Built, name: string, extra?: Installer): { id: number; befor
   } };
 }
 
+/** Who decides on a world where `point` is studied: the ladder's two points together, or the one point alone. */
+export function policyText(point: string, policy: Hooks["policy"]): string {
+  return NAV_POINTS.includes(point) ? NAV_POINTS.map((p) => `${p}=${policy}`).join(",") : `${point}=${policy}`;
+}
+
 /** Plays a built scene under `hooks` until it arrives, the hooks stop it, or `limit` ticks pass. */
 export function play(b: Built, hooks: Hooks, limit = b.scene.horizon): Trace {
   const w = b.lab, d = w.host.decide, mind = w.host.creatures.mind, ents = w.world.ents;
+  d.trained.clear();
   for (const m of hooks.models ?? []) d.trained.set(m.profile, m);
   const point = install(b, hooks.point, hooks.extra);
-  const policy = `${hooks.point}=${hooks.policy}`;
-  d.set(policy);
+  d.set(policyText(hooks.point, hooks.policy));
   const trace: Trace = { arrivedAt: -1, ticks: 0, stuckTicks: 0, decideMicros: [], answers: 0 };
-  d.force = (p, _e, pick) => (p === point.id && hooks.answered ? hooks.answered(trace.answers, w.world.tick, pick) : -1);
-  d.tap = (p) => {
-    if (p === point.id) trace.answers++;
+  if (Number.isNaN(b.way)) return trace;
+  d.force = (p, e, pick) => {
+    if (p !== point.id || e !== b.mover || !hooks.answered) return LEAVE;
+    const told = hooks.answered(trace.answers, w.world.tick, pick);
+    return told === ALONE ? SPARE : told;
   };
-  // A lab world keeps no log, and the flush every five seconds would hold the whole world in a promise until the job ends.
-  d.flush = () => Promise.resolve();
+  d.tap = (p, e) => {
+    if (p === point.id && e === b.mover) trace.answers++;
+  };
   const step = d.step.bind(d);
   let spent = 0;
   d.step = (tick) => {
@@ -178,7 +263,6 @@ export function play(b: Built, hooks: Hooks, limit = b.scene.horizon): Trace {
     step(tick);
     spent = (performance.now() - from) * 1000;
   };
-  let watching = false;
   for (let t = 0; t < limit; t++) {
     const tick = w.world.tick;
     if (Math.hypot(b.goal.x - ents.x[b.mover]!, b.goal.z - ents.z[b.mover]!) <= b.arrive) {
@@ -188,11 +272,6 @@ export function play(b: Built, hooks: Hooks, limit = b.scene.horizon): Trace {
     if (hooks.stop?.(tick)) break;
     for (const s of b.standers) if (s.then && tick === s.until) mind.goTo(s.e, s.then.x, s.then.z, GOAL_WALK);
     point.before(tick);
-    const alone = hooks.ahead?.(trace.answers) ?? false;
-    if (alone !== watching) {
-      d.set(alone ? `${hooks.point}=watch` : policy);
-      watching = alone;
-    }
     w.tick();
     trace.ticks++;
     trace.decideMicros.push(spent);
@@ -218,7 +297,7 @@ export function episode(s: Scene, point: string, policy: Hooks["policy"], models
   const tick0 = b.lab.world.tick;
   const t = play(b, { point, policy, models, extra });
   const result: EpisodeResult = {
-    arrived: t.arrivedAt >= 0, ticks: t.ticks, healthLost: Math.max(0, health0 - healthShare(b)), stuckTicks: t.stuckTicks,
+    family: s.map === "miami" ? "miami" : s.family, skipped: Number.isNaN(b.way), arrived: t.arrivedAt >= 0, ticks: t.ticks, healthLost: Math.max(0, health0 - healthShare(b)), stuckTicks: t.stuckTicks,
     searches: mind.searches - searches0, cells: mind.searched - cells0, end: { x: b.lab.world.ents.x[b.mover]!, z: b.lab.world.ents.z[b.mover]! }, cost: costNow(b, tick0, health0, cells0, true), decideMicros: t.decideMicros,
   };
   b.lab.host.shutdown();
@@ -239,52 +318,69 @@ export interface Under {
   extra?: Installer;
 }
 
+/** What the lab observes after a "yes" answer of a point that reads no outcome of its own: when, and what it then says. */
+interface Observer {
+  ticks: number;
+  start(b: Built): number;
+  read(b: Built, from: number): number;
+}
+
+/** The share of its pace toward its goal that is real progress, as the ladder judges it (nav.ts, which does not export it). */
+export const SNAG_PROGRESS = 0.35;
+const left = (b: Built): number => Math.hypot(b.goal.x - b.lab.world.ents.x[b.mover]!, b.goal.z - b.lab.world.ents.z[b.mover]!);
+
+/** nav.snag: 1 where the mover gained less than real progress toward its goal over the SNAG_SECONDS after the question. */
+export const OBSERVERS: Readonly<Record<string, Observer>> = {
+  "nav.snag": { ticks: SNAG_SECONDS * TICK_RATE, start: left, read: (b, from) => (from - left(b) < SNAG_PROGRESS * b.body.pace * SNAG_SECONDS ? 1 : 0) },
+};
+
 /** The game's scenes for label.ts. */
 export function gameReplayer(point: string, under: Under): Replayer<Scene> {
   return {
     survey(s) {
-      const b = build(s), d = b.lab.host.decide, out: Answer[] = [];
-      const waiting: { e: number; due: number; at: number }[] = [];
+      const b = build(s), d = b.lab.host.decide, out: Answer[] = [], seen = OBSERVERS[point];
+      const waiting: { e: number; due: number; at: number; from: number }[] = [];
       let id = -1;
-      play(b, {
+      const t = play(b, {
         point, policy: under.policy, models: under.models, extra: under.extra,
         answered: (_n, tick, pick) => {
           id = d.points.findIndex((p) => p.name === point);
           const p = d.points[id]!;
           out.push({ tables: served(b, id), pick, hash: stateHash(b.lab.world), tick });
-          if (p.horizon > 0 && p.outcome) waiting.push({ e: b.mover, due: tick + p.horizon, at: out.length - 1 });
-          return -1;
+          if (p.horizon > 0 && p.outcome) waiting.push({ e: b.mover, due: tick + p.horizon, at: out.length - 1, from: 0 });
+          else if (seen) waiting.push({ e: b.mover, due: tick + seen.ticks, at: out.length - 1, from: seen.start(b) });
+          return LEAVE;
         },
         stop: (tick) => {
           const o = new Float32Array(8);
           while (waiting.length && waiting[0]!.due <= tick) {
-            const w = waiting.shift()!;
-            if (d.points[id]!.outcome!(w.e, tick, o) > 0) out[w.at]!.outcome = o[0]!;
+            const w = waiting.shift()!, p = d.points[id]!;
+            if (p.horizon > 0 && p.outcome) {
+              if (p.outcome(w.e, tick, o) > 0) out[w.at]!.outcome = o[0]!;
+            } else out[w.at]!.outcome = seen!.read(b, w.from);
           }
           return false;
         },
       });
+      // Arrived before an outcome was due: it was no snag.
+      if (seen && t.arrivedAt >= 0) for (const w of waiting) out[w.at]!.outcome = 0;
       b.lab.host.shutdown();
       return out;
     },
     replay(s, ordinal, force, seed) {
-      const b = build(s), mind = b.lab.host.creatures.mind as unknown as { reseed?: (n: number) => void; searched: number };
-      let hash = -1, from = -1, reseeded = false, health0 = 1, cells0 = 0;
+      const b = build(s), mind = b.lab.host.creatures.mind;
+      let hash = -1, from = -1, health0 = 1, cells0 = 0;
       const costs: number[] = [];
       play(b, {
         point, policy: under.policy, models: under.models, extra: under.extra,
-        ahead: (n) => force === ALONE && n === ordinal,
         answered: (n) => {
-          if (n !== ordinal) return -1;
+          if (n !== ordinal) return LEAVE;
           hash = stateHash(b.lab.world);
           from = b.lab.world.tick;
           health0 = healthShare(b);
           cells0 = mind.searched;
-          if (typeof mind.reseed === "function") {
-            mind.reseed(seed);
-            reseeded = true;
-          }
-          return force >= 0 ? force : -1;
+          mind.reseed(seed);
+          return force;
         },
         stop: (tick) => {
           if (from < 0) return tick >= s.horizon;
@@ -301,7 +397,7 @@ export function gameReplayer(point: string, under: Under): Replayer<Scene> {
       while (costs.length < READINGS.length - 1) costs.push(end);
       costs.push(end);
       b.lab.host.shutdown();
-      const r: Replay = { hash, costs, reseeded };
+      const r: Replay = { hash, costs, reseeded: true };
       return r;
     },
   };

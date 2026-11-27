@@ -3,10 +3,11 @@
 // written in the order of the scenes, so one command gives the same bytes on any number of workers.
 //
 //   bun tools/decide/generate.ts --point lab.ring [--scenes 40] [--first 1] [--families trees,deadEnd,...]
-//     [--workers 8] [--seeds 3] [--under <weights.json>[,<more.json>]] [--fresh]
+//     [--workers 8] [--seeds 3] [--yeses 1] [--under <weights.json>[,<more.json>]] [--fresh]
 //
 // `--scenes` is per family, and the held-out family and the Miami slice are generated too, for the scoreboard. `--under`
-// plays every other answer by trained scorers, so the decisions are from states they get into themselves. Progress goes
+// plays every other answer by trained scorers, so the decisions are from states they get into themselves. A "yes" point's
+// answers cost no replay, so `--yeses` takes that many of each scene. Progress goes
 // to .cache/decide/status.json.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -28,11 +29,11 @@ export const RETIRE_BYTES = 2 * 1024 ** 3;
 
 /** A job for a worker: label one scene's decision, or play one whole episode. */
 export type Job =
-  | { kind: "label"; scene: Scene; point: string; seeds: number; models: string[] }
+  | { kind: "label"; scene: Scene; point: string; seeds: number; models: string[]; yeses?: number }
   | { kind: "episode"; scene: Scene; point: string; policy: Hooks["policy"]; models: string[] };
 
 export type Done =
-  | { kind: "label"; yes: boolean; decision: string | null; runs: number; thrown: number; noReseed: number; seconds: number; rss: number }
+  | { kind: "label"; yes: boolean; decision: string | null; more: string[]; runs: number; thrown: number; noReseed: number; seconds: number; rss: number }
   | { kind: "episode"; result: EpisodeResult; rss: number }
   | { kind: "error"; error: string; rss: number };
 
@@ -54,8 +55,8 @@ export function work(job: Job): Done {
     const models = loadModels(job.models);
     if (job.kind === "episode") return { kind: "episode", result: episode(job.scene, job.point, job.policy, models), rss: rss() };
     const under = { policy: models.length ? "model" as const : "rule" as const, models };
-    const l = labelScene(gameReplayer(job.point, under), job.scene, { seed: job.scene.seed, family: job.scene.family, map: job.scene.map }, { kind: (a) => PROFILES.find((q) => q.name === a.tables[0]?.profile)?.kind ?? "choice", seeds: job.seeds, today: true });
-    return { kind: "label", yes: l.kind === "yes", decision: l.decision ? pack(l.decision) : null, runs: l.runs, thrown: l.thrown, noReseed: l.noReseed, seconds: (performance.now() - from) / 1000, rss: rss() };
+    const l = labelScene(gameReplayer(job.point, under), job.scene, { seed: job.scene.seed, family: job.scene.family, map: job.scene.map }, { kind: (a) => PROFILES.find((q) => q.name === a.tables[0]?.profile)?.kind ?? "choice", seeds: job.seeds, today: true, yeses: job.yeses });
+    return { kind: "label", yes: l.kind === "yes", decision: l.decision ? pack(l.decision) : null, more: l.more.map(pack), runs: l.runs, thrown: l.thrown, noReseed: l.noReseed, seconds: (performance.now() - from) / 1000, rss: rss() };
   } catch (err) {
     return { kind: "error", error: err instanceof Error ? (err.stack ?? err.message) : String(err), rss: rss() };
   }
@@ -151,6 +152,7 @@ export interface GenerateOptions {
   seeds: number;
   under: string[];
   fresh: boolean;
+  yeses?: number;
   root?: string;
 }
 
@@ -158,7 +160,7 @@ export interface GenerateOptions {
 export async function generate(o: GenerateOptions): Promise<{ decisions: number; none: number; thrown: number; noReseed: number; runs: number; busy: number; seconds: number; errors: string[] }> {
   const from = performance.now();
   const list = scenes(o.families, o.scenes, o.first);
-  const jobs: Job[] = list.map((scene) => ({ kind: "label", scene, point: o.point, seeds: o.seeds, models: o.under }));
+  const jobs: Job[] = list.map((scene) => ({ kind: "label", scene, point: o.point, seeds: o.seeds, models: o.under, yeses: o.yeses }));
   const note = { made: new Date().toISOString(), revision: revision(), under: o.under.length ? o.under.join(",") : "rule" };
   // Made with the first decision, which says whether the point is a choice or a yes.
   let w: Writer | null = null;
@@ -179,6 +181,7 @@ export async function generate(o: GenerateOptions): Promise<{ decisions: number;
           w.run.thrown += d.thrown;
           w.run.noReseed += d.noReseed;
           w.add(unpack(d.decision));
+          for (const m of d.more) w.add(unpack(m));
         } else none++;
       }
     }
@@ -222,7 +225,7 @@ if (import.meta.main && process.argv.includes("--worker")) {
   for (const f of families) draw(f, 1);
   const under = arg("--under")?.split(",") ?? [];
   for (const f of under) if (!existsSync(f)) throw new Error(`no weights file ${f}`);
-  const r = await generate({ point, families, scenes: Number(arg("--scenes") ?? 40), first: Number(arg("--first") ?? 1), workers: Number(arg("--workers") ?? 8), seeds: Number(arg("--seeds") ?? 3), under, fresh: process.argv.includes("--fresh") });
+  const r = await generate({ point, families, scenes: Number(arg("--scenes") ?? 40), first: Number(arg("--first") ?? 1), workers: Number(arg("--workers") ?? 8), seeds: Number(arg("--seeds") ?? 3), yeses: Number(arg("--yeses") ?? 1), under, fresh: process.argv.includes("--fresh") });
   console.log(`${point}: ${r.decisions} decisions from ${r.runs} plays in ${r.seconds.toFixed(1)} s; ${r.none} scenes gave no answer, ${r.thrown} replays thrown away, ${r.noReseed} run with no reseed; a play took ${((1000 * r.busy) / Math.max(1, r.runs)).toFixed(0)} ms of a worker's time`);
   for (const e of r.errors.slice(0, 5)) console.error(e);
   if (r.errors.length) process.exit(1);

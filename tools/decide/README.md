@@ -10,34 +10,48 @@ scorer is a line of weights or one hidden layer. The engine and most of the lab 
 1. **Declare a profile** in `shared/decide/profiles.ts` (or your engine's own), with a hand rule in `rules.ts`. The rule
    decides until a trained scorer beats it.
 2. **Declare a point** in the game (`server/decide`): it fills the profile's tables for a mover, asks, and acts on the
-   pick. Until the game has its points, the lab has a stand-in, `lab.ring` (`standin.ts`).
+   pick. The lab finds it by name on a host's decider. The game's are the stuck ladder's, `nav.snag` and `nav.ring`
+   (`server/decide/nav.ts`), always decided together. A point of several passes, as `nav.ring` is, says in the
+   catalogue (`catalog.ts`) how it adds them, from the constants nav.ts exports, so the trainer adds them the same way.
+   The stand-in `lab.ring` (`standin.ts`) is only for the pipeline's own tests.
 3. **Write a setup**: a family of seeded scenes in `random.ts`, each with a mover, a goal and a horizon, every measure
-   drawn from its seed. `setups.ts` builds a scene on the lab world (`world.ts`) and plays it.
+   drawn from its seed. `setups.ts` builds a scene on the lab world (`world.ts`) and plays it. Before a scene is
+   played, an oracle (a search over the whole path grid that swims) must find a way short enough for its horizon, from
+   the start and goal drawn or from others drawn from its seed; a scene with none is not played. `audit.ts` says, by
+   family, how many have no way, how many today's code solves without the ladder ever asking, and who arrives.
 4. **Generate and label.** Each scene is played with the chooser, one of its answers is drawn, and the scene is replayed
-   from its start once for each open candidate and each of three seeds, that candidate forced there. A candidate's
-   target is how often it was best. A replay whose world differs at the decision is thrown away.
-5. **Look at the headroom.** If the best candidate beats the rule by under 0.05 of the median cost, no model is worth
-   training for that point.
-6. **Fit** a line and a hidden layer, and **score** them against uniform, today's code and the rule.
+   from its start once for each open candidate and each of three seeds, that candidate forced there, the mover's luck
+   reseeded (`Behavior.reseed`). Today's code is the same replay with the answer spared (`SPARE`): nothing is done for
+   it. A candidate's target is how often it was best. A replay whose world differs at the decision is thrown away. A
+   "yes" point costs no replay: its label is what was observed after its answer (the point's `outcome`, or the lab's own
+   observer in `setups.ts` where the point reads none), and `--yeses` takes several answers of each scene.
+5. **Look at the headroom**: how far the best candidate beats the rule at one decision, as a share of the median cost.
+   It is information, never a reason not to train: gains compound over an episode. The toy's was 0.036 while training
+   took its arrivals from 36 to 150 of 150.
+6. **Fit** a line and a hidden layer for each profile of the point, and **score** them against uniform, today's code and
+   the rule. A pass is scored with the others added as the point adds them, by their rule.
 7. **Pass the gate**, then copy the weights to `server/decide/weights/<profile>.json` and commit them.
 
 ## Commands
 
 ```
-bun tools/decide/generate.ts --point lab.ring --scenes 40 --workers 20     label 40 scenes of each family
-bun tools/decide/generate.ts --point lab.ring --first 1000 --under <weights.json>
-                                                       more, from states a trained scorer gets into itself
-bun tools/decide/score.ts --headroom lab.ring          before training: is it worth it
-bun tools/decide/fit.ts --point lab.ring --kind linear [--reading 5s] [--seed 1]
-bun tools/decide/fit.ts --point lab.ring --kind hidden --hidden 16
-bun tools/decide/score.ts [--episodes 40] [--workers 8] the board
+bun tools/decide/audit.ts --scenes 30                   each family: no way, trivial, who arrives
+bun tools/decide/generate.ts --point nav.ring --families water --scenes 600 --workers 9
+bun tools/decide/generate.ts --point nav.snag --scenes 150 --yeses 30
+bun tools/decide/generate.ts --point nav.ring --first 100001 --under <weights.json>[,<more.json>]
+                                                       more, from states trained scorers get into themselves
+bun tools/decide/score.ts --headroom nav.ring          how far the best candidate beats the rule
+bun tools/decide/fit.ts --point nav.ring --profile ring.mid --kind linear [--reading 5s] [--seed 1]
+bun tools/decide/fit.ts --point nav.ring --profile ring.mid --kind hidden --hidden 16
+bun tools/decide/score.ts [--episodes 400] [--fresh 20] [--workers 8]
+                                                       the board
 bun tools/decide/toy.ts                                the whole loop on the toy world, in seconds
 bun tools/decide/world.ts --cost                       what a lab world and a tick cost
 ```
 
-Wrap long runs in `systemd-run --user --scope -q -p MemoryMax=24G -p MemorySwapMax=0`. Workers are separate
+Wrap long runs in `systemd-run --user --scope -q -p MemoryMax=22G -p MemorySwapMax=0`. Workers are separate
 processes, at most 20, each kept for 300 scenes or until it holds 2 GB. Each holds about 1.7 GB once the content is
-loaded, so 12 fit under a 24 GB cap and 20 want about 34 GB.
+loaded, so 9 fit under a 22 GB cap. Where the cap kills a run (exit 137 or 143), halve the workers.
 
 ## Where files go
 
@@ -68,8 +82,10 @@ costs two horizons and the straight way left. The prices and horizons are guesse
 Splits are by family and by map, never by row. The `pen` family and the Miami slice are held out and read only by the
 board; `blocker` stops training and fits the temperature. Intervals are by bootstrap over scenes.
 
-The board's headline is whole episodes on the held-out layouts: each policy plays them from start to finish. A trained
-scorer passes only if, held out:
+The board's headline is whole episodes on the held-out layouts: each policy (every point off, the rule, each trained
+scorer loaded alone with the points set to `model`, the other passes by their rule) plays them from start to finish, with
+arrivals by family. `--fresh` adds new scenes of every family, trained-on ones too, as a look at the scenes, not the
+gate. A trained scorer passes only if, held out:
 
 - its regret is at most 0.75 of the rule's, and the interval's top under 0.9;
 - no held-out family is worse than 1.1 of the rule's;
@@ -85,5 +101,4 @@ episodes than today's code: then turning the point on loses episodes, whatever a
 ## Another engine
 
 `toy.ts` is the first example: a grid world with its own profile, rule and split, labelled, fitted and scored by the same
-code. It loads nothing outside `shared/decide` and `tools/decide` but `shared/hash.ts` and `shared/rng.ts`, which load
-nothing. To use the pipeline elsewhere, write a `Replayer` (`label.ts`) for your world and a `Catalog` (`fit.ts`).
+code. It loads nothing outside `shared/decide` and `tools/decide` but `shared/rng.ts`, which loads nothing. To use the pipeline elsewhere, write a `Replayer` (`label.ts`) for your world and a `Catalog` (`fit.ts`).

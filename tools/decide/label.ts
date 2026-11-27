@@ -49,6 +49,8 @@ export interface Key {
 
 export interface Labelled {
   decision: Decision | null;
+  /** A "yes" point's other answers of the scene, where more than one is taken. */
+  more: Decision[];
   /** The point's kind, as its first table says. */
   kind?: "choice" | "yes";
   /** Replays run, thrown away for a world that differed, and run with no reseed. */
@@ -70,11 +72,11 @@ export function ordinalOf(seed: number, n: number): number {
 /**
  * Labels one decision of `scene`. A choice is replayed once for each candidate the answer leaves open (the union of its
  * tables' masks) and each seed, and `today` adds a replay of each seed with the point left alone. A "yes" point takes
- * the outcome its survey observed.
+ * the outcome its survey observed, at up to `yeses` answers spread evenly over the scene: it costs no replay.
  */
-export function labelScene<S>(rp: Replayer<S>, scene: S, key: Key, o: { kind: "choice" | "yes" | ((a: Answer) => "choice" | "yes"); seeds: number; today?: boolean; ordinal?: number }): Labelled {
+export function labelScene<S>(rp: Replayer<S>, scene: S, key: Key, o: { kind: "choice" | "yes" | ((a: Answer) => "choice" | "yes"); seeds: number; today?: boolean; ordinal?: number; yeses?: number }): Labelled {
   const answers = rp.survey(scene);
-  const out: Labelled = { decision: null, runs: 1, thrown: 0, noReseed: 0 };
+  const out: Labelled = { decision: null, more: [], runs: 1, thrown: 0, noReseed: 0 };
   if (answers.length === 0) return out;
   const ordinal = o.ordinal ?? ordinalOf(key.seed, answers.length);
   const a = answers[Math.min(ordinal, answers.length - 1)]!;
@@ -83,7 +85,13 @@ export function labelScene<S>(rp: Replayer<S>, scene: S, key: Key, o: { kind: "c
   const kind = typeof o.kind === "function" ? o.kind(a) : o.kind;
   out.kind = kind;
   if (kind === "yes") {
-    out.decision = { ...base, label: a.outcome ?? NaN, seeds: 0, costs: new Float32Array(0), today: new Float32Array(0) };
+    const yes = (b: Answer, at: number): Decision => ({ ...key, ordinal: at, tick: b.tick, pick: b.pick, tables: b.tables, readings: R, label: b.outcome ?? NaN, seeds: 0, costs: new Float32Array(0), today: new Float32Array(0) });
+    out.decision = yes(a, ordinal);
+    const n = Math.min(o.yeses ?? 1, answers.length);
+    for (let j = 1; j < n; j++) {
+      const at = (ordinal + Math.round((j * answers.length) / n)) % answers.length;
+      out.more.push(yes(answers[at]!, at));
+    }
     return out;
   }
   const k = a.tables[0]!.k, S = o.seeds, seeds = luck(S);

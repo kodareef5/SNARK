@@ -1,7 +1,7 @@
 // The trainer: a line of weights (logistic) or one hidden layer (ReLU) for one profile of a point, from its decisions on
 // disk. Home-grown, seeded, CPU only. Each candidate's inputs are made by `inputsAt` (shared/decide/forward.ts), so what
-// it trains on is what a game serves. The other tables of a decision keep their hand rule: their scores and every bias
-// are a fixed offset to the candidate's score, as a game adds its passes. Training stops early on a validation family;
+// it trains on is what a game serves. The other tables of a decision keep their hand rule, and are added in as the point
+// adds its passes (`Passes`): a fixed offset to the candidate's score. Training stops early on a validation family;
 // a temperature is then fitted there by log loss and kept only if it lowers the validation ECE.
 //
 //   bun tools/decide/fit.ts --point <name> --kind linear|hidden [--hidden 16] [--seed 1] [--profile <name>] [--reading end]
@@ -20,13 +20,18 @@ import { Rng } from "../../shared/rng.ts";
 import { eceOf, summarize, type Graded } from "./board.ts";
 import { READINGS, dataDir, meanCosts, readData, revision, targetOf, type Decision, type TableRow } from "./dataset.ts";
 
-/** One decision as the trainer reads it: each candidate's inputs, its fixed offset, whether it may be chosen, and its target. */
+/**
+ * One decision as the trainer reads it: each candidate's inputs, its offsets, whether it may be chosen, and its target. A
+ * candidate's logit is (scale × score + offset) / T + fixed, T the scorer's temperature.
+ */
 export interface Example {
   k: number;
   /** Inputs a candidate reads: its row of `x` is `n` long. */
   n: number;
   x: Float32Array;
+  scale: number;
   offset: Float64Array;
+  fixed: Float64Array;
   mask: Uint8Array;
   /** A choice: how often each candidate was best. A yes: the one outcome. */
   target: Float64Array;
@@ -40,6 +45,15 @@ export interface Example {
 
 /** What may change a decision's table before it is read: the ablations hide or swap parts of it. */
 export type Alter = (row: TableRow, index: number) => TableRow;
+
+/**
+ * How a point adds several passes over the same candidates (shared/decide/combine.ts): each pass's score by its mix over
+ * its scorer's temperature, every bias, and a stick on the candidate its `held` column marks; the sum's temperature is 1.
+ */
+export interface Passes {
+  mix: Readonly<Record<string, number>>;
+  stick: number;
+}
 
 /** Where the scene of a decision belongs. */
 export interface Split {
@@ -70,20 +84,24 @@ const tableOf = (row: TableRow, p: Profile): Table => {
  * The decisions as examples for profile `p`: other tables scored by their rule from `rules` (nothing where there is
  * none). A candidate with no cost read is masked. `reading` picks the cost a choice's target is drawn from.
  */
-export function examples(ds: readonly Decision[], p: Profile, profiles: readonly Profile[], rules: ReadonlyMap<string, Model>, reading: number, alter?: Alter): Example[] {
+export function examples(ds: readonly Decision[], p: Profile, profiles: readonly Profile[], rules: ReadonlyMap<string, Model>, reading: number, alter?: Alter, passes?: Passes): Example[] {
   const n = inputsOf(p), out: Example[] = [];
   ds.forEach((d, index) => {
     const at = d.tables.findIndex((t) => t.profile === p.name);
     if (at < 0) return;
     const rows = alter ? d.tables.map((t, i) => (i === at ? alter(t, index) : t)) : d.tables;
     const k = rows[at]!.k;
-    const x = new Float32Array(k * n), offset = new Float64Array(k), mask = new Uint8Array(k), one = new Float32Array(n);
+    const x = new Float32Array(k * n), offset = new Float64Array(k), fixed = new Float64Array(k), mask = new Uint8Array(k), one = new Float32Array(n);
+    // Outside its own score, all is fixed where the point adds passes, and divided by the scorer's temperature where not.
+    const rest = passes ? fixed : offset;
     rows.forEach((row, i) => {
       const q = profiles.find((r) => r.name === row.profile)!;
       const t = tableOf(row, q);
+      const held = passes ? q.columns.indexOf("held") : -1;
       for (let c = 0; c < k; c++) {
-        offset[c] = offset[c]! + row.bias[c]!;
+        rest[c] = rest[c]! + row.bias[c]!;
         if (row.mask[c] !== 0) mask[c] = 1;
+        if (i === at && held >= 0 && d.tables[i]!.rows[c * q.columns.length + held] === 1) rest[c] = rest[c]! + passes!.stick;
       }
       if (i === at) {
         for (let c = 0; c < k; c++) {
@@ -95,8 +113,10 @@ export function examples(ds: readonly Decision[], p: Profile, profiles: readonly
       const rule = rules.get(row.profile);
       if (!rule) return;
       scoreTable(rule, q, t);
-      for (let c = 0; c < k; c++) offset[c] = offset[c]! + t.score[c]!;
+      const weight = passes ? (passes.mix[row.profile] ?? 0) / rule.temperature : 1;
+      for (let c = 0; c < k; c++) rest[c] = rest[c]! + t.score[c]! * weight;
     });
+    const scale = passes ? (passes.mix[p.name] ?? 0) : 1;
     let target: Float64Array, cost: Float64Array;
     if (p.kind === "yes") {
       // An outcome never read (the play ended before its horizon) teaches nothing.
@@ -112,7 +132,7 @@ export function examples(ds: readonly Decision[], p: Profile, profiles: readonly
       if (!(sum > 0) || mask.every((v) => v !== 0)) return;
       for (let c = 0; c < k; c++) target[c] = target[c]! / sum;
     }
-    out.push({ k, n, x, offset, mask, target, cost, group: `${d.map}/${d.family}/${d.seed}`, family: d.family, map: d.map });
+    out.push({ k, n, x, scale, offset, fixed, mask, target, cost, group: `${d.map}/${d.family}/${d.seed}`, family: d.family, map: d.map });
   });
   return out;
 }
@@ -168,13 +188,13 @@ function back(net: Net, x: Float32Array, from: number, act: Float64Array, g: num
 /** Each candidate's probability under `net` (or a fixed scorer) at temperature `T`, into `out`. Masked ones get 0. */
 export function probabilities(kind: "choice" | "yes", ex: Example, scoreAt: (c: number) => number, T: number, out: Float64Array): void {
   if (kind === "yes") {
-    out[0] = 1 / (1 + Math.exp(-(scoreAt(0) + ex.offset[0]!) / T));
+    out[0] = 1 / (1 + Math.exp(-((ex.scale * scoreAt(0) + ex.offset[0]!) / T + ex.fixed[0]!)));
     return;
   }
   let top = -Infinity;
   for (let c = 0; c < ex.k; c++) {
     if (ex.mask[c] !== 0) continue;
-    out[c] = (scoreAt(c) + ex.offset[c]!) / T;
+    out[c] = (ex.scale * scoreAt(c) + ex.offset[c]!) / T + ex.fixed[c]!;
     if (out[c]! > top) top = out[c]!;
   }
   let sum = 0;
@@ -310,7 +330,7 @@ export function fit(p: Profile, train: readonly Example[], val: readonly Example
           for (let c = 0; c < ex.k; c++) if (ex.mask[c] === 0) dot += P[c]! * (P[c]! - ex.target[c]!);
           for (let c = 0; c < ex.k; c++) G[c] = ex.mask[c] !== 0 ? 0 : P[c]! - ex.target[c]! + beta * 2 * P[c]! * (P[c]! - ex.target[c]! - dot);
         }
-        for (let c = 0; c < ex.k; c++) if (G[c] !== 0) back(net, ex.x, c * n, acts[c]!, G[c]!, grad);
+        for (let c = 0; c < ex.k; c++) if (G[c] !== 0) back(net, ex.x, c * n, acts[c]!, G[c]! * ex.scale, grad);
       }
       const scale = 1 / (to - from);
       step++;
@@ -438,6 +458,8 @@ export interface Catalog {
   profiles: readonly Profile[];
   rules: ReadonlyMap<string, Model>;
   split: Split;
+  /** By point, how it adds its passes, where it has several. */
+  passes?: Readonly<Record<string, Passes>>;
 }
 
 /** Fits a point's dataset in `root`, writes the weights file, and returns where and what. */
@@ -447,7 +469,7 @@ export function fitPoint(point: string, o: FitOptions & { profile?: string; read
   const p = cat.profiles.find((q) => q.name === name);
   if (!p) throw new Error(`${point} has no tables of ${String(name)}`);
   const reading = o.reading ?? READINGS.length - 1;
-  const all = examples(decisions, p, cat.profiles, cat.rules, reading);
+  const all = examples(decisions, p, cat.profiles, cat.rules, reading, undefined, cat.passes?.[point]);
   let train = all.filter((e) => roleOf(cat.split, e.family, e.map) === "train");
   let val = all.filter((e) => roleOf(cat.split, e.family, e.map) === "validation");
   // No validation family in the data: a fifth of the training scenes by their seed, never a share of rows.

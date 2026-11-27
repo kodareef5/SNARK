@@ -51,6 +51,10 @@ export interface Scene {
 export const HORIZON_SECONDS: Record<Family, number> = { trees: 60, deadEnd: 90, pen: 90, water: 75, blocker: 75, crowd: 75, miami: 90 };
 
 const PIECE = 3;
+/** A wall piece's thickness. */
+const WALL = 0.2;
+/** A scene's horizon is at least this many times the straight way at the mover's pace. */
+const HORIZON_LINES = 3;
 /** The map's side, in metres: the lab's flat ground is four chunks a side. */
 export const FLAT_SIDE = 4 * CHUNK_SIZE;
 /** The Miami slice's side. */
@@ -117,57 +121,71 @@ export function draw(family: Family, seed: number): Scene {
   let goalV = rng.range(25, 60), goalU = rng.range(-10, 10), startV = 0, startU = 0;
   let water: Scene["water"];
   if (family === "deadEnd") {
-    const half = (fit + rng.int(2)) * PIECE / 2 + PIECE / 2, depth = PIECE * (2 + rng.int(4));
+    // A U open behind the mover, closed toward its goal, from a short bay to one deep enough that today's search fills it.
+    const half = rng.float() < 0.3 ? ((fit + rng.int(4)) * PIECE) / 2 + PIECE / 2 : rng.range(15, 30), depth = rng.range(30, 66);
     f.along(-half, -depth, 2);
     f.along(half, -depth, 2);
     f.across(-half, half, 2);
-    startV = -rng.range(0, depth / 2);
+    startV = -rng.range(1, Math.min(8, depth / 2));
     startU = rng.range(-0.3, 0.3) * half;
+    goalV = 2 + rng.range(4, 20);
     goalU = rng.range(-6, 6);
   } else if (family === "pen") {
-    const n = 4 + rng.int(4), s = n * PIECE, door = rng.int(4), at = rng.int(n - fit + 1);
+    // A walled pen whose one door is never on the side of the goal.
+    const n = 6 + rng.int(14), s = n * PIECE, door = [0, 2, 3][rng.int(3)]!, at = rng.int(n - fit + 1);
     const gap = (i: number) => i >= at && i < at + fit;
     f.across(-s / 2, s / 2, -s / 2, 2, door === 0 ? gap : undefined);
-    f.across(-s / 2, s / 2, s / 2, 2, door === 1 ? gap : undefined);
+    f.across(-s / 2, s / 2, s / 2, 2);
     f.along(-s / 2, -s / 2, s / 2, 2, door === 2 ? gap : undefined);
     f.along(s / 2, -s / 2, s / 2, 2, door === 3 ? gap : undefined);
     startU = rng.range(-0.3, 0.3) * s;
     startV = rng.range(-0.3, 0.3) * s;
-    goalV = s / 2 + rng.range(15, 40);
+    goalV = s / 2 + rng.range(10, 30);
   } else if (family === "water") {
-    const L = rng.range(8, 16), gapU = rng.range(-15, 15), w = fit + rng.int(2);
-    const from = Math.round((gapU + 36) / PIECE);
-    f.across(-36, 36, L, 2, (i) => i >= from && i < from + w);
-    const half = rng.range(4, 12), gu = -36 + from * PIECE + (w * PIECE) / 2;
-    const a = f.at(gu - half, L - rng.range(5, 8)), b = f.at(gu + half, L - 1);
-    water = { x0: Math.min(a.x, b.x), z0: Math.min(a.z, b.z), x1: Math.max(a.x, b.x), z1: Math.max(a.z, b.z), depth: rng.range(0.3, 0.8) };
-    goalV = L + rng.range(10, 30);
-    goalU = gu + rng.range(-6, 6);
+    // A U closed toward the goal whose mouth is flooded past both walls, deeper than today's search will cross: out is
+    // through the water, or nowhere.
+    const half = ((fit + 1 + rng.int(3)) * PIECE) / 2 + PIECE / 2, depth = PIECE * (3 + rng.int(4)), into = rng.range(2, depth / 2);
+    f.along(-half, -depth, 2);
+    f.along(half, -depth, 2);
+    f.across(-half, half, 2);
+    const a = f.at(-half - rng.range(6, 20), -depth - rng.range(4, 10)), b = f.at(half + rng.range(6, 20), -depth + into);
+    water = { x0: Math.min(a.x, b.x), z0: Math.min(a.z, b.z), x1: Math.max(a.x, b.x), z1: Math.max(a.z, b.z), depth: body.height * rng.range(0.75, 1.1) };
+    startV = -rng.range(0, Math.max(0, depth - into - 2 - body.radius));
+    startU = rng.range(-0.3, 0.3) * half;
+    goalV = 2 + rng.range(8, 25);
+    goalU = rng.range(-6, 6);
   } else if (family === "blocker") {
-    const half = (fit * PIECE) / 2 + rng.range(0.2, 1), v0 = rng.range(4, 8), len = PIECE * (4 + rng.int(5));
-    f.along(-half - PIECE / 2, v0, v0 + len);
-    f.along(half + PIECE / 2, v0, v0 + len);
+    // A corridor a big body stands in for a while, too narrow to pass it and long enough that going round costs.
     const big = weighted(rng, [["core:trike", 1], ["core:stego", 1], ["core:parasaur", 1]]);
-    const p = f.at(0, v0 + len / 2), away = f.at(rng.float() < 0.5 ? -25 : 25, v0 + len + 12);
-    standers.push({ kind: big, x: p.x, z: p.z, until: Math.round(rng.range(5, 25) * TICK_RATE), then: away });
+    const half = Math.max(bodyOf(big).radius, body.radius + 0.3) + rng.range(0, 0.5) + WALL / 2, v0 = rng.range(4, 8), len = PIECE * (6 + rng.int(8));
+    f.along(-half, v0, v0 + len);
+    f.along(half, v0, v0 + len);
+    const p = f.at(0, v0 + rng.range(0.25, 0.75) * len), away = f.at(rng.float() < 0.5 ? -25 : 25, v0 + len + 12);
+    standers.push({ kind: big, x: p.x, z: p.z, until: Math.round(rng.range(10, 50) * TICK_RATE), then: away });
     goalV = v0 + len + rng.range(8, 20);
     goalU = rng.range(-4, 4);
   } else if (family === "crowd") {
-    const L = rng.range(8, 14), short = rng.range(4, 9), long = rng.range(15, 30), flip = rng.float() < 0.5 ? -1 : 1;
+    // A wall across the way, its near end plugged by a crowd that stays; the far end is clear and a long way round.
+    const L = rng.range(8, 14), short = rng.range(2, 6), long = rng.range(18, 32), flip = rng.float() < 0.5 ? -1 : 1;
     const [u0, u1] = flip < 0 ? [-short, long] : [-long, short];
     f.across(u0, u1, L);
-    const n = 4 + rng.int(5), end = flip < 0 ? -short : short;
+    const n = 8 + rng.int(7), end = flip < 0 ? -short : short, gap = 1.4 + 2 * body.radius;
     for (let i = 0; i < n; i++) {
-      const p = f.at(end - flip * (1 + i * 1.6) + rng.range(-0.3, 0.3), L - rng.range(1.2, 2.5));
-      standers.push({ kind: rng.float() < 0.6 ? "core:dodo" : "core:parasaur", x: p.x, z: p.z, until: ticks * 2 });
+      const across = i % 3, row = Math.floor(i / 3);
+      const p = f.at(end - flip * (across * gap + rng.range(0.3, 1)), L + (row - 1.5) * gap + rng.range(-0.3, 0.3));
+      standers.push({ kind: rng.float() < 0.3 ? "core:dodo" : "core:parasaur", x: p.x, z: p.z, until: 1 << 30 });
     }
     goalV = L + rng.range(8, 25);
     goalU = rng.range(-5, 5);
-  }
+  } else if (family === "trees") goalV = rng.range(35, 80);
+  // Long enough for a slow body to go a good way round.
+  const line = Math.hypot(goalU - startU, goalV - startV);
+  const horizon = Math.max(ticks, Math.ceil((HORIZON_LINES * line) / body.pace) * TICK_RATE);
   const start = f.at(startU, startV), goal = f.at(goalU, goalV);
   const yaw = (f.yaw() + Math.round(rng.range(-0.25, 0.25) * 65536)) & 0xffff;
-  const scene: Scene = { family, map, seed, kind, start: { ...start, yaw }, goal, horizon: ticks, pieces: f.pieces, standers };
-  if (family === "trees") scene.trees = { perChunk: 40 + rng.int(100), seed: 1 + rng.int(1 << 20) };
+  const scene: Scene = { family, map, seed, kind, start: { ...start, yaw }, goal, horizon, pieces: f.pieces, standers };
+  // Fewer trees for a broad body, which no wood as thick as a raptor's would let through.
+  if (family === "trees") scene.trees = { perChunk: Math.round((40 + rng.int(100)) * Math.min(1, 1.2 / (body.radius + 0.6))), seed: 1 + rng.int(1 << 20) };
   if (water) scene.water = water;
   return scene;
 }

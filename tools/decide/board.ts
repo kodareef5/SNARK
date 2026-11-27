@@ -161,8 +161,13 @@ function chart(r: readonly Reliability[]): string {
 
 function episodes(list: readonly EpisodeScore[]): string {
   if (list.length === 0) return `<p class="muted">No whole episodes were played.</p>`;
-  const rows = list.map((e) => `<tr><th>${esc(e.name)}</th><td>${e.arrived} of ${e.scenes}</td><td>${num(e.ticks, 0)}</td><td>${num(e.healthLost, 3)}</td><td>${num(e.stuckTicks, 0)}</td><td>${num(e.searches, 1)} / ${num(e.cells, 0)}</td><td>${num(e.cost, 0)}</td><td>${num(e.decideMicros, 1)}</td></tr>`).join("");
-  return `<div class="wide"><table><thead><tr><th>policy</th><th>arrived</th><th>ticks</th><th>health lost</th><th>stuck ticks</th><th>searches / cells</th><th>cost</th><th>decide p99 µs</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  const families = [...new Set(list.flatMap((e) => Object.keys(e.families ?? {})))].sort();
+  const share = (e: EpisodeScore, f: string) => {
+    const v = e.families?.[f];
+    return v ? `${Math.round((100 * v.arrived) / v.scenes)}%<br><span class="muted">of ${v.scenes}</span>` : "–";
+  };
+  const rows = list.map((e) => `<tr><th>${esc(e.name)}</th><td>${e.arrived} of ${e.scenes}</td><td>${num(e.ticks, 0)}</td><td>${num(e.healthLost, 3)}</td><td>${num(e.stuckTicks, 0)}</td><td>${num(e.searches, 1)} / ${num(e.cells, 0)}</td><td>${num(e.cost, 0)}</td><td>${num(e.decideMicros, 1)}</td>${families.map((f) => `<td>${share(e, f)}</td>`).join("")}</tr>`).join("");
+  return `<div class="wide"><table><thead><tr><th>policy</th><th>arrived</th><th>ticks</th><th>health lost</th><th>stuck ticks</th><th>searches / cells</th><th>cost</th><th>decide p99 µs</th>${families.map((f) => `<th>${esc(f)} arrived</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function scores(list: readonly Score[]): string {
@@ -174,8 +179,8 @@ function point(p: PointScores): string {
   const trained = p.scores.filter((s) => s.kind !== "baseline");
   const verdicts = trained.map((s) => `<li><b>${esc(s.name)}</b>: ${s.gate.pass ? "passes the gate" : `fails: ${s.gate.why.map(esc).join("; ")}`}</li>`).join("");
   const charts = p.scores.filter((s) => s.reliability.length > 0).map((s) => `<figure>${chart(s.reliability)}<figcaption>${esc(s.name)}, ECE ${num(s.ece)}</figcaption></figure>`).join("");
-  const room = p.headroom < 0.05 ? `under 0.05: no model is worth training for it` : `worth training for`;
-  return `<section><h2>${esc(p.point)} <span class="muted">${esc(p.profile)}</span></h2><p>Headroom: the best candidate beats the rule by <b>${num(p.headroom)}</b> of the median cost, ${room}.</p><h3>Whole episodes on held-out layouts</h3>${episodes(p.episodes)}<h3>Single decisions, held out</h3>${scores(p.scores)}${verdicts ? `<ul>${verdicts}</ul>` : ""}<h3>Reliability</h3><div class="charts">${charts || `<p class="muted">Nothing to chart.</p>`}</div></section>`;
+  const fresh = p.fresh?.length ? `<h3>Whole episodes on fresh scenes of every family</h3><p class="muted">Seeds no dataset holds; the families trained on are here too, so this is a look at the scenes, not the gate.</p>${episodes(p.fresh)}` : "";
+  return `<section><h2>${esc(p.point)} <span class="muted">${esc(p.profile)}</span></h2><p>Headroom: at one decision, the best candidate beats the rule by <b>${num(p.headroom)}</b> of the median cost. It is information, not a bar: gains compound over an episode.</p><h3>Whole episodes on held-out layouts</h3>${episodes(p.episodes)}${fresh}<h3>Single decisions, held out</h3>${scores(p.scores)}${verdicts ? `<ul>${verdicts}</ul>` : ""}<h3>Reliability</h3><div class="charts">${charts || `<p class="muted">Nothing to chart.</p>`}</div></section>`;
 }
 
 /** The board as one page with nothing outside it: no scripts, fonts or pictures fetched. */

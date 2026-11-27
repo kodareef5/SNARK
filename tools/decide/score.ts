@@ -3,7 +3,7 @@
 // Scoreboard type) and a page with nothing outside it, .cache/decide/scoreboard.html, and puts each trained scorer's
 // held-out Score in its weights file's `about`.
 //
-//   bun tools/decide/score.ts [--point <name>] [--episodes 40] [--workers 8] [--reading 1s|5s|end]
+//   bun tools/decide/score.ts [--point <name>] [--episodes 40] [--fresh 0] [--workers 8] [--reading 1s|5s|end]
 //   bun tools/decide/score.ts --headroom <point>     how far the best candidate beats the rule, before any training
 //
 // One answer is timed in a child pinned to a fast core and to a slow one (taskset -c 2 and -c 20 on this machine).
@@ -16,11 +16,11 @@ import type { EpisodeScore, PointScores, Scoreboard } from "../../shared/decide/
 import { Table } from "../../shared/decide/table.ts";
 import { readModel, writeModel } from "../../shared/decide/weights.ts";
 import { boardHtml } from "./board.ts";
-import { catalog } from "./catalog.ts";
+import { FAMILIES, catalog } from "./catalog.ts";
 import { READINGS, dataDir, readData, revision, type Decision } from "./dataset.ts";
 import { examples, roleOf, type Catalog } from "./fit.ts";
 import { Workers, status, type Job } from "./generate.ts";
-import { draw, type Family } from "./random.ts";
+import { draw, scenes, type Family, type Scene } from "./random.ts";
 import { episodeScore, headroom, ratePoint, type Trained } from "./rate.ts";
 
 /** Cores this machine calls fast and slow (16 to 31 are its slow ones). */
@@ -70,61 +70,87 @@ function modelsOf(point: string, p: Profile): { file: string; model: Model; byte
   });
 }
 
-/** The held-out scenes the decisions came from, at most `most`, for whole episodes. */
-function heldScenes(ds: readonly Decision[], cat: Catalog, most: number): ReturnType<typeof draw>[] {
-  const seen = new Set<string>(), out: ReturnType<typeof draw>[] = [];
+/** The held-out scenes the decisions came from, at most `most`, taken in turn from each held-out family and map, for whole episodes. */
+function heldScenes(ds: readonly Decision[], cat: Catalog, most: number): Scene[] {
+  const seen = new Set<string>(), by = new Map<string, Scene[]>();
   for (const d of ds) {
     const key = `${d.family}/${d.seed}`;
     if (roleOf(cat.split, d.family, d.map) !== "held" || seen.has(key)) continue;
     seen.add(key);
-    out.push(draw(d.family as Family, d.seed));
-    if (out.length >= most) break;
+    const group = by.get(d.family) ?? [];
+    by.set(d.family, [...group, draw(d.family as Family, d.seed)]);
   }
+  const lists = [...by.keys()].sort().map((k) => by.get(k)!), out: Scene[] = [];
+  for (let i = 0; out.length < most && lists.some((l) => i < l.length); i++) for (const l of lists) if (i < l.length && out.length < most) out.push(l[i]!);
   return out;
 }
 
-/** One point's scores; whole episodes are played on `workers` processes. */
-export async function scorePoint(point: string, o: { episodes: number; workers: number; reading?: number }): Promise<PointScores> {
+/** Fresh scenes of every family, seeds no dataset holds, for the board's look at each family. */
+export const FRESH_FIRST = 1_000_001;
+
+interface Policy {
+  name: string;
+  policy: "off" | "rule" | "model";
+  models: string[];
+}
+
+/** Each policy's whole episodes of `scenes`, on `workers` processes. */
+async function play(point: string, policies: readonly Policy[], scenes: readonly Scene[], workers: number): Promise<EpisodeScore[]> {
+  if (scenes.length === 0) return [];
+  const jobs: Job[] = policies.flatMap((pol) => scenes.map((scene): Job => ({ kind: "episode", scene, point, policy: pol.policy, models: pol.models })));
+  status({ step: "episodes", point, done: 0, of: jobs.length });
+  let done = 0;
+  const results = await new Workers(workers).run(jobs, () => {
+    if (++done % 20 === 0) status({ step: "episodes", point, done, of: jobs.length });
+  });
+  for (const d of results) if (d.kind === "error") throw new Error(d.error);
+  return policies.map((pol, i) => episodeScore(pol.name, results.slice(i * scenes.length, (i + 1) * scenes.length).flatMap((d) => (d.kind === "episode" ? [d.result] : []))));
+}
+
+/**
+ * One point's scores, one entry for each profile of its tables; whole episodes are played on `workers` processes, the
+ * held-out scenes its decisions came from and `fresh` new scenes of every family.
+ */
+export async function scorePoint(point: string, o: { episodes: number; workers: number; reading?: number; fresh?: number }): Promise<PointScores[]> {
   const cat = catalog(point);
   const { manifest, decisions } = readData(dataDir(point, join(ROOT, "data")), cat.profiles);
-  const p = cat.profiles.find((q) => q.name === manifest.profiles[0]?.name)!;
-  const found = modelsOf(point, p);
-  const trained: Trained[] = found.map((f) => {
-    const fast = timed(f.file, point, CORES.fast), slow = timed(f.file, point, CORES.slow);
-    return { name: f.name, kind: f.kind, model: f.model, bytes: f.bytes, microsFast: fast.p99, microsSlow: slow.p99, medianFast: fast.median, medianSlow: slow.median };
-  });
-  let episodes: EpisodeScore[] = [];
-  const held = point.startsWith("toy.") ? [] : heldScenes(decisions, cat, o.episodes);
-  if (held.length > 0) {
-    const policies: { name: string; policy: "off" | "rule" | "model"; models: string[] }[] = [
-      { name: "today", policy: "off", models: [] }, { name: "rule", policy: "rule", models: [] },
-      ...found.map((f) => ({ name: f.name, policy: "model" as const, models: [f.file] })),
-    ];
-    const jobs: Job[] = policies.flatMap((pol) => held.map((scene): Job => ({ kind: "episode", scene, point, policy: pol.policy, models: pol.models })));
-    status({ step: "episodes", point, done: 0, of: jobs.length });
-    let done = 0;
-    const results = await new Workers(o.workers).run(jobs, () => {
-      if (++done % 20 === 0) status({ step: "episodes", point, done, of: jobs.length });
+  const profiles = manifest.profiles.map((n) => cat.profiles.find((q) => q.name === n.name)!);
+  const found = new Map(profiles.map((p) => [p.name, modelsOf(point, p)]));
+  const policies: Policy[] = [
+    { name: "today", policy: "off", models: [] }, { name: "rule", policy: "rule", models: [] },
+    ...[...found.values()].flat().map((f) => ({ name: f.name, policy: "model" as const, models: [f.file] })),
+  ];
+  const game = !point.startsWith("toy.");
+  const episodes = game ? await play(point, policies, heldScenes(decisions, cat, o.episodes), o.workers) : [];
+  const fresh = game && o.fresh ? await play(point, policies, scenes([...FAMILIES, "miami"], o.fresh, FRESH_FIRST), o.workers) : [];
+  const out: PointScores[] = [];
+  for (const p of profiles) {
+    const mine = found.get(p.name)!;
+    const trained: Trained[] = mine.map((f) => {
+      const fast = timed(f.file, point, CORES.fast), slow = timed(f.file, point, CORES.slow);
+      return { name: f.name, kind: f.kind, model: f.model, bytes: f.bytes, microsFast: fast.p99, microsSlow: slow.p99, medianFast: fast.median, medianSlow: slow.median };
     });
-    episodes = policies.map((pol, i) => episodeScore(pol.name, results.slice(i * held.length, (i + 1) * held.length).flatMap((d) => (d.kind === "episode" ? [d.result] : []))));
+    const names = new Set(["today", "rule", ...mine.map((f) => f.name)]);
+    const scores = ratePoint({ point, profile: p, cat, decisions, reading: o.reading ?? READINGS.length - 1, trained, episodes: episodes.filter((e) => names.has(e.name)) });
+    scores.fresh = fresh.filter((e) => names.has(e.name));
+    // The rule is timed as the trained are, from a file of its own outside the models.
+    const rule = cat.rules.get(p.name), ruled = scores.scores.find((s) => s.name === "rule");
+    if (rule && ruled) {
+      const file = join(ROOT, "rules", `${p.name}.json`);
+      mkdirSync(join(ROOT, "rules"), { recursive: true });
+      writeFileSync(file, JSON.stringify(writeModel(rule)));
+      const fast = timed(file, point, CORES.fast), slow = timed(file, point, CORES.slow);
+      Object.assign(ruled, { microsFast: fast.p99, microsSlow: slow.p99, medianFast: fast.median, medianSlow: slow.median, bytes: statSync(file).size });
+    }
+    // Each trained scorer's file keeps its held-out score.
+    for (const f of mine) {
+      const file = JSON.parse(readFileSync(f.file, "utf8")) as { about?: Record<string, unknown> };
+      file.about = { ...(file.about ?? {}), on: "held out", score: scores.scores.find((s) => s.name === f.name) };
+      writeFileSync(f.file, JSON.stringify(file));
+    }
+    out.push(scores);
   }
-  const scores = ratePoint({ point, profile: p, cat, decisions, reading: o.reading ?? READINGS.length - 1, trained, episodes });
-  // The rule is timed as the trained are, from a file of its own outside the models.
-  const rule = cat.rules.get(p.name), ruled = scores.scores.find((s) => s.name === "rule");
-  if (rule && ruled) {
-    const file = join(ROOT, "rules", `${p.name}.json`);
-    mkdirSync(join(ROOT, "rules"), { recursive: true });
-    writeFileSync(file, JSON.stringify(writeModel(rule)));
-    const fast = timed(file, point, CORES.fast), slow = timed(file, point, CORES.slow);
-    Object.assign(ruled, { microsFast: fast.p99, microsSlow: slow.p99, medianFast: fast.median, medianSlow: slow.median, bytes: statSync(file).size });
-  }
-  // Each trained scorer's file keeps its held-out score.
-  for (const f of found) {
-    const file = JSON.parse(readFileSync(f.file, "utf8")) as { about?: Record<string, unknown> };
-    file.about = { ...(file.about ?? {}), on: "held out", score: scores.scores.find((s) => s.name === f.name) };
-    writeFileSync(f.file, JSON.stringify(file));
-  }
-  return scores;
+  return out;
 }
 
 function arg(name: string): string | undefined {
@@ -147,8 +173,8 @@ if (import.meta.main && process.argv.includes("--time")) {
   const rule = cat.rules.get(p.name) ?? null;
   console.log(`${point}: ${decisions.length} decisions from ${new Set(manifest.scenes.map((s) => `${s.family}/${s.seed}`)).size} scenes`);
   READINGS.forEach((r, i) => {
-    const h = headroom(examples(decisions, p, cat.profiles, cat.rules, i), rule);
-    console.log(`  at ${r}: the best candidate beats the rule by ${h.toFixed(3)} of the median cost${h < 0.05 ? ": under 0.05, no model is worth training for it" : ""}`);
+    const h = headroom(examples(decisions, p, cat.profiles, cat.rules, i, undefined, cat.passes?.[point]), rule);
+    console.log(`  at ${r}: the best candidate beats the rule by ${h.toFixed(3)} of the median cost at one decision`);
   });
 } else if (import.meta.main) {
   const named = arg("--point");
@@ -157,7 +183,7 @@ if (import.meta.main && process.argv.includes("--time")) {
   for (const point of points) {
     status({ step: "score", point, done: 0, of: 1 });
     const reading = READINGS.indexOf((arg("--reading") ?? "end") as (typeof READINGS)[number]);
-    board.points.push(await scorePoint(point, { episodes: Number(arg("--episodes") ?? 40), workers: Number(arg("--workers") ?? 8), reading: reading < 0 ? undefined : reading }));
+    board.points.push(...(await scorePoint(point, { episodes: Number(arg("--episodes") ?? 40), workers: Number(arg("--workers") ?? 8), reading: reading < 0 ? undefined : reading, fresh: Number(arg("--fresh") ?? 0) })));
   }
   writeFileSync(join(ROOT, "scoreboard.json"), JSON.stringify(board, null, 1));
   writeFileSync(join(ROOT, "scoreboard.html"), boardHtml(board));

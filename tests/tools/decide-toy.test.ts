@@ -6,20 +6,23 @@ import { toyLoop } from "../../tools/decide/toy.ts";
 
 const ROOT = join(import.meta.dir, "../..");
 
-/** Every file `file` loads, and what they load, by the paths written in their imports. */
+/**
+ * Every file `file` loads, and what they load, by the paths written in their static imports. A dynamic import is left
+ * out: fit.ts loads the game's catalogue so only when it is run as a command.
+ */
 function reach(file: string, seen = new Set<string>()): Set<string> {
   if (seen.has(file)) return seen;
   seen.add(file);
   const src = readFileSync(file, "utf8");
-  for (const m of src.matchAll(/(?:from\s+|import\s*\(\s*)["'](\.[^"']+)["']/g)) reach(resolve(dirname(file), m[1]!), seen);
+  for (const m of src.matchAll(/from\s+["'](\.[^"']+)["']/g)) reach(resolve(dirname(file), m[1]!), seen);
   return seen;
 }
 
-test("the toy loads nothing outside the engine and the lab but the hash and the seeded random numbers", () => {
+test("the toy loads nothing outside the engine and the lab but the seeded random numbers", () => {
   const files = [...reach(join(ROOT, "tools/decide/toy.ts"))].map((f) => relative(ROOT, f));
   const outside = files.filter((f) => !f.startsWith("shared/decide/") && !f.startsWith("tools/decide/"));
-  // The engine's profiles hash their columns with shared/hash.ts; the lab draws with shared/rng.ts. Neither imports anything.
-  expect(outside.sort()).toEqual(["shared/hash.ts", "shared/rng.ts"]);
+  // The lab draws with shared/rng.ts, which imports nothing.
+  expect(outside.sort()).toEqual(["shared/rng.ts"]);
   for (const f of outside) expect(readFileSync(join(ROOT, f), "utf8")).not.toMatch(/^import /m);
   expect(files).toContain("tools/decide/fit.ts");
 });
