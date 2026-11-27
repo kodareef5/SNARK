@@ -25,8 +25,12 @@ export const POLICIES = ["off", "watch", "rule", "model"] as const;
 
 /** What a question costs to answer: a yes or no from numbers already held, a few probes, or a full ring of them. */
 export const COST_YES = 0, COST_PROBE = 1, COST_RING = 2;
-/** Questions of each cost answered in one tick, at most. Guesses, to be set by the bench (tools/bench/decide.ts). */
-export const CAPS: readonly number[] = [64, 32, 8];
+/**
+ * Questions of each cost answered in one tick, at most. Guesses, to be set by the bench (tools/bench/decide.ts). A full
+ * ring of 12 headings measured 66 µs in a dense wood and 125 at its 99th percentile, so four keep a tick's worst near
+ * half a millisecond.
+ */
+export const CAPS: readonly number[] = [64, 32, 4];
 /**
  * Questions one tick may hold for movers a player is close to, and for those in the background; more are cut and counted.
  * They are held apart, so however much the background asks it never takes the place of a mover a player is beside.
@@ -248,6 +252,11 @@ export class Decide {
   /** Whether anything decides `point` but today's code: a hook that must do work before it can put a question asks this first. */
   on(point: number): boolean {
     return this.policyOf[point] !== OFF;
+  }
+
+  /** Whether `point`'s answers are acted on (the rule or a trained scorer decides it), not only watched. */
+  acts(point: number): boolean {
+    return this.policyOf[point]! >= RULE;
   }
 
   /**

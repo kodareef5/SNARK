@@ -85,6 +85,7 @@ test("the rule answers and acts; watching answers and does not act", () => {
   // Each mover's one free heading is its own number.
   expect(p.applied).toEqual([[3, 3]]);
   expect([q.asked, q.applied]).toEqual([[5], []]);
+  expect([d.acts(a), d.acts(b)]).toEqual([true, false]);
   expect(d.report().points.map((r) => [r.policy, r.counts.answered, r.counts.applied])).toEqual([["rule", 1, 1], ["watch", 1, 0]]);
 });
 
