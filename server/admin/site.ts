@@ -16,6 +16,7 @@ const WORLD_PAGES = {
   drops: "drops.html",
   events: "events.html",
   cast: "cast.html",
+  decide: "decide.html",
   health: "index.html",
   saves: "index.html",
   restart: "index.html",
@@ -30,7 +31,7 @@ type WorldId = SiteWorld["id"];
 const UI_FILES = new Set([
   "admin.css", "investigate.css", "overview.css", "scene-studio.css",
   "admin.js", "cluster.js", "overview.js", "chat.js", "shell.js", "investigate.js", "map.js",
-  "settings.js", "loadouts.js", "drops.js", "events.js", "cast.js", "first-frame.js", "sounds.js", "board.js", "scene-studio.js", "screens.js", "screens-stage.js", "permissions.js", "acts.js",
+  "settings.js", "loadouts.js", "drops.js", "events.js", "cast.js", "decide.js", "first-frame.js", "sounds.js", "board.js", "scene-studio.js", "screens.js", "screens-stage.js", "permissions.js", "acts.js",
   "wardrobe.js", "wardrobe.css", "people.js", "populations.js", "people.css",
 ]);
 /** The cluster's pages behind the gate that are one HTML file each. */

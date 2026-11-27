@@ -26,7 +26,7 @@ import { pathOf, placeOf } from "./site.ts";
 /** The POSTs the front passes to a world: its own registered writes. */
 export const WORLD_POSTS: ReadonlySet<string> = new Set([
   "/survivors", "/signin", "/directory", "/__play", "/__report", "/__debug",
-  "/admin/cast", "/admin/settings", "/admin/stop",
+  "/admin/cast", "/admin/decide", "/admin/settings", "/admin/stop",
   "/admin/loadouts/book", "/admin/loadouts/reset", "/admin/loadouts/apply",
   "/admin/supply/book", "/admin/supply/reset", "/admin/supply/restore", "/admin/supply/call",
   "/admin/supply/land", "/admin/supply/cancel", "/admin/supply/ark",

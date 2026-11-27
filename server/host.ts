@@ -26,6 +26,7 @@ import { Beds, type Place } from "./beds.ts";
 import { CastHost } from "./cast/host.ts";
 import { Decide } from "./decide/decide.ts";
 import { LineLog } from "./decide/log.ts";
+import { settingsOf, shareDecide } from "./decide/shared.ts";
 import type { CastSettings } from "../shared/cast/state.ts";
 import { Taming } from "./taming.ts";
 import { Riding } from "./riding.ts";
@@ -1952,6 +1953,17 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     log: opts.dbPath ? new LineLog(join(dirname(resolve(opts.dbPath)), "decide"), `decide-w${records.worldId}`) : null,
   });
   decide.sinks.push(castHost.log.lines);
+  // A cluster's worlds take the Decide settings one of them copies to its folder (server/decide/shared.ts).
+  if (cluster) {
+    const copy = shareDecide(decide, {
+      root: cluster.folder.root, world: cluster.world, now: () => cluster.now(), say,
+      settings: () => settingsOf(rules),
+      set: (name, words, by) => host.pageSetting(name, words, by).why,
+      keep: () => persistence?.writeSidecar("decideCopy"),
+    });
+    copy.restore(persistence && !loaded!.fresh ? (persistence.store.meta("decideCopy") as string | null) : null);
+    persistence?.sidecar("decideCopy", copy.saved);
+  }
   // A car door held open strikes whoever stands where it swings (server/urban.ts doorStrikes): a blow by the car's
   // driver, by its speed, told to everyone near as a car's (EVENT_IMPACT), and a creature it kills tumbles.
   // A survivor knocked off their feet (Knockdowns) goes limp as its ragdoll, thrown as the blow left it moving, and gets

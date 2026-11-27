@@ -378,11 +378,14 @@ export class DebugBar {
         } catch {}
       });
     }
-    const wanted = this.open && (this.tabs[this.tab] instanceof ServerTab || this.tabs[this.tab] instanceof LogTab) ? POLL_OPEN_MS : POLL_MS;
+    const shown = this.tabs[this.tab], decide = this.open && shown instanceof ServerTab;
+    const wanted = this.open && (shown instanceof ServerTab || shown instanceof LogTab) ? POLL_OPEN_MS : POLL_MS;
     if (!s.admin || this.polling || nowMs - this.askedAt < wanted) return;
     this.polling = true;
     this.askedAt = nowMs;
-    void port.post("__debug", [["token", this.token()], ["since", String(this.since)]], []).then((a) => {
+    // The decider is asked for only while the Server tab, which shows it, is open.
+    const fields: [string, string][] = [["token", this.token()], ["since", String(this.since)], ...(decide ? [["decide", "1"] as [string, string]] : [])];
+    void port.post("__debug", fields, []).then((a) => {
       this.polling = false;
       if (a.status !== 200) return;
       try {
