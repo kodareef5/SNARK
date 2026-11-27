@@ -36,7 +36,8 @@ bun tools/decide/world.ts --cost                       what a lab world and a ti
 ```
 
 Wrap long runs in `systemd-run --user --scope -q -p MemoryMax=24G -p MemorySwapMax=0`. Workers are separate
-processes, at most 20, each kept for 300 scenes or until it holds 2 GB.
+processes, at most 20, each kept for 300 scenes or until it holds 2 GB. Each holds about 1.7 GB once the content is
+loaded, so 12 fit under a 24 GB cap and 20 want about 34 GB.
 
 ## Where files go
 
