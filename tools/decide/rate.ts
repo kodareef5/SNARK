@@ -8,7 +8,7 @@ import type { EpisodeScore, PointScores, Score } from "../../shared/decide/score
 import { Rng } from "../../shared/rng.ts";
 import { gateOf, ruleGate, summarize, type Graded } from "./board.ts";
 import { todayCost, type Decision, type TableRow } from "./dataset.ts";
-import { examples, grade, logLossOf, probabilities, roleOf, scoreModel, type Alter, type Catalog, type Example } from "./fit.ts";
+import { examples, grade, logLossOf, probabilities, roleOf, scoreModel, unitOf, type Alter, type Catalog, type Example } from "./fit.ts";
 
 export interface Trained {
   name: string;
@@ -117,15 +117,16 @@ export function ratePoint(o: RateOptions): PointScores {
   const ex = examples(held, p, cat.profiles, cat.rules, reading, undefined, passes);
   const rule = cat.rules.get(p.name) ?? null;
   const seed = o.seed ?? 1;
+  const unit = (group: string): string => unitOf(cat.split, group);
   const scores: Score[] = [];
   const base = (s: Score): Score => ({ ...s, gate: { pass: false, why: ["a baseline is not gated"] } });
-  scores.push(base(summarize("uniform", "baseline", grade(p.kind, ex, null, rule), { seed })));
+  scores.push(base(summarize("uniform", "baseline", grade(p.kind, ex, null, rule), { seed, unit })));
   if (p.kind === "choice") {
     const today = todayGraded(held, ex, p, reading, rule);
-    if (today.length > 0) scores.push(base(summarize("today", "baseline", today, { seed })));
+    if (today.length > 0) scores.push(base(summarize("today", "baseline", today, { seed, unit })));
   }
   const played = (name: string) => o.episodes?.find((e) => e.name === name);
-  if (rule) scores.push({ ...summarize("rule", "rule", grade(p.kind, ex, rule, rule), { seed }), gate: ruleGate(played("rule"), played("today")) });
+  if (rule) scores.push({ ...summarize("rule", "rule", grade(p.kind, ex, rule, rule), { seed, unit }), gate: ruleGate(played("rule"), played("today")) });
   const hasState = p.state.length > 0;
   const blindSets = {
     state: hasState ? examples(held, p, cat.profiles, cat.rules, reading, hide("state"), passes) : null,
@@ -134,7 +135,7 @@ export function ratePoint(o: RateOptions): PointScores {
   };
   const uniformLoss = scores[0]!.logLoss;
   for (const t of o.trained) {
-    const s = summarize(t.name, t.kind, grade(p.kind, ex, t.model, rule), { seed });
+    const s = summarize(t.name, t.kind, grade(p.kind, ex, t.model, rule), { seed, unit });
     const own = meanLoss(p.kind, ex, t.model), gain = uniformLoss - own;
     // What hiding a part costs, as a share of what the scorer gains over uniform; NaN where it gains nothing.
     const worse = (set: Example[] | null) => (set && gain > 0 ? (meanLoss(p.kind, set, t.model) - own) / gain : NaN);
@@ -144,7 +145,7 @@ export function ratePoint(o: RateOptions): PointScores {
     s.medianFast = t.medianFast ?? NaN;
     s.medianSlow = t.medianSlow ?? NaN;
     s.bytes = t.bytes;
-    s.gate = gateOf(s, { hasState, calibrated: p.kind === "yes", mine: played(t.name), rule: played("rule"), today: played("today"), seed });
+    s.gate = gateOf(s, { hasState, calibrated: p.kind === "yes", mine: played(t.name), rule: played("rule"), today: played("today"), seed, layout: cat.split.layout });
     scores.push(s);
   }
   const all = examples(o.decisions, p, cat.profiles, cat.rules, reading, undefined, passes);

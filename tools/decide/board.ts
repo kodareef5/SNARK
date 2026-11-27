@@ -72,14 +72,17 @@ export function ratio(a: number, b: number): number {
 
 const sum = (g: readonly Graded[], f: (x: Graded) => number): number => g.reduce((s, x) => s + f(x), 0);
 
-/** The share of the rule's regret, and its 95% interval from `rounds` resamples of whole scenes. */
-export function regretInterval(g: readonly Graded[], rounds = 1000, seed = 1): [number, number] {
+/**
+ * The share of the rule's regret, and its 95% interval from `rounds` resamples of whole scenes, or of what `unit` says
+ * goes together with a scene: the scenes of one base layout are not independent.
+ */
+export function regretInterval(g: readonly Graded[], rounds = 1000, seed = 1, unit: (group: string) => string = (group) => group): [number, number] {
   const groups = new Map<string, [number, number]>();
   for (const x of g) {
-    const v = groups.get(x.group) ?? [0, 0];
+    const key = unit(x.group), v = groups.get(key) ?? [0, 0];
     v[0] += x.regret;
     v[1] += x.ruleRegret;
-    groups.set(x.group, v);
+    groups.set(key, v);
   }
   const list = [...groups.values()];
   if (list.length === 0) return [NaN, NaN];
@@ -98,7 +101,7 @@ export function regretInterval(g: readonly Graded[], rounds = 1000, seed = 1): [
 }
 
 /** A Score from graded decisions. The ablations, timings, size and gate are filled by whoever knows them. */
-export function summarize(name: string, kind: Score["kind"], g: readonly Graded[], o: { seed?: number } = {}): Score {
+export function summarize(name: string, kind: Score["kind"], g: readonly Graded[], o: { seed?: number; unit?: (group: string) => string } = {}): Score {
   const regret = sum(g, (x) => x.regret), rule = sum(g, (x) => x.ruleRegret);
   const families = new Map<string, Graded[]>();
   for (const x of g) {
@@ -112,7 +115,7 @@ export function summarize(name: string, kind: Score["kind"], g: readonly Graded[
   const n = g.length || NaN;
   return {
     name, kind, decisions: g.length, scenes: new Set(g.map((x) => x.group)).size,
-    regret: regret / n, regretRatio: ratio(regret, rule), interval: regretInterval(g, 1000, o.seed ?? 1),
+    regret: regret / n, regretRatio: ratio(regret, rule), interval: regretInterval(g, 1000, o.seed ?? 1, o.unit),
     worstFamily: g.length ? worst : NaN, disagreeRatio: ratio(sum(apart, (x) => x.regret), sum(apart, (x) => x.ruleRegret)),
     logLoss: sum(g, (x) => x.logLoss) / n, brier: sum(g, (x) => x.brier) / n, ece, reliability,
     blind: { state: NaN, columns: NaN, shuffled: NaN }, microsFast: NaN, microsSlow: NaN, medianFast: NaN, medianSlow: NaN, bytes: 0,
@@ -127,52 +130,68 @@ export function ruleGate(rule?: EpisodeScore, today?: EpisodeScore): { pass: boo
   return { pass: why.length === 0, why };
 }
 
-/** The 95% interval of the mean of `diff`, from `rounds` resamples. */
-export function meanInterval(diff: readonly number[], rounds = 1000, seed = 1): [number, number] {
+/** The 95% interval of the mean of `diff`, from `rounds` resamples: of each alone, or whole `units` of them where given. */
+export function meanInterval(diff: readonly number[], rounds = 1000, seed = 1, units?: readonly string[]): [number, number] {
   if (diff.length === 0) return [NaN, NaN];
-  const rng = new Rng(seed), out: number[] = [];
+  const groups = new Map<string, [number, number]>();
+  diff.forEach((d, i) => {
+    const key = units?.[i] ?? String(i), v = groups.get(key) ?? [0, 0];
+    v[0] += d;
+    v[1]++;
+    groups.set(key, v);
+  });
+  const list = [...groups.values()], rng = new Rng(seed), out: number[] = [];
   for (let r = 0; r < rounds; r++) {
-    let a = 0;
-    for (let i = 0; i < diff.length; i++) a += diff[rng.int(diff.length)]!;
-    out.push(a / diff.length);
+    let a = 0, n = 0;
+    for (let i = 0; i < list.length; i++) {
+      const v = list[rng.int(list.length)]!;
+      a += v[0];
+      n += v[1];
+    }
+    out.push(a / n);
   }
   out.sort((x, y) => x - y);
   return [out[Math.floor(rounds * 0.025)]!, out[Math.min(rounds - 1, Math.floor(rounds * 0.975))]!];
 }
 
-/** Layouts both played, by family and seed: the rule's arrivals the scorer lost and those it gained, and its cost less the rule's on each. */
-export function against(mine: EpisodeScore, rule: EpisodeScore): { lost: number; gained: number; diff: number[] } {
+/**
+ * Layouts both played, by family and seed: the rule's arrivals the scorer lost and those it gained, and its cost less the
+ * rule's on each, with the base layout each is of (`layout`), which is what is resampled.
+ */
+export function against(mine: EpisodeScore, rule: EpisodeScore, layout?: (family: string, seed: number) => number): { lost: number; gained: number; diff: number[]; units: string[] } {
   const by = new Map((rule.layouts ?? []).map((l) => [`${l.family}/${l.seed}`, l]));
   let lost = 0, gained = 0;
-  const diff: number[] = [];
+  const diff: number[] = [], units: string[] = [];
   for (const l of mine.layouts ?? []) {
     const r = by.get(`${l.family}/${l.seed}`);
     if (!r || Number.isNaN(l.route) || l.route === null) continue;
     if (r.arrived && !l.arrived) lost++;
     if (l.arrived && !r.arrived) gained++;
-    if (l.cost !== undefined && r.cost !== undefined && Number.isFinite(l.cost) && Number.isFinite(r.cost)) diff.push(l.cost - r.cost);
+    if (l.cost === undefined || r.cost === undefined || !Number.isFinite(l.cost) || !Number.isFinite(r.cost)) continue;
+    diff.push(l.cost - r.cost);
+    units.push(`${l.family}/${layout ? layout(l.family, l.seed) : l.seed}`);
   }
-  return { lost, gained, diff };
+  return { lost, gained, diff, units };
 }
 
 /** Why whole episodes on the held-out layouts fail a scorer against the rule: fewer arrivals overall or in a family, more lost than gained, or no clear saving in cost. */
-export function episodeWhy(mine: EpisodeScore, rule: EpisodeScore, seed = 1): string[] {
+export function episodeWhy(mine: EpisodeScore, rule: EpisodeScore, seed = 1, layout?: (family: string, seed: number) => number): string[] {
   const why: string[] = [], f = (v: number) => (Number.isFinite(v) ? v.toFixed(1) : String(v));
   if (mine.arrived < rule.arrived) why.push(`whole episodes: it arrives in ${mine.arrived} of ${mine.scenes}, the rule in ${rule.arrived}`);
   for (const [family, r] of Object.entries(rule.families ?? {})) {
     const m = mine.families?.[family];
     if (m && m.arrived < r.arrived) why.push(`whole episodes: in ${family} it arrives in ${m.arrived} of ${m.scenes}, the rule in ${r.arrived}`);
   }
-  const { lost, gained, diff } = against(mine, rule);
+  const { lost, gained, diff, units } = against(mine, rule, layout);
   if (lost > gained) why.push(`whole episodes: it loses ${lost} of the rule's arrivals and gains ${gained}`);
-  const [, top] = meanInterval(diff, 1000, seed);
+  const [, top] = meanInterval(diff, 1000, seed, units);
   if (!(mine.cost < rule.cost)) why.push(`whole episodes: its mean cost ${f(mine.cost)} is not under the rule's ${f(rule.cost)}`);
   else if (!(top < 0)) why.push(`whole episodes: the interval of its cost less the rule's reaches ${f(top)}, not under 0`);
   return why;
 }
 
 /** The gate's verdict on a trained scorer, with every reason it fails. ECE counts only where `calibrated`: a point whose probability is read. */
-export function gateOf(s: Score, o: { hasState: boolean; calibrated?: boolean; mine?: EpisodeScore; rule?: EpisodeScore; today?: EpisodeScore; seed?: number }): { pass: boolean; why: string[] } {
+export function gateOf(s: Score, o: { hasState: boolean; calibrated?: boolean; mine?: EpisodeScore; rule?: EpisodeScore; today?: EpisodeScore; seed?: number; layout?: (family: string, seed: number) => number }): { pass: boolean; why: string[] } {
   const why: string[] = [];
   const f = (v: number, d = 3) => (Number.isFinite(v) ? v.toFixed(d) : String(v));
   if (s.decisions === 0) why.push("single decisions: none are held out, so none of their marks can be read");
@@ -189,7 +208,7 @@ export function gateOf(s: Score, o: { hasState: boolean; calibrated?: boolean; m
   if (Number.isFinite(s.microsFast) && s.microsFast > GATE.micros) why.push(`one answer takes ${f(s.microsFast, 1)} µs at the 99th percentile, above ${GATE.micros}`);
   if (s.bytes > GATE.bytes) why.push(`its weights are ${s.bytes} bytes, above ${GATE.bytes}`);
   if (o.mine && o.rule) {
-    why.push(...episodeWhy(o.mine, o.rule, o.seed));
+    why.push(...episodeWhy(o.mine, o.rule, o.seed, o.layout));
     if (o.today && o.mine.arrived < o.today.arrived) why.push(`whole episodes: it arrives in ${o.mine.arrived} of ${o.mine.scenes}, today's code in ${o.today.arrived}`);
   } else why.push("no whole episodes were played");
   return { pass: why.length === 0, why };

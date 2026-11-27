@@ -5,7 +5,9 @@ import { writeModel } from "../../shared/decide/weights.ts";
 import { Rng } from "../../shared/rng.ts";
 import { eceOf } from "../../tools/decide/board.ts";
 import type { Decision } from "../../tools/decide/dataset.ts";
-import { examples, fit, grade, probabilities, scoreModel, type Example } from "../../tools/decide/fit.ts";
+import { layoutOf } from "../../tools/decide/catalog.ts";
+import { examples, fit, grade, probabilities, scoreModel, splitExamples, unitOf, type Example } from "../../tools/decide/fit.ts";
+import { draw } from "../../tools/decide/random.ts";
 
 const CHOICE = profile("test.choice", "choice", false, ["calm"], ["good", "bad", "noise"]);
 const YES = profile("test.yes", "yes", false, [], ["a", "b"]);
@@ -32,6 +34,30 @@ function yeses(n: number, seed: number, label: (a: number, b: number, rng: Rng) 
 }
 
 const ex = (ds: Decision[], p: Profile): Example[] => examples(ds, p, [p], new Map(), 0);
+
+test("with no validation family, whole layouts validate: a pair is never split", () => {
+  const of = (family: string, n: number): Decision[] => choices(n, 5).map((d, i) => ({ ...d, seed: i + 1, family }));
+  const all = [...ex(of("gap", 60), CHOICE), ...ex(of("intentU", 60), CHOICE), ...ex(of("trees", 60), CHOICE)];
+  const split = { held: [], heldMaps: [], validation: [] };
+  const sides = (s: { train: Example[]; val: Example[] }) => {
+    const train = new Set(s.train.map((e) => unitOf({ layout: layoutOf }, e.group)));
+    return { val: s.val.length, shared: s.val.filter((e) => train.has(unitOf({ layout: layoutOf }, e.group))).length };
+  };
+  // By seed alone, most validation rows of a pair or an intent have their companion scene in training.
+  const bySeed = sides(splitExamples(all, split));
+  expect(bySeed.shared).toBeGreaterThan(bySeed.val / 3);
+  const byLayout = sides(splitExamples(all, { ...split, layout: layoutOf }));
+  expect(byLayout.shared).toBe(0);
+  expect(byLayout.val).toBeGreaterThan(all.length / 10);
+  // A validation family, where the data has one, is used as it was.
+  expect(splitExamples(all, { ...split, validation: ["trees"], layout: layoutOf }).val.every((e) => e.family === "trees")).toBe(true);
+});
+
+test("the catalog numbers a scene's base layout as the scenes are drawn", () => {
+  for (const family of ["ford", "gap"] as const) for (let seed = 1; seed <= 12; seed++) expect(draw(family, seed).pair!.id).toBe(layoutOf(family, seed));
+  for (const family of ["intentU", "intentTrees"] as const) for (let seed = 1; seed <= 12; seed++) expect(draw(family, seed).intent!.id).toBe(layoutOf(family, seed));
+  expect([layoutOf("trees", 7), layoutOf("miami", 12)]).toEqual([7, 12]);
+});
 
 test("a line of weights recovers the rule behind its labels and beats uniform", () => {
   const all = ex(choices(1500, 3), CHOICE), train = all.filter((e) => e.family === "train"), val = all.filter((e) => e.family === "val");

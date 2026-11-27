@@ -16,7 +16,12 @@ export const FAMILIES = ["trees", "deadEnd", "pen", "water", "blocker", "crowd"]
  * put one obstacle in front of three intents: seeds 3n - 2, 3n - 1 and 3n are one layout walked, chased and escaped.
  */
 export const SITUATIONS = ["ford", "gap", "intentU", "intentTrees"] as const;
-export const SPLIT: Split = { held: ["pen"], heldMaps: ["miami"], validation: ["blocker"] };
+/** The base layout of a scene: its pair, its three intents, or itself (random.ts numbers them so). */
+export function layoutOf(family: string, seed: number): number {
+  if (family === "ford" || family === "gap") return (seed + 1) >> 1;
+  return family === "intentU" || family === "intentTrees" ? Math.floor((seed + 2) / 3) : seed;
+}
+export const SPLIT: Split = { held: ["pen"], heldMaps: ["miami"], validation: ["blocker"], layout: layoutOf };
 
 /** The stuck ladder's points (server/decide/nav.ts), found by name on a host's decider and always decided together. */
 export const NAV_POINTS: readonly string[] = ["nav.snag", "nav.ring", "nav.reach", "nav.probe", "nav.do"];

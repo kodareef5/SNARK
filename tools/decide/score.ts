@@ -166,7 +166,7 @@ export async function scorePoint(point: string, o: { layouts: number; workers: n
   // Single decisions are read on another dataset where one is named, every decision of it held out.
   const other = o.heldData ? readData(dataDir(point, join(o.heldData, "data")), cat.profiles) : null;
   const heldDecisions = other ? other.decisions : decisions;
-  const heldCat: Catalog = other ? { ...cat, split: { held: [...new Set(other.decisions.map((d) => d.family))], heldMaps: [...new Set(other.decisions.map((d) => d.map))], validation: [] } } : cat;
+  const heldCat: Catalog = other ? { ...cat, split: { ...cat.split, held: [...new Set(other.decisions.map((d) => d.family))], heldMaps: [...new Set(other.decisions.map((d) => d.map))], validation: [] } } : cat;
   const found = new Map(profiles.map((p) => [p.name, modelsOf(point, p)]));
   const policies: Policy[] = [
     { name: "today", policy: "off", models: [] }, { name: "rule", policy: "rule", models: [] },

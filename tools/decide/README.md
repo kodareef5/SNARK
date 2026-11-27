@@ -105,7 +105,12 @@ costs two horizons and the straight way left. The prices and horizons are guesse
 ## Splits and the gate
 
 Splits are by family and by map, never by row. The `pen` family and the Miami slice are held out and read only by the
-board; `blocker` stops training and fits the temperature. Intervals are by bootstrap over scenes.
+board; `blocker` stops training and fits the temperature. Data with no validation family stops on a fifth of its
+layouts. The two sides of a pair, and the three intents of one layout, are one base layout (`layoutOf` in `catalog.ts`):
+they train or validate together, and intervals are by bootstrap over base layouts, since they are not independent.
+
+`bun tools/decide/page.ts --drive` serves the Decider admin page from a small world with movers in trouble, works it in
+headless Chrome and pictures it into `var/decide/page/shots/`.
 
 The board's headline is whole episodes on the held-out layouts, fixed before anything is played: seeds 1 to
 `--layouts` of each held-out family and map, whatever happens in them. Each policy (every point off, the rule, each

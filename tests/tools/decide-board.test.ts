@@ -1,7 +1,8 @@
 // The scoreboard's arithmetic (tools/decide/board.ts, fit.ts's grading) on cases worked by hand.
 import { expect, test } from "bun:test";
 import type { EpisodeScore, Score } from "../../shared/decide/scoreboard.ts";
-import { GATE, boardHtml, eceOf, episodeWhy, gateOf, meanInterval, regretInterval, ruleGate, summarize, type Graded } from "../../tools/decide/board.ts";
+import { GATE, against, boardHtml, eceOf, episodeWhy, gateOf, meanInterval, regretInterval, ruleGate, summarize, type Graded } from "../../tools/decide/board.ts";
+import { layoutOf } from "../../tools/decide/catalog.ts";
 import { gradeOne, type Example } from "../../tools/decide/fit.ts";
 
 const example = (cost: number[], target: number[]): Example => ({
@@ -74,6 +75,26 @@ test("the gate passes a scorer that meets every mark and names each one missed",
 test("with no decisions held out the gate says so once and still reads whole episodes", () => {
   const none = { ...good(), decisions: 0, scenes: 0, regretRatio: NaN, interval: [NaN, NaN] as [number, number], worstFamily: NaN, ece: NaN, blind: { state: NaN, columns: NaN, shuffled: NaN } };
   expect(gateOf(none, { hasState: true, mine: ep("m", 37, 700), rule: ep("rule", 38, 720) }).why.map((w) => w.split(":")[0])).toEqual(["single decisions", "whole episodes", "whole episodes", "whole episodes"]);
+});
+
+test("scenes of one base layout are resampled together", () => {
+  // Each pair's two scenes cancel: resampled apart the mean wanders, resampled as pairs it cannot.
+  const diff = Array.from({ length: 40 }, (_, i) => (i % 2 === 0 ? -50 : 50)), units = diff.map((_, i) => `gap/${i >> 1}`);
+  const [low, top] = meanInterval(diff, 1000, 1);
+  expect(top - low).toBeGreaterThan(10);
+  expect(meanInterval(diff, 1000, 1, units)).toEqual([0, 0]);
+  // The same for single decisions: one scene of each pair is all regret, the other none.
+  const g = Array.from({ length: 40 }, (_, i) => ({ ...graded(`flat/gap/${i + 1}`, i % 2 === 0 ? 2 : 0, 1) }));
+  const apart = regretInterval(g, 1000, 1), together = regretInterval(g, 1000, 1, (group) => `gap/${(Number(group.split("/").pop()) + 1) >> 1}`);
+  expect(apart[1] - apart[0]).toBeGreaterThan(0.2);
+  expect(together).toEqual([1, 1]);
+  // The gate's whole-episode interval takes the layout of each scene from the catalog's.
+  const scene = (seed: number, cost: number) => ({ family: "gap", seed, route: 40, arrived: true, ticks: 900, healthLost: 0, acted: 1, cost });
+  const rule: EpisodeScore = { ...ep("rule", 40, 700), layouts: Array.from({ length: 40 }, (_, i) => scene(i + 1, 700)) };
+  const mine: EpisodeScore = { ...ep("m", 40, 690), layouts: Array.from({ length: 40 }, (_, i) => scene(i + 1, i % 2 === 0 ? 630 : 750)) };
+  expect(against(mine, rule, layoutOf).units.slice(0, 4)).toEqual(["gap/1", "gap/1", "gap/2", "gap/2"]);
+  expect(episodeWhy(mine, rule, 1, layoutOf)).toEqual([]);
+  expect(episodeWhy(mine, rule, 1)).toEqual([expect.stringContaining("the interval of its cost less the rule's reaches")]);
 });
 
 test("ECE is a bar only where the point's probability is read", () => {

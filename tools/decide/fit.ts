@@ -64,6 +64,33 @@ export interface Split {
   heldMaps: readonly string[];
   /** Families early stopping and the temperature are read on. */
   validation: readonly string[];
+  /**
+   * The base layout the scene `seed` of `family` is drawn on, where several scenes share one (the two sides of a pair, a
+   * layout's three intents). Scenes of one layout train or validate together and are resampled together.
+   */
+  layout?: (family: string, seed: number) => number;
+}
+
+/** What is split and resampled whole with the scene `group` ("map/family/seed"): the scenes of its base layout. */
+export function unitOf(split: Pick<Split, "layout">, group: string): string {
+  if (!split.layout) return group;
+  const at = group.lastIndexOf("/"), from = group.lastIndexOf("/", at - 1);
+  return `${group.slice(0, at)}/${split.layout(group.slice(from + 1, at), Number(group.slice(at + 1)))}`;
+}
+
+/**
+ * Training and validation examples of `all`. Where the data has no validation family, a fifth of the training layouts
+ * validate, by their number: never a share of rows, nor one side of a pair with its other side left in training.
+ */
+export function splitExamples(all: readonly Example[], split: Split): { train: Example[]; val: Example[] } {
+  let train = all.filter((e) => roleOf(split, e.family, e.map) === "train");
+  let val = all.filter((e) => roleOf(split, e.family, e.map) === "validation");
+  if (val.length === 0) {
+    const pick = (e: Example) => Number(unitOf(split, e.group).split("/").pop()) % 5 === 0;
+    val = train.filter(pick);
+    train = train.filter((e) => !pick(e));
+  }
+  return { train, val };
 }
 
 export function roleOf(split: Split, family: string, map: string): "train" | "validation" | "held" {
@@ -546,14 +573,7 @@ export function fitPoint(point: string, o: FitOptions & { profile?: string; read
   if (!p) throw new Error(`${point} has no tables of ${String(name)}`);
   const reading = o.reading ?? READINGS.length - 1;
   const all = examples(decisions, p, cat.profiles, cat.rules, reading, undefined, cat.passes?.[point]);
-  let train = all.filter((e) => roleOf(cat.split, e.family, e.map) === "train");
-  let val = all.filter((e) => roleOf(cat.split, e.family, e.map) === "validation");
-  // No validation family in the data: a fifth of the training scenes by their seed, never a share of rows.
-  if (val.length === 0) {
-    const pick = (e: Example) => Number(e.group.split("/").pop()) % 5 === 0;
-    val = train.filter(pick);
-    train = train.filter((e) => !pick(e));
-  }
+  const { train, val } = splitExamples(all, cat.split);
   const rule0 = cat.rules.get(p.name);
   if (o.fromRule && !rule0) throw new Error(`${p.name} has no rule to start from`);
   const fitted = fit(p, train, val, { ...o, from: o.fromRule ? rule0 : undefined });
