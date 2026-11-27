@@ -4,7 +4,9 @@
 // pick and the plain detours stand.
 //
 // Each choice is priced by a way, not a line: a straight walk where the body can walk it, else a search of the point's
-// own, the searches of one answer held to PICK_CELLS in all. A choice left unsearched is priced by its line and says so.
+// own. A search costs about a microsecond a cell, so every answer of a tick shares PICK_CELLS, and a choice that a choice
+// already priced beats whatever its way (a lower priority, or a line longer than that one's way) is not searched. A
+// choice left unsearched is priced by its line and says so.
 
 import { answer as choose } from "../../shared/decide/forward.ts";
 import { DETOUR_HALF, PICK, PICK_HALF } from "../../shared/decide/profiles.ts";
@@ -21,9 +23,8 @@ import { COST_RING, type Decide, type Point } from "./decide.ts";
 
 /** Choices one answer weighs at the most; an objective with more weighs the first of those still open. */
 export const PICK_MOST = 16;
-/** Cells all the searches of one answer may expand, and one search at the most. */
-export const PICK_CELLS = 3000;
-export const PICK_SEARCH = 1500;
+/** Cells the searches of every answer in one tick may expand in all. A U's way round 70 m long took 2,185. */
+export const PICK_CELLS = 2500;
 /** Added to a candidate's score whatever the scorer says: for each step of priority, and for its pull. */
 export const BIAS_PRIORITY = 0.5;
 export const BIAS_PULL = 2;
@@ -97,6 +98,7 @@ export class Pick implements Picker {
   private readonly open = new Int32Array(PICK_MOST);
   private readonly lines = new Float64Array(PICK_MOST);
   private budget = 0;
+  private budgetAt = -1;
   private pace = 1;
   private pins: readonly Pin[] = [];
 
@@ -134,13 +136,18 @@ export class Pick implements Picker {
     const o = this.courses.objectiveOf(e), body = this.mind.walkerOf(e);
     if (!o || !body) return false;
     const ents = this.world.ents, x = ents.x[e]!, z = ents.z[e]!;
-    // The open choices, nearest first, so a search the budget leaves out is of the farthest.
+    // The open choices in the plain order, the highest priority and then the nearest, and the detours after them.
     let n = 0, ends = 0;
+    const after = (i: number, j: number, d: number): boolean => {
+      const a = o.choices[i]!, b = o.choices[this.open[j]!]!;
+      if (a.detour !== b.detour) return a.detour;
+      return a.place.priority !== b.place.priority ? a.place.priority < b.place.priority : d >= this.lines[j]!;
+    };
     for (let i = 0; i < o.choices.length && n < PICK_MOST; i++) {
       if (!this.courses.open(e, i)) continue;
       const p = o.choices[i]!.place, d = Math.hypot(p.x - x, p.z - z);
       let j = n++;
-      for (; j > 0 && this.lines[j - 1]! > d; j--) {
+      for (; j > 0 && !after(i, j - 1, d); j--) {
         this.open[j] = this.open[j - 1]!;
         this.lines[j] = this.lines[j - 1]!;
       }
@@ -151,11 +158,22 @@ export class Pick implements Picker {
     if (ends === 0) return false;
     this.finder.body = body;
     this.pace = Math.max(LEAST_PACE, this.courses.speedOf(e));
-    this.budget = PICK_CELLS;
+    if (this.budgetAt !== this.world.tick) {
+      this.budgetAt = this.world.tick;
+      this.budget = PICK_CELLS;
+    }
     this.pins = ents.team[e] !== 0 ? this.pinsOf(ents.team[e]!) : [];
+    // The best priced so far that has a way: a choice it beats in the plain order, whatever that one's way, is not searched.
+    let top = -1, soonest = Infinity;
     for (let j = 0; j < n; j++) {
-      const p = o.choices[this.open[j]!]!.place;
-      this.price(x, z, p.x, p.z, p.radius, this.ways[j]!);
+      const ch = o.choices[this.open[j]!]!, p = ch.place, wj = this.ways[j]!;
+      const beaten = !ch.detour && top >= 0 && (p.priority < top || this.lines[j]! / this.pace >= soonest);
+      this.price(x, z, p.x, p.z, p.radius, wj, !beaten);
+      if (ch.detour || wj.none || !wj.byWay) continue;
+      if (p.priority > top) {
+        top = p.priority;
+        soonest = wj.seconds;
+      } else if (p.priority === top && wj.seconds < soonest) soonest = wj.seconds;
     }
     // The aim a detour is weighed against: the plain order of priority, then seconds by a way, never where none leads.
     let a = -1;
@@ -210,8 +228,8 @@ export class Pick implements Picker {
     return wa.seconds < wb.seconds;
   }
 
-  /** Prices the trip from (x0, z0) to within `r` of (x1, z1) into `out`: a straight walk, else a search, else the line. */
-  private price(x0: number, z0: number, x1: number, z1: number, r: number, out: Way): void {
+  /** Prices the trip from (x0, z0) to within `r` of (x1, z1) into `out`: a straight walk, else a search where `search`, else the line. */
+  private price(x0: number, z0: number, x1: number, z1: number, r: number, out: Way, search = true): void {
     const f = this.finder, line = Math.hypot(x1 - x0, z1 - z0);
     out.none = false;
     out.byWay = true;
@@ -220,12 +238,12 @@ export class Pick implements Picker {
       out.danger = this.dangerLine(x0, z0, x1, z1);
       return;
     }
-    if (this.budget <= 0) {
+    if (!search || this.budget <= 0) {
       out.byWay = false;
       out.danger = this.dangerLine(x0, z0, x1, z1);
       return;
     }
-    f.budget = Math.min(PICK_SEARCH, this.budget);
+    f.budget = this.budget;
     const status = f.find(x0, z0, x1, z1);
     this.budget -= f.expanded;
     this.searches++;
