@@ -8,7 +8,6 @@ import { LEVEL_ERROR, LEVEL_INFO, LEVEL_WARN, type CodeNames, type DebugAnswer, 
 import { TEXT_NOTICE } from "../../../shared/net/protocol.ts";
 import { PASSES, type PassCpu } from "../passes.ts";
 import type { FramePacket } from "../render/packet.ts";
-import type { ReportBuild } from "../../../shared/report.ts";
 import type { UiFrame, UiImage } from "../ui/nodes.ts";
 import { Draw, KEY_DEBUG } from "./draw.ts";
 import { EV_ASSET, EV_CORRECTION, EV_ERROR, EV_GAP, EV_GOVERNOR, EV_JUMP, EV_TASK, EV_TICK, GAP_MS, LagEvents, Rises, type LagEvent } from "./events.ts";
@@ -21,7 +20,7 @@ import { CAPTURE_MS, FULL_QUALITY, FULL_WIDE, captureHead, saveCapture } from ".
 import { ShotRing, type ShotPose } from "./shots.ts";
 import { LANE_FRAME, MOST_SLOTS, SpanFrame, SpanRing } from "./spans.ts";
 import { D_BAR, D_BADGE, D_BAD, D_DRAWER, D_FAINT, D_GOOD, D_NUM, D_NUM_DIM, D_TAB, D_TAB_ON, D_WARN, FILL_RULE } from "./styles.ts";
-import { ACT_CLOSE, ACT_DRAWER, ACT_OPEN, ACT_SAVE, ACT_TAB, TAB_ACT, type Tab } from "./tab.ts";
+import { ACT_CLOSE, ACT_DRAWER, ACT_OPEN, ACT_SAVE, ACT_ZIP, ACT_TAB, TAB_ACT, type Tab } from "./tab.ts";
 import { AssetsTab } from "./tab-assets.ts";
 import { FrameTab } from "./tab-frame.ts";
 import { LogTab } from "./tab-log.ts";
@@ -78,10 +77,10 @@ export class DebugBar {
   chosenSpans: SpanFrame | null = null;
   /** When the bar last began to record, on the frame's clock: a capture reaches back no further. */
   recordingFrom = Infinity;
-  /** What the last save said, for the bar; words waiting for the next frame's picture to save with; the client's build. */
+  /** What the last save said, for the bar; words waiting for the next frame's picture to save with. */
   saved = "";
-  private saving: string | null = null;
-  clientBuild: ReportBuild = {};
+  private saving: { words: string; local: boolean } | null = null;
+  private writing = false;
 
   private hooked = false;
   private hookedOnce = false;
@@ -129,11 +128,6 @@ export class DebugBar {
     this.port = port;
     this.shots = new ShotRing(port);
     this.hooked = false;
-    void port.get("build.json").then((a) => {
-      try {
-        if (a.status === 200) this.clientBuild = JSON.parse(a.text) as ReportBuild;
-      } catch {}
-    });
   }
 
   /** A socket's count on the frame's clock, which is the page's in a browser and the harness's in a test. */
@@ -205,16 +199,17 @@ export class DebugBar {
     }
     // A save asked for takes its full picture now, while the canvas still holds the frame, and sends the rest after.
     if (this.saving !== null && port) {
-      const words = this.saving, f = app.ui.frame, full = port.shot(FULL_WIDE, FULL_QUALITY);
+      const { words, local } = this.saving, f = app.ui.frame, full = port.shot(FULL_WIDE, FULL_QUALITY);
       this.saving = null;
+      this.writing = true;
       e.shotMs += full.ms;
       e.flags |= FLAG_SHOT;
       this.afterShot = true;
       const head = captureHead(this, p, [width, height], [Math.round(f.width * f.unit), Math.round(f.height * f.unit)], this.pose(p));
-      void saveCapture(this, words, full.picture, head).then(
+      void saveCapture(this, words, local, full.picture, head).then(
         (said) => this.said(said),
         (err) => this.said(`not saved: ${err instanceof Error ? err.message : String(err)}`),
-      );
+      ).finally(() => { this.writing = false; });
     }
     // The card by pass, but whole on an Apple GPU, where a query between passes ends Metal's render pass.
     let gpu = -1;
@@ -498,6 +493,7 @@ export class DebugBar {
       else this.show(arg);
     } else if (act === ACT_OPEN) this.toggle();
     else if (act === ACT_SAVE) this.save("");
+    else if (act === ACT_ZIP) this.save("", true);
     else if (act === ACT_CLOSE) {
       this.close();
       this.app.ui.settings.debug = false;
@@ -551,24 +547,38 @@ export class DebugBar {
     let x = f.left + 8;
     d.button(x, y + 2, 22, BAR_H - 4, this.open ? D_TAB_ON : D_TAB, this.open ? "▾" : "▴", ACT_OPEN, 0, this.open ? "Close the drawer (Shift+F3)" : "Open the drawer (Shift+F3)");
     x += 26;
-    for (let i = 0; i < this.tabs.length; i++) {
-      const t = this.tabs[i]!;
-      if (t.shown && !t.shown(this)) continue;
-      const badge = t.badge?.(this) ?? "", w = Math.ceil(textWidth(t.name, D_TAB)) + 18 + (badge ? Math.ceil(textWidth(badge, D_BADGE)) + 10 : 0);
-      d.button(x, y + 2, w, BAR_H - 4, this.open && this.tab === i ? D_TAB_ON : D_TAB, badge ? `${t.name}   ` : t.name, ACT_TAB, i, t.name);
-      if (badge) {
-        const bw = Math.ceil(textWidth(badge, D_BADGE)) + 8;
-        d.text(x + w - bw - 5, y + 4, bw, D_BADGE, badge);
-      }
-      x += w + 2;
-    }
     // From the right: close, save, then the numbers as far as there is room.
     let right = f.width - f.right - 6;
     d.button(right - 20, y + 2, 20, BAR_H - 4, D_TAB, "×", ACT_CLOSE, 0, "Turn the debug bar off");
     right -= 24;
     if (admin) {
-      d.button(right - 44, y + 2, 44, BAR_H - 4, D_TAB, "Save", ACT_SAVE, 0, "Save the last minutes for a reader (F8)");
-      right -= 50;
+      d.button(right - 54, y + 2, 54, BAR_H - 4, D_TAB, "Upload", ACT_SAVE, 0, "Save a capture on the server (F8)");
+      right -= 58;
+    }
+    d.button(right - 48, y + 2, 48, BAR_H - 4, D_TAB, "ZIP", ACT_ZIP, 0, "Download a debug ZIP");
+    right -= 52;
+    const tabs = this.tabs.flatMap((tab, i) => {
+      if (tab.shown && !tab.shown(this)) return [];
+      const badge = tab.badge?.(this) ?? "";
+      const width = Math.ceil(textWidth(tab.name, D_TAB)) + 18 + (badge ? Math.ceil(textWidth(badge, D_BADGE)) + 10 : 0);
+      return [{ tab, i, badge, width }];
+    });
+    if (tabs.reduce((sum, t) => sum + t.width + 2, 0) > right - x) {
+      const selected = Math.max(0, tabs.findIndex((t) => t.i === this.tab));
+      const current = tabs[selected]!, prev = tabs[(selected + tabs.length - 1) % tabs.length]!, next = tabs[(selected + 1) % tabs.length]!;
+      d.button(x, y + 2, 24, BAR_H - 4, D_TAB, "‹", ACT_TAB, prev.i, prev.tab.name);
+      d.button(x + 26, y + 2, 90, BAR_H - 4, this.open ? D_TAB_ON : D_TAB, current.tab.name, ACT_TAB, current.i, current.tab.name);
+      d.button(x + 118, y + 2, 24, BAR_H - 4, D_TAB, "›", ACT_TAB, next.i, next.tab.name);
+      x += 146;
+    } else {
+      for (const { tab, i, badge, width } of tabs) {
+        d.button(x, y + 2, width, BAR_H - 4, this.open && this.tab === i ? D_TAB_ON : D_TAB, badge ? `${tab.name}   ` : tab.name, ACT_TAB, i, tab.name);
+        if (badge) {
+          const bw = Math.ceil(textWidth(badge, D_BADGE)) + 8;
+          d.text(x + width - bw - 5, y + 4, bw, D_BADGE, badge);
+        }
+        x += width + 2;
+      }
     }
     // As many numbers as there is room for, the least needed left out first, set from the right in their order.
     const stats = this.stats(), wide = stats.map(([text, style]) => Math.ceil(textWidth(text, style)) + 4);
@@ -630,12 +640,12 @@ export class DebugBar {
 
   // ---- Saving ----------------------------------------------------------------------------------------------------------
 
-  /** Sends what the bar holds to the server as a capture, with `words` from whoever saved it, after the next frame. */
-  save(words: string): string {
+  /** The next frame finishes the capture for a local ZIP or an admin's upload. */
+  save(words: string, local = !this.app.session.admin): string {
     if (!this.port) return this.said("not saved: the browser's part of the bar has not come");
-    if (!this.app.session.admin) return this.said("not saved: saving is an admin's, type enablecheats first");
-    if (this.saving !== null) return "a save is on its way";
-    this.saving = words;
+    if (!local && !this.app.session.admin) return this.said("not saved: saving is an admin's, type enablecheats first");
+    if (this.saving || this.writing) return "a save is on its way";
+    this.saving = { words, local };
     this.saved = "saving…";
     this.dirty = true;
     const held = Math.max(0, Math.min(CAPTURE_MS, this.app.nowMs - this.recordingFrom));

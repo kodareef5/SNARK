@@ -1,5 +1,6 @@
 // What the debug bar asks of the page that only a browser has. client/debug/debug-port.ts makes it; tests use a fake.
 
+import type { ReportBuild } from "../../../shared/report.ts";
 import type { PassCpu } from "../passes.ts";
 
 /** An answer to a request: its status, 0 where nothing answered, and its text. */
@@ -43,6 +44,8 @@ export interface PageFacts {
 }
 
 export interface DebugPort {
+  /** The build the running page passed to the bar. Source-only clients have none. */
+  readonly build?: ReportBuild;
   /** The page's clock, in ms. */
   now(): number;
   /** The wall clock at the page clock's 0, ms since 1970. */
@@ -74,6 +77,8 @@ export interface DebugPort {
   /** Moves the lines the page logged and the errors it met since the last call into `out`, oldest first. */
   lines(out: PageLine[]): void;
   get(path: string): Promise<Answer>;
+  /** Offers the capture's JSON records and JPEGs as a download on this device. */
+  download(name: string, fields: readonly (readonly [string, string])[], pictures: readonly Picture[]): Promise<void>;
   /** One multipart POST: text fields, then files by field name. */
   post(path: string, fields: readonly (readonly [string, string])[], files: readonly (readonly [string, unknown])[]): Promise<Answer>;
 }

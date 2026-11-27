@@ -8,6 +8,7 @@ import { jpegHead } from "./jpeg.ts";
 
 export interface FakePort extends DebugPort {
   /** Pictures asked for and freed; lines the page will hand the bar next; what was posted. */
+  readonly downloads: { name: string; fields: Map<string, string>; pictures: readonly Picture[] }[];
   readonly taken: Picture[];
   readonly dropped: Picture[];
   readonly queued: PageLine[];
@@ -22,12 +23,13 @@ export const FAKE_CANVAS = [1280, 720] as const;
 /** A port whose `post` goes to `answer`, a Request in and a Response out; without one every post is refused. */
 export function fakePort(answer: ((req: Request) => Promise<Response>) | null = null): FakePort {
   const taken: Picture[] = [], dropped: Picture[] = [], queued: PageLine[] = [], tasks: [number, number][] = [], posted: FakePort["posted"] = [];
+  const downloads: FakePort["downloads"] = [];
   const reply = async (r: Promise<Response>): Promise<Answer> => {
     const res = await r;
     return { status: res.status, text: await res.text() };
   };
   return {
-    taken, dropped, queued, tasks, posted,
+    taken, dropped, queued, tasks, posted, downloads,
     now: () => performance.now(),
     origin: Date.now() - performance.now(),
     shot(wide) {
@@ -54,6 +56,7 @@ export function fakePort(answer: ((req: Request) => Promise<Response>) | null = 
       queued.length = 0;
     },
     get: async (path) => (path === "__debug" ? { status: 200, text: JSON.stringify({ names: codeNames(P) }) } : { status: 404, text: "" }),
+    async download(name, fields, pictures) { downloads.push({ name, fields: new Map(fields), pictures }); },
     async post(path, fields, files) {
       posted.push({ path, fields: new Map(fields.map(([k, v]) => [k, v])), files: files.length });
       if (!answer) return { status: 404, text: "this port posts nowhere" };

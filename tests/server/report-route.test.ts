@@ -57,7 +57,7 @@ test("a world that keeps notes takes one from an admin's session through the fro
   const { files, manifest } = splitPack(corePackBytes(), "core");
   for (const [f, file] of files.entries()) if (file.role !== "mesh") writeFileSync(join(dir, "assets", manifest.files[f]!.name), file.bytes);
   writeFileSync(join(dir, "assets/manifest.json"), JSON.stringify(manifest));
-  writeFileSync(join(dir, "build.json"), JSON.stringify({ commit: "c0ffee", clean: true, at: "2026-11-22T00:00:00Z" }));
+  writeFileSync(join(dir, "build.json"), JSON.stringify({ commit: "c0ffee", clean: true, wire: 3021234587, at: "2026-11-22T00:00:00Z" }));
   writeFileSync(join(dir, "first-frame.json"), JSON.stringify({ total: 1080 }));
   const log = console.log;
   console.log = () => {};
@@ -87,7 +87,7 @@ test("a world that keeps notes takes one from an admin's session through the fro
       await Bun.sleep(10);
     }
     const token = `${session.voice.slot}:${hex(session.voice.token)}`;
-    const report = { version: 1, kind: "note", ms: 3200, place: { x: 100, y: 2, z: 200 }, shots: [{ at: 0, w: 1, h: 1 }, { at: 3000 }], text: [{ at: 1000, line: "the kerb floats here" }], extra: "not kept" };
+    const report = { version: 1, kind: "note", ms: 3200, build: { commit: "def012", clean: false, wire: 3021234586 }, place: { x: 100, y: 2, z: 200 }, shots: [{ at: 0, w: 1, h: 1 }, { at: 3000 }], text: [{ at: 1000, line: "the kerb floats here" }], extra: "not kept" };
     const form = (over: { token?: string; shots?: Uint8Array[] } = {}): FormData => {
       const f = new FormData();
       f.set("token", over.token ?? token);
@@ -118,6 +118,8 @@ test("a world that keeps notes takes one from an admin's session through the fro
     const folder = join(reports, "0001");
     expect(readdirSync(folder).sort()).toEqual(["perf.json", "report.json", "report.md", "server.json", "shot-01.jpg", "shot-02.jpg", "state.json", "thumb.jpg"]);
     const kept = JSON.parse(readFileSync(join(folder, "report.json"), "utf8"));
+    expect(kept.client.page).toEqual(report.build);
+    expect(kept.client.served.wire).toBe(3021234587);
     expect([kept.id, kept.who, kept.kind, kept.extra, kept.shots[0].w, kept.shots[1].h, kept.client.served.commit]).toEqual([1, "ada", "note", undefined, 1920, 1080, "c0ffee"]);
     expect(kept.voice).toEqual({ file: null, text: null, segments: [] });
     expect(kept.go.run).toEqual(["enablecheats", "tp 100.00 2.00 200.00"]);

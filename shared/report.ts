@@ -73,7 +73,7 @@ const SKY: Shape = { fields: { hour: N, sun: POINT, light: N, fog: PAIR } };
 const PAGE: Shape = {
   fields: { browser: { text: 300 }, card: { text: 200 }, dpr: N, canvas: PAIR, css: PAIR, tier: WORD, governor: { fields: { level: I, name: WORD } }, share: N, format: WORD, fps: N },
 };
-const BUILD: Shape = { fields: { commit: { text: 40 }, clean: B, at: { text: 40 } } };
+export const BUILD_SHAPE: Shape = { fields: { commit: { text: 40 }, clean: B, at: { text: 40 }, wire: I } };
 /** The part of a capture a record holds, in ms from the capture's start: a ring may hold less than the capture. */
 const WINDOW: Shape = { fields: { from: N, to: N } };
 const SHOT: Shape = { fields: { at: N, w: I, h: I, place: POINT, camera: POINT, yaw: N, pitch: N, hour: N, frameMs: N, draws: I, triangles: I, shotMs: N } };
@@ -91,7 +91,7 @@ export const REPORT_SHAPE: Shape = {
     aim: AIM,
     sky: SKY,
     map: { fields: { id: { text: 64 }, hash: I } },
-    build: BUILD,
+    build: BUILD_SHAPE,
     page: PAGE,
     settings: { fields: { fov: N, resolution: I, steady: B, finishGloss: N, roadFinish: I, thirdPerson: B, snapshotBytes: I } },
     survivor: { fields: { alive: B, kind: WORD, mode: I, held: WORD, driving: WORD } },
@@ -270,7 +270,7 @@ export interface Report {
   voice?: { segments?: { from?: number; to?: number }[] };
 }
 export interface ReportShot { at?: number; w?: number; h?: number; place?: Point; camera?: Point; yaw?: number; pitch?: number; hour?: number; frameMs?: number; draws?: number; triangles?: number; shotMs?: number }
-export interface ReportBuild { commit?: string; clean?: boolean; at?: string }
+export interface ReportBuild { commit?: string; clean?: boolean; at?: string; wire?: number }
 
 /**
  * The summary of a performance record (PERF_SHAPE's). Frame times are ms. `target` is the display's interval, the
