@@ -16,7 +16,8 @@ Controls and reporting
 - Download a debug ZIP from the in-game debug bar. It includes the client build so a host can trace a report.
 
 World saves
-- Quiet worlds write fewer saves. Backups keep the newest 12 copies plus one per day for seven days by default.
+- Quiet worlds write fewer saves. Each scheduled backup runs once, even when server ticks arrive early.
+- Hosts keep the newest 12 backups plus one per day for seven days by default.
 
 v0.0.14 — 2026-11-26
 

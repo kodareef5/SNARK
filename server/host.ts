@@ -1446,7 +1446,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (turned("MaxEntities")) world.ents.setMax(rules.num("MaxEntities"));
     if (turned("AutoSavePeriodMinutes")) {
       liveEvery = Math.max(1, Math.round(rules.num("AutoSavePeriodMinutes") * 60 * TICK_RATE));
-      backupAt = nextBackup(world.tick);
+      backupAt = nextBackup(backupTime(world.tick));
     }
     // The next backup is made, and the old ones kept, by the limits as they now stand.
     if (turned("BackupKeepDays", "BackupKeepHours", "BackupMaxGigabytes") && persistence) persistence.backupKeep = keepNow();
@@ -1505,13 +1505,12 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   if (persistence) persistence.backupKeep = keepNow();
   /** This world's share of the backup period, from 0 to 1. */
   const backupShare = persistence ? backupPhase(cluster ? cluster.world : 0, cluster ? cluster.id : "", persistence.saveId) : 0;
-  /** The tick of the backup mark after `tick`: this world's share of the period by the wall clock, or with no clock the period's next multiple. */
-  const nextBackup = (tick: number): number => {
-    if (!opts.backupClock) return (Math.floor(tick / liveEvery) + 1) * liveEvery;
-    const wait = untilBackup(opts.backupClock(), (liveEvery / TICK_RATE) * 1000, backupShare);
-    return tick + Math.max(1, Math.round((wait / 1000) * TICK_RATE));
+  const backupTime = (tick: number): number => opts.backupClock?.() ?? tick;
+  const nextBackup = (now: number): number => {
+    if (!opts.backupClock) return (Math.floor(now / liveEvery) + 1) * liveEvery;
+    return Math.ceil(now + untilBackup(now, (liveEvery / TICK_RATE) * 1000, backupShare));
   };
-  let backupAt = nextBackup(world.tick);
+  let backupAt = nextBackup(backupTime(world.tick));
   /** The tick at which a stop that was said comes, or -1 (Host.stopIn). */
   let stopAt = -1;
   const tellAll = (text: string): void => {
@@ -2195,8 +2194,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     backupNow = false;
     if (!persistence || !opts.backups) return;
     if (game.playerCount > 0) playedSince = true;
+    const now = backupTime(tick);
+    if (now < backupAt) return;
+    backupAt = nextBackup(now);
     // Not before the run's first commit, which is what makes the file a world, and not while one is being made.
-    if (tick < backupAt || persistence.commits === 0 || persistence.backingUp) return;
+    if (persistence.commits === 0 || persistence.backingUp) return;
     if (persistence.unchanged) {
       if (!unchangedSaid) console.log("nothing has changed since the last backup, so none is made until something does");
       unchangedSaid = true;
@@ -2208,14 +2210,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     bus.after(SERVER_SAVE, { tick, folder: `${persistence.store.path}.backups` });
   };
   const save = (tick: number): void => {
-    if (persistence && opts.backups && tick >= backupAt) {
-      backupAt = nextBackup(tick);
-      if (backupNow) {
-        persistence.backup();
-        playedSince = game.playerCount > 0;
-        backupAskedAt = tick;
-        unchangedSaid = false;
-      }
+    if (persistence && backupNow) {
+      persistence.backup();
+      playedSince = game.playerCount > 0;
+      backupAskedAt = tick;
+      unchangedSaid = false;
     }
     if (persistence && !persistence.tryCommit(commitEvery)) {
       const late = tick - persistence.failing!.since;

@@ -9,6 +9,7 @@ import { SCHEMA_VERSION, WorldStore } from "../../server/persist/store.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { Harness } from "../fixtures/net.ts";
+import { coreRegistry } from "../fixtures/world.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-keeper-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -240,35 +241,45 @@ test("an hour after its last backup, a world nobody was in is backed up for what
   h.host.shutdown();
 });
 
-test("with a wall clock the mark is the world's own share of the period, and a changed period moves it", () => {
+test("each wall-clock backup mark fires once, including after a period change", () => {
   const db = join(dir, "clock.db");
-  const clock = { ms: 1_764_288_000_000 };
-  const h = new Harness({}, 1, 60, { dbPath: db, backups: true, backupClock: () => clock.ms, config: every(0.2), startingCreatures: 0 });
+  const saveId = "0011223344556677";
+  const reg = coreRegistry();
+  const store = new WorldStore(db, reg);
+  store.setMeta("save_id", saveId);
+  store.close();
+  let now = 1_764_288_000_000;
+  const h = new Harness({}, 1, 60, { dbPath: db, backups: true, backupClock: () => now, config: every(0.2), startingCreatures: 0 }, reg);
   const p = h.host.persistence!;
   const reports: BackupReport[] = [];
   p.onBackup = (r) => void reports.push(r);
-  const phase = backupPhase(0, "", p.saveId);
-  const base = clock.ms;
-  /** The tick of the mark that follows now, by the clock. */
-  const mark = (periodMs: number): number => h.world.tick + Math.max(1, Math.round((untilBackup(clock.ms, periodMs, phase) / 1000) * TICK_RATE));
-  /** Runs to tick `to`, the wall clock moving with the world as a server's does. */
-  const runTo = (to: number): void => h.run(((to - h.world.tick) * 1000) / TICK_RATE, (now) => void (clock.ms = base + now));
+  const phase = backupPhase(0, "", saveId);
+  const mark = (periodMs: number): number => Math.ceil(now + untilBackup(now, periodMs, phase));
   const first = mark(12_000);
   const ada = h.join("ada");
-  runTo(first - 3);
-  expect([ada.state, reports.length]).toEqual(["active", 0]);
-  runTo(first + 3);
-  expect(reports.length).toBe(1);
-  // Half the period: the next mark is worked out again from the clock, and something has changed by then.
-  expect(h.host.exec("setting AutoSavePeriodMinutes 0.1")).not.toContain("cannot");
-  runTo(h.world.tick + 2);
+  h.run(1000);
+  expect(ada.state).toBe("active");
+  // The server ticks past its estimate while the wall clock is still just short.
+  now = first - 1;
+  h.run(6000);
+  expect(reports).toHaveLength(0);
+  now = first;
+  h.server.tick();
+  expect(reports).toHaveLength(1);
   h.host.records.newTeam();
+  h.run(200);
+  expect(p.unchanged).toBe(false);
+  expect(reports).toHaveLength(1);
+  expect(h.host.exec("setting AutoSavePeriodMinutes 0.1")).not.toContain("cannot");
+  h.server.tick();
   const next = mark(6000);
-  expect(next - h.world.tick).toBeLessThanOrEqual(6 * TICK_RATE);
-  runTo(next - 3);
-  expect(reports.length).toBe(1);
-  runTo(next + 3);
-  expect(reports.length).toBe(2);
+  expect(next - now).toBeLessThanOrEqual(6000);
+  now = next - 1;
+  h.run(6000);
+  expect(reports).toHaveLength(1);
+  now = next;
+  h.server.tick();
+  expect(reports).toHaveLength(2);
   h.host.shutdown();
 });
 
