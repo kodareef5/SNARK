@@ -4,6 +4,8 @@
 // bitmap straight after the draw, while the drawing buffer still holds the frame, encoded as JPEG in a worker
 // (shot-worker.ts), and kept as an object URL until the bar drops it.
 
+import { shotFile } from "../../shared/report.ts";
+import { storedZip } from "../core/debug/zip.ts";
 import { LEVEL_ERROR, LEVEL_INFO } from "../../shared/debug.ts";
 import type { Answer, DebugPort, LongFrame, PageLine, Picture } from "../core/debug/port.ts";
 import { PASSES, type PassClock, type PassCpu, type QueryGl } from "../core/passes.ts";
@@ -165,6 +167,7 @@ export function debugPort(canvas: HTMLCanvasElement, renderer: DebugRenderer, Cl
       lines.length = 0;
     },
     get: (path) => answered(fetch(path, { cache: "no-store" })),
+    download: offerCapture,
     post(path, fields, files) {
       const form = new FormData();
       for (const [k, v] of fields) form.append(k, v);
@@ -175,4 +178,35 @@ export function debugPort(canvas: HTMLCanvasElement, renderer: DebugRenderer, Cl
       return answered(fetch(path, { method: "POST", body: form }));
     },
   };
+}
+
+/** The finished file has a real link so a tap can start the download after the JPEGs have finished. */
+async function offerCapture(name: string, fields: readonly (readonly [string, string])[], pictures: readonly Picture[]): Promise<void> {
+  const utf8 = new TextEncoder();
+  const files: [string, Uint8Array<ArrayBuffer>][] = fields.map(([key, data]) => [`${key}.json`, utf8.encode(data)]);
+  for (const [i, picture] of pictures.entries()) {
+    if (!(picture.blob instanceof Blob)) throw new Error("The capture contains an unreadable picture.");
+    files.push([shotFile(i), new Uint8Array(await picture.blob.arrayBuffer())]);
+  }
+  const archive = new Blob(storedZip(files), { type: "application/zip" });
+  const dialog = document.createElement("dialog"), link = document.createElement("a"), close = document.createElement("button");
+  dialog.setAttribute("aria-label", "Debug capture");
+  dialog.style.cssText = "color-scheme:dark;background:#142335;color:#eef5ff;border:1px solid #53769a;border-radius:8px;padding:20px;font:16px system-ui";
+  link.href = URL.createObjectURL(archive);
+  link.download = name;
+  link.textContent = "Download ZIP";
+  link.style.cssText = "display:inline-block;padding:10px 14px;color:#b7d9ff;font-weight:600";
+  close.type = "button";
+  close.textContent = "Close";
+  close.style.cssText = "margin-left:12px;padding:8px 12px;font:inherit";
+  close.onclick = () => dialog.close();
+  link.onclick = () => setTimeout(() => dialog.close(), 0);
+  dialog.onclose = () => {
+    dialog.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 60_000);
+  };
+  dialog.append(link, close);
+  (document.fullscreenElement ?? document.body).append(dialog);
+  if (document.pointerLockElement) document.exitPointerLock();
+  dialog.showModal();
 }

@@ -74,6 +74,8 @@ export interface DebugPort {
   /** Moves the lines the page logged and the errors it met since the last call into `out`, oldest first. */
   lines(out: PageLine[]): void;
   get(path: string): Promise<Answer>;
+  /** Offers the capture's JSON records and JPEGs as a download on this device. */
+  download(name: string, fields: readonly (readonly [string, string])[], pictures: readonly Picture[]): Promise<void>;
   /** One multipart POST: text fields, then files by field name. */
   post(path: string, fields: readonly (readonly [string, string])[], files: readonly (readonly [string, unknown])[]): Promise<Answer>;
 }

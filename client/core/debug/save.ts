@@ -1,14 +1,12 @@
-// Saving what the debug bar holds (F8, or Save): one upload to the server's `__report` as a capture, which a reader opens
-// with tools/reports.ts. It carries the last minutes' pictures and one at full size taken as the save was asked, the
-// record of frames and seconds, where a frame's time went, the lag events, the log and the socket's counts.
+// The debug bar saves the same client records and pictures to a local ZIP or an admin report.
 
 import { LEVEL_NAMES } from "../../../shared/debug.ts";
 import { REPORT_VERSION, type Report, type ReportShot } from "../../../shared/report.ts";
 import type { FramePacket } from "../render/packet.ts";
 import { census } from "./census.ts";
 import type { DebugBar } from "./debug.ts";
-import { EVENT_NAMES, EVENTS_KEPT, eventWords, type LagEvent } from "./events.ts";
-import { SOURCE_NAMES, ALL_SOURCES, type LogLine } from "./log.ts";
+import { EVENT_NAMES, EVENTS_KEPT, EV_TICK, eventWords, type LagEvent } from "./events.ts";
+import { SOURCE_NAMES, ALL_SOURCES, SOURCE_SERVER, type LogLine } from "./log.ts";
 import { aimOf, pageOf, placeOf, settingsOf, skyOf, survivorOf, viewOf } from "./place.ts";
 import type { Picture } from "./port.ts";
 import type { ShotPose } from "./shots.ts";
@@ -80,7 +78,7 @@ function spansRecord(d: DebugBar, from: number, to: number): Record<string, unkn
 }
 
 /** Builds the capture and sends it. Returns what the bar says of it. */
-export async function saveCapture(d: DebugBar, words: string, full: Promise<Picture>, head: CaptureHead): Promise<string> {
+export async function saveCapture(d: DebugBar, words: string, local: boolean, full: Promise<Picture>, head: CaptureHead): Promise<string> {
   // The capture reaches back CAPTURE_MS, or to when the bar began to record if that is later. Its records are taken
   // here, in the frame the save was asked in, and none holds anything after it. Each says in `window` the part of the
   // capture it holds, in ms from its start, since a ring may let go of what is older before the capture's start.
@@ -93,7 +91,7 @@ export async function saveCapture(d: DebugBar, words: string, full: Promise<Pict
     worst: perf.worst(from, head.at, 20), census: [{ ...head.census, shot: -1 }], spans: spansRecord(d, from, head.at), sound: {},
   };
   const lines: LogLine[] = [];
-  d.log.read(lines, ALL_SOURCES, 0, d.log.most);
+  d.log.read(lines, local ? ALL_SOURCES & ~(1 << SOURCE_SERVER) : ALL_SOURCES, 0, d.log.most);
   const log = {
     window: { from: d.log.length >= d.log.most && lines.length > 0 ? since(lines[0]!.at, wallFrom) : 0, to: span },
     lines: lines.filter((l) => l.at >= wallFrom && l.at <= head.wall).map((l) => ({ at: l.at, source: SOURCE_NAMES[l.source], level: LEVEL_NAMES[l.level], text: l.text, count: l.count, tick: l.tick })),
@@ -101,13 +99,13 @@ export async function saveCapture(d: DebugBar, words: string, full: Promise<Pict
   const list = d.events.list;
   const events = {
     window: { from: list.length >= EVENTS_KEPT ? since(list[0]!.at, from) : 0, to: span },
-    events: list.filter((e) => e.end >= from && e.at <= head.at).map((e) => ({
+    events: list.filter((e) => e.end >= from && e.at <= head.at && (!local || e.kind !== EV_TICK)).map((e) => ({
       at: Math.round(e.at - from), end: Math.round(Math.min(e.end, head.at) - from), kind: EVENT_NAMES[e.kind], size: Math.round(e.size * 100) / 100, count: e.count, cause: e.cause,
       top: e.spans ? topSlots(d, e.spans) : [],
     })),
   };
   const net = d.net.record(from, from);
-  const chosenAt = d.chosenAt, chosenEvent = d.chosenEvent;
+  const chosenAt = d.chosenAt, chosenEvent = local && d.chosenEvent?.kind === EV_TICK ? null : d.chosenEvent;
   // The pictures last: those still being made when the save was asked come in before its full one.
   let big: Picture | null = null;
   try {
@@ -125,16 +123,25 @@ export async function saveCapture(d: DebugBar, words: string, full: Promise<Pict
     text: words ? [{ at: span, line: words }] : [], voice: { segments: [] },
   };
   const fields: [string, string][] = [
-    ["token", d.token()], ["report", JSON.stringify(report)], ["perf", JSON.stringify(perfRecord)],
+    ["report", JSON.stringify(report)], ["perf", JSON.stringify(perfRecord)],
     ["log", JSON.stringify(log)], ["events", JSON.stringify(events)], ["net", JSON.stringify(net)],
   ];
-  const answer = await port.post("__report", fields, pictures.map((p) => ["shot", p.blob] as const));
-  if (answer.status !== 200) return `not saved: ${answer.status === 0 ? "the server did not answer" : answer.text.trim().slice(0, 160) || `the server answered ${answer.status}`}`;
   try {
-    const kept = JSON.parse(answer.text) as { id: number; pictures: number };
-    return `saved capture ${kept.id} (${kept.pictures} pictures)`;
-  } catch {
-    return "saved";
+    if (local) {
+      const stamp = new Date(head.wall).toISOString().replace(/[:.]/g, "-");
+      await port.download(`snark-debug-${stamp}.zip`, fields, pictures);
+      return "ZIP ready";
+    }
+    const answer = await port.post("__report", [["token", d.token()], ...fields], pictures.map((p) => ["shot", p.blob] as const));
+    if (answer.status !== 200) return `not saved: ${answer.status === 0 ? "the server did not answer" : answer.text.trim().slice(0, 160) || `the server answered ${answer.status}`}`;
+    try {
+      const kept = JSON.parse(answer.text) as { id: number; pictures: number };
+      return `saved capture ${kept.id} (${kept.pictures} pictures)`;
+    } catch {
+      return "saved";
+    }
+  } finally {
+    if (big) port.drop(big);
   }
 }
 
