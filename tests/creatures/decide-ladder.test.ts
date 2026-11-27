@@ -78,13 +78,27 @@ test("wanderers in a wood are stuck, pinned and turning from trees far less", ()
   expect(rule.starts).toBeLessThan(today.starts / 2);
 });
 
-test("a stuck raptor keeps dry until the patient rung, then wades out and arrives", () => {
+test("a stuck raptor keeps dry until the patient rung, then soon wades out", () => {
   const [today, rule] = both("wet");
   // Today: no way the search can take, so it stands at the north wall the whole time.
   expect([today.arrived, today.wet, today.patient]).toEqual([-1, -1, -1]);
   expect(rule.patient).toBeGreaterThan(0);
   expect(rule.wet).toBeGreaterThan(rule.patient);
+  // It backs out the way it came in, which leads into the water, rather than circling the pen.
+  expect(rule.wet - rule.patient).toBeLessThan(5 * TICK_RATE);
   expect(rule.arrived).toBeGreaterThan(rule.wet);
+});
+
+test("wanderers in a pen are stuck less often, and far less long", () => {
+  const [today, rule] = both("pen");
+  expect(rule.starts).toBeLessThanOrEqual(today.starts);
+  expect(rule.troubled).toBeLessThan(today.troubled / 5);
+});
+
+test("tame wanderers in a wood hold the ladder's headings as wild ones do", () => {
+  const [today, rule] = both("ownedWander");
+  expect(rule.troubled).toBeLessThan(today.troubled / 3);
+  expect(rule.starts).toBeLessThan(today.starts / 3);
 });
 
 test("a raptor held up by a trike that walks off goes on and never stands long", () => {
@@ -126,13 +140,21 @@ test("a cached far ring turns with the world, not the mover, round a corner", ()
   expect([today.arrived > 0, rule.arrived > 0]).toEqual([true, true]);
 });
 
-test("no mover ends a scene standing short of its goal while a way exists", () => {
+test("no mover ends a scene standing short of its goal", () => {
   for (const name of ["pastWall", "deadEnd", "woodGoals", "wet", "blocker", "corner"]) {
-    const seen = run(name, RULE, (s, t) => name === "blocker" && t === 3 * TICK_RATE && blockerLeaves(s));
+    // Where each mover was a second before the end: one that has not arrived must have moved since.
+    const last: number[] = [];
+    const seen = run(name, RULE, (s, t) => {
+      if (name === "blocker" && t === 3 * TICK_RATE) blockerLeaves(s);
+      if (t === s.ticks - TICK_RATE) for (const e of s.movers) last.push(s.w.world.ents.x[e]!, s.w.world.ents.z[e]!);
+    });
     try {
       const mind = seen.s.w.host.creatures.mind, ents = seen.s.w.world.ents;
       const movers = name === "blocker" ? seen.s.movers.slice(0, 1) : seen.s.movers;
-      for (const e of movers) expect([name, e, mind.arrived(e, 1.5) || Math.hypot(ents.vx[e]!, ents.vz[e]!) > 0.2]).toEqual([name, e, true]);
+      movers.forEach((e, k) => {
+        const moved = Math.hypot(ents.x[e]! - last[2 * k]!, ents.z[e]! - last[2 * k + 1]!);
+        expect([name, e, mind.arrived(e, 1.5) || moved > 0.5]).toEqual([name, e, true]);
+      });
     } finally {
       seen.s.w.host.shutdown();
     }
@@ -161,4 +183,6 @@ test("a hunter whose search comes back short keeps after its prey", () => {
   expect(minds[1]!.every((m) => m === MIND_HUNT)).toBe(true);
   expect(Math.max(...near[1]!)).toBeLessThan(30);
   expect(rule.mind).toBe(MIND_HUNT);
+  // Its nose caught in the narrow slot, it backs out rather than stand pressing there.
+  expect(rule.stood).toBeLessThan(2 * TICK_RATE);
 });

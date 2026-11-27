@@ -8,8 +8,9 @@ import type { Profile } from "../../shared/decide/profile.ts";
 import { SURE } from "../../shared/decide/profiles.ts";
 import { RULES } from "../../shared/decide/rules.ts";
 import type { Table } from "../../shared/decide/table.ts";
+import { HIT_NONE, castWorld } from "../../shared/world/ray.ts";
 import { stateHash } from "../../tools/decide/world.ts";
-import { SCENES, decideBy, type Scene } from "../fixtures/decide-scenes.ts";
+import { SCENES, decideBy, hashes, type Scene } from "../fixtures/decide-scenes.ts";
 
 const RULE = "nav.snag=rule,nav.ring=rule";
 const rule = (p: Profile, t: Table): number => (scoreTable(RULES.find((m) => m.profile === p.name)!, p, t), 1);
@@ -95,4 +96,55 @@ test("a patient raptor is let go the tick its points are turned off", () => {
   expect(off.at.budget).toBeLessThanOrEqual(SEARCH_CELLS);
   expect(off.hashes).toEqual(gone.hashes);
   expect(off.rung[1]).toBe(0);
+});
+
+/** Pins of every mover of scene `name` against something built or grown, over seeds 1 and 2, decided `way`. */
+function pinsOnPieces(name: string, way: string): number {
+  let pins = 0;
+  for (const seed of [1, 2]) {
+    const s = SCENES[name]!(seed);
+    try {
+      decideBy(s.w, way);
+      const mind = s.w.host.creatures.mind, ents = s.w.world.ents, w = s.w.world, was = s.movers.map(() => 0);
+      hashes(s, () => s.movers.forEach((e, k) => {
+        const pinned = mind.pinned[e]! > 0 ? 1 : 0;
+        if (pinned && !was[k]) {
+          // A knee ray from its middle or either shoulder along its facing meets what it pressed on.
+          const p = mind.walkerOf(e)!, a = (ents.yaw[e]! / 65536) * Math.PI * 2, dx = Math.sin(a), dz = Math.cos(a);
+          const y = w.hf.heightAt(ents.x[e]!, ents.z[e]!) + 0.3 * p.height;
+          if ([-0.9, 0, 0.9].some((side) => castWorld(w, ents.x[e]! + dz * side * p.radius, y, ents.z[e]! - dx * side * p.radius, dx, 0, dz, p.radius + 0.5, true) !== HIT_NONE)) pins++;
+        }
+        was[k] = pinned;
+      }));
+    } finally {
+      s.w.host.shutdown();
+    }
+  }
+  return pins;
+}
+
+test("wanderers that look before they walk press into walls and trees far less", () => {
+  const pen = [pinsOnPieces("pen", ""), pinsOnPieces("pen", "nav.probe=rule")];
+  const wood = [pinsOnPieces("woodWander", ""), pinsOnPieces("woodWander", "nav.probe=rule")];
+  expect(pen[1]!).toBeLessThan(pen[0]! / 3);
+  expect(wood[1]!).toBeLessThan(wood[0]! * 0.65);
+});
+
+test("nav.reach says how likely a hunter is to catch its prey, lower as its time runs", () => {
+  const seen = (way: string): number[] => {
+    const s = SCENES.hunt!(1);
+    try {
+      decideBy(s.w, way);
+      const mind = s.w.host.creatures.mind, out: number[] = [];
+      hashes(s, (t) => t % (5 * TICK_RATE) === 0 && out.push(mind.reachOf(s.movers[0]!)));
+      return out;
+    } finally {
+      s.w.host.shutdown();
+    }
+  };
+  // Watched, it is asked and nothing is kept for anyone to read.
+  expect(seen("nav.reach=watch").every((v) => v === -1)).toBe(true);
+  const rule = seen("nav.snag=rule,nav.ring=rule,nav.reach=rule");
+  expect(rule.every((v) => v > 0 && v <= 1)).toBe(true);
+  expect(rule[rule.length - 1]!).toBeLessThan(rule[0]!);
 });
