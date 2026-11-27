@@ -12,9 +12,9 @@ import { address, type AdminWorld } from "../core/admin/navigation.ts";
 import { $, esc, palette } from "./dom.ts";
 import { FRAMING_WORDS, POSE_WORDS, hexOf, paletteHtml } from "../core/admin/wardrobe.ts";
 import {
-  EYE_WORDS, HAIR_COLOUR_WORDS, PART_WORDS, bookOf, castHtml, castRolesOf, choosePopulation, draftOf, drawAgain, drawFromSource, editionsOf, emptyWardrobe, featureOp,
+  EYE_WORDS, Edits, HAIR_COLOUR_WORDS, PART_WORDS, bookOf, castHtml, castRolesOf, choosePopulation, draftOf, drawAgain, drawFromSource, editionsOf, emptyWardrobe, featureOp,
   garmentsFor, handValue, isLocked, lookBytes, newPerson, outfitSeed, partSummary, peopleHtml, personDoc, personFaults, personWear, populationChoices, populationLabel, promotedFrom,
-  rebase, refKey, refOfKey, rerollPart, retireThing, roleOp, roleOptions, saveText, saveThing, setByHand, setLock, storeStateOf, type CastRoles, type Fault, type HandField,
+  rebase, refKey, refOfKey, rerollPart, retireThing, roleOp, roleOptions, saveDraft, saveText, setByHand, setLock, sheetDress, storeStateOf, type CastRoles, type Fault, type HandField,
   type PersonDraft, type PopulationBook, type SaveIo, type StoreState,
 } from "../core/admin/people.ts";
 import { StageLink, call, postJson } from "./stage-link.ts";
@@ -32,7 +32,7 @@ const S = {
   well: null as { slot: number; k: number } | null,
   cast: null as CastRoles | null,
   castApi: "",
-  dirty: false,
+  edits: new Edits(),
 };
 const body = document.body.dataset;
 const say = (text: string, kind = "dim"): void => {
@@ -175,17 +175,17 @@ function drawFaults(): void {
 /** The draft changed: checked again, redrawn, and the person sent it soon. */
 function edited(redraw = true): void {
   if (!S.draft || !S.state) return;
-  S.dirty = true;
+  S.edits.made++;
   S.faults = personFaults(S.draft, S.state, S.book);
   if (redraw) drawEditor();
   else drawFaults();
   soon();
 }
 
-function open(d: PersonDraft | null): void {
+function open(d: PersonDraft | null, unsaved = false): void {
   S.draft = d;
   S.well = null;
-  S.dirty = false;
+  S.edits.open(unsaved);
   S.faults = d && S.state ? personFaults(d, S.state, S.book) : [];
   history.replaceState(null, "", d?.id ? `?id=${d.id}` : location.pathname);
   drawList();
@@ -310,14 +310,9 @@ async function save(): Promise<void> {
   S.busy = true;
   drawFaults();
   try {
-    const o = await saveThing(io, "person", d.id, d.rev, personDoc(d, st, S.book), (attempt, ms) => say(`The store is busy. Trying again in ${ms} ms (try ${attempt + 1}).`, "warn"));
+    const o = await saveDraft(io, "person", d, personDoc(d, st, S.book), S.edits, (attempt, ms) => say(`The store is busy. Trying again in ${ms} ms (try ${attempt + 1}).`, "warn"));
     if ((o.kind === "saved" || o.kind === "stale") && o.state) await take(o.state);
-    if (o.kind === "saved") {
-      d.id = o.id;
-      d.rev = o.rev;
-      S.dirty = false;
-      history.replaceState(null, "", `?id=${o.id}`);
-    }
+    if (o.kind === "saved") history.replaceState(null, "", `?id=${o.id}`);
     if (o.kind === "stale") rebase(d, S.state, (s) => s.people);
     say(saveText(o, d.id === null ? "the person" : `person ${d.id}`), o.kind === "saved" ? "well" : o.kind === "stale" ? "warn" : "bad");
     drawList();
@@ -345,7 +340,7 @@ async function retire(): Promise<void> {
   }
 }
 
-const sure = (what: string): boolean => !S.dirty || confirm(what);
+const sure = (what: string): boolean => !S.edits.unsaved || confirm(what);
 
 document.addEventListener("click", (ev) => {
   const t = (ev.target as HTMLElement).closest<HTMLButtonElement>("button");
@@ -475,7 +470,7 @@ function changed(t: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement, 
 document.addEventListener("input", (e) => changed(e.target as HTMLInputElement, false));
 document.addEventListener("change", (e) => changed(e.target as HTMLInputElement, true));
 addEventListener("beforeunload", (e) => {
-  if (S.dirty) e.preventDefault();
+  if (S.edits.unsaved) e.preventDefault();
 });
 
 $("pose").innerHTML = STAGE_POSES.map((p) => `<option value="${p}">${POSE_WORDS[p]}</option>`).join("");
@@ -486,9 +481,9 @@ load().then(async () => {
   const id = Number(new URLSearchParams(location.search).get("id"));
   const promoted = promotedFrom(location.search), listed = st.people.find((p) => p.id === id);
   if (promoted) {
-    open(promoted);
-    S.dirty = true;
-    say("Promoted from a population's sheet: every part is locked to its seed. Name them and save.");
+    if (promoted.look.kind === "seed") promoted.dress = sheetDress(promoted.look, st, S.book);
+    open(promoted, true);
+    say("Promoted from a population's sheet: every part is locked to its seed, and it wears what the sheet showed. Name them and save.");
   } else if (listed) {
     open(draftOf(listed, st, S.book));
     say("");

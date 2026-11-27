@@ -166,12 +166,11 @@ export interface SeedLook {
   revision: number;
   locks: Partial<Record<PartName, number>>;
 }
-/** A look kept as its bytes. `drawn` is the seed form it was made from, to go back to; `locked` parts keep through a draw. */
+/** A look kept as its bytes. `drawn` is the seed form it was made from, to go back to; its locked parts keep through a draw. */
 export interface BytesLook {
   readonly kind: "bytes";
   bytes: number[];
   drawn: SeedLook | null;
-  locked: PartName[];
 }
 export type LookDraft = SeedLook | BytesLook;
 
@@ -238,7 +237,7 @@ export function draftOf(l: Listed<PersonDoc>, state: StoreState, book: Populatio
   const d = l.doc, src = d.source, at = src ? latestRevision(state, src.population) : undefined;
   const seed: SeedLook | null = src && at !== undefined ? { kind: "seed", seed: src.seed, population: src.population, revision: at, locks: { ...src.locks } } : null;
   const drawn = seed && lookBytes(seed, state, book);
-  const look: LookDraft = seed && drawn && same([...drawn], d.look) ? seed : { kind: "bytes", bytes: [...d.look], drawn: seed, locked: PART_NAMES.filter((p) => src?.locks[p] !== undefined) };
+  const look: LookDraft = seed && drawn && same([...drawn], d.look) ? seed : { kind: "bytes", bytes: [...d.look], drawn: seed };
   const o = src?.outfit != null ? state.outfits.find((x) => x.id === src.outfit) : undefined;
   let dress: Dress = { kind: "role" };
   if (o && d.wardrobe && same(wardrobeFrom(outfitSeed(look), o.doc), d.wardrobe)) dress = { kind: "outfit", outfit: o.id };
@@ -277,22 +276,23 @@ function redrawBytes(look: BytesLook, parts: readonly PartName[], seed: number, 
   for (const part of parts) for (const i of PART_BYTES[part]) look.bytes[i] = fresh[i]!;
 }
 
+/** The seed form whose locks a look keeps: its own, or the one a fixed look was made from; null for none. */
+const lockingOf = (look: LookDraft): SeedLook | null => (look.kind === "seed" ? look : look.drawn);
+
 export function isLocked(look: LookDraft, part: PartName): boolean {
-  return look.kind === "seed" ? look.locks[part] !== undefined : look.locked.includes(part);
+  return lockingOf(look)?.locks[part] !== undefined;
 }
 
 /**
  * Locks a part, or lets it go. A drawn look keeps a locked part's seed of its own, so a new seed for the person leaves it
- * as it is; a part let go follows the person's seed again, and may change. A fixed look only marks it.
+ * as it is; a part let go follows the person's seed again, and may change. A fixed look locks it in the form it came from,
+ * and one from no seed has none to lock.
  */
 export function setLock(look: LookDraft, part: PartName, on: boolean): void {
-  if (look.kind === "seed") {
-    if (on) look.locks[part] ??= look.seed;
-    else delete look.locks[part];
-  } else {
-    look.locked = look.locked.filter((p) => p !== part);
-    if (on) look.locked.push(part);
-  }
+  const from = lockingOf(look);
+  if (!from) return;
+  if (on) from.locks[part] ??= from.seed;
+  else delete from.locks[part];
 }
 
 /** Draws part `part` again from `seed`, and only it: a drawn look gives the part that seed of its own, and so locks it. */
@@ -305,7 +305,7 @@ export function rerollPart(look: LookDraft, part: PartName, seed: number, state:
 /** Draws the person again from `seed`: every part not locked changes. */
 export function drawAgain(look: LookDraft, seed: number, state: StoreState, book: PopulationBook): void {
   if (look.kind === "seed") look.seed = seed >>> 0;
-  else redrawBytes(look, PART_NAMES.filter((p) => p !== "outfit" && !look.locked.includes(p)), seed, state, book);
+  else redrawBytes(look, PART_NAMES.filter((p) => p !== "outfit" && !isLocked(look, p)), seed, state, book);
 }
 
 /** A drawn look in population `ref` at its latest revision; the seed and locks stay. A fixed look draws from it next. */
@@ -336,7 +336,7 @@ export function setByHand(d: PersonDraft, field: HandField, value: number, state
     const bytes = lookBytes(d.look, state, book);
     if (!bytes) return false;
     const drawn = { ...d.look, locks: { ...d.look.locks } };
-    d.look = { kind: "bytes", bytes: [...bytes], drawn, locked: PART_NAMES.filter((p) => drawn.locks[p] !== undefined) };
+    d.look = { kind: "bytes", bytes: [...bytes], drawn };
   }
   const b = Uint8Array.from(d.look.bytes);
   if (field.startsWith("region:")) setRegion(b, Number(field.slice(7)), value);
@@ -477,6 +477,35 @@ function outcomeOf(a: Answer): SaveOutcome {
   return { kind: "refused", status: a.status, error: errorOf(a) };
 }
 
+/** A page's edits to its draft, counted, and how many of them the store holds: unsaved while the two differ. */
+export class Edits {
+  made = 0;
+  held = 0;
+  get unsaved(): boolean {
+    return this.made !== this.held;
+  }
+  /** Starts on a draft as the store holds it, or unsaved for one the store has not seen. */
+  open(unsaved = false): void {
+    this.held = 0;
+    this.made = unsaved ? 1 : 0;
+  }
+}
+
+/**
+ * Saves draft `d` as `doc` is now. Once saved, `d` takes the store's id and revision and `edits` holds only the edits made
+ * before it was sent: one made while it was out stays unsaved.
+ */
+export async function saveDraft(io: SaveIo, kind: "person" | "population", d: { id: number | null; rev: number }, doc: unknown, edits: Edits, busy?: (attempt: number, ms: number) => void): Promise<SaveOutcome> {
+  const sent: unknown = JSON.parse(JSON.stringify(doc)), at = edits.made;
+  const o = await saveThing(io, kind, d.id, d.rev, sent, busy);
+  if (o.kind === "saved") {
+    d.id = o.id;
+    d.rev = o.rev;
+    edits.held = at;
+  }
+  return o;
+}
+
 /** Saves a thing of `kind`: a new one where `id` is null (from revision 0), else the revision after `rev`. */
 export async function saveThing(io: SaveIo, kind: "person" | "outfit" | "population", id: number | null, rev: number, doc: unknown, busy: (attempt: number, ms: number) => void = () => {}): Promise<SaveOutcome> {
   return outcomeOf(await patient(() => io.save({ kind, id, rev: id === null ? 0 : rev, doc }), io, busy));
@@ -557,6 +586,14 @@ export function wearPieces(state: StoreState, wear: readonly string[], dyes: rea
     else armour.push(id);
   }
   return { armour, worn };
+}
+
+/** The garments a drawn look's population outfit gives it, dyed as a sheet shows them; the role's clothes where it gives none. */
+export function sheetDress(look: SeedLook, state: StoreState, book: PopulationBook): Dress {
+  const p = populationDef(state, book, look.population, look.revision), person = p && personFrom(look.seed, p, undefined, look.locks);
+  if (!person || person.outfit < 0) return { kind: "role" };
+  const { worn } = wearPieces(state, p.outfits![person.outfit]!.wear, person.dyes);
+  return worn.some((w) => w) ? { kind: "wardrobe", slots: worn } : { kind: "role" };
 }
 
 /** What a person draft wears on the stage, and a line saying so. */
