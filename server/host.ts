@@ -2025,7 +2025,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const reacher = creatures.mind.reacher;
   if (reacher instanceof Reach) {
     reacher.ends = (e) => courses.legEnds(e);
-    courses.reach = (e) => reacher.reachOf(e);
+    courses.reach = (e) => reacher.placeOf(e);
     courses.legEnded = (e, ok, x, z) => reacher.ended(e, ok, x, z);
   }
   // A cluster's worlds take the Decide settings one of them copies to its folder (server/decide/shared.ts).

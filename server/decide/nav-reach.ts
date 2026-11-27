@@ -90,12 +90,16 @@ export class Reach {
     };
   }
 
-  /** How likely `e` is to reach the place it makes for in time, 0 to 1; -1 where not known, or said of another goal. */
+  /** How likely `e` is to arrive within its goal's time, 0 to 1, or -1 where that is not known. */
   reachOf(e: number): number {
     const s = this.pool.find(e, this.world.ents.gen[e]!);
-    if (s < 0) return -1;
-    const mind = this.mind;
-    if (this.mode[s] !== 1 || Math.abs(mind.goalX[e]! - this.gx[s]!) + Math.abs(mind.goalZ[e]! - this.gz[s]!) > SAME_GOAL) return -1;
+    return s < 0 ? -1 : this.value[s]!;
+  }
+
+  /** As `reachOf`, of the place `e` makes for now: -1 where the answer was of a hunt, a leader or another place. */
+  placeOf(e: number): number {
+    const s = this.pool.find(e, this.world.ents.gen[e]!), mind = this.mind;
+    if (s < 0 || this.mode[s] !== 1 || Math.abs(mind.goalX[e]! - this.gx[s]!) + Math.abs(mind.goalZ[e]! - this.gz[s]!) > SAME_GOAL) return -1;
     return this.value[s]!;
   }
 
