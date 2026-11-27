@@ -8,7 +8,7 @@ import type { DebugBar } from "../../client/core/debug/debug.ts";
 import { KEY_DEBUG } from "../../client/core/debug/draw.ts";
 import { TickMeter } from "../../server/admin/meter.ts";
 import { gaugesOf } from "../../server/admin/stats.ts";
-import { COST_RING, type Ask, type Point } from "../../server/decide/decide.ts";
+import { CAPS, COST_RING, type Ask, type Point } from "../../server/decide/decide.ts";
 import { debugAnswer, serverState } from "../../server/debug.ts";
 import type { Client } from "../../server/game.ts";
 import { ServerLog } from "../../server/log.ts";
@@ -56,7 +56,7 @@ test("the server's state holds the decider only when it is asked for", () => {
   expect(serverState(host, meter, c).decide).toBeUndefined();
   const s = serverState(host, meter, c, Date.now(), true).decide!;
   expect(s.points).toEqual([{ name: "nav.test", policy: "rule", put: 1, answered: 1, cut: 0, backPut: 0, backCut: 0 }]);
-  expect([s.caps.length, s.mover]).toEqual([3, null]);
+  expect([s.caps, s.mover]).toEqual([[...CAPS], null]);
   // A point that can describe a mover is asked of the one the survivor stands by.
   host.decide.describe = (e) => (e === dodo ? { rung: 2, held: 5 } : null);
   expect(serverState(host, meter, c, Date.now(), true).decide!.mover).toMatchObject({ e: dodo, about: { rung: 2, held: 5 } });
