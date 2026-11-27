@@ -187,6 +187,43 @@ test("a world that has not changed is not backed up again, one nobody was in at 
   h.host.shutdown();
 });
 
+test("a backup in progress only covers the changes it was asked to copy", () => {
+  const { h, p, rec, stone } = world("queued");
+  const requests: number[] = [];
+  p.keeper.backup = () => { requests.push(p.changes); };
+  const finish = (ok: boolean): void => p.keeper.onBackup!({
+    path: ok ? "world.db" : "", why: ok ? "" : "disk full", tick: h.world.tick,
+    bytes: 0, ms: 0, kept: 0, keptBytes: 0, removed: 0,
+  });
+  expect(h.host.exec("backup")).toContain("started");
+  h.host.items.mint(rec, stone, 1);
+  expect(h.host.exec("backup")).toContain("queued");
+  expect(h.host.exec("backup")).toContain("queued");
+  expect(requests).toHaveLength(1);
+  finish(true);
+  expect(requests).toHaveLength(2);
+  expect(requests[1]!).toBeGreaterThan(requests[0]!);
+  expect([p.backingUp, p.unchanged]).toEqual([true, false]);
+  finish(false);
+  expect([p.backingUp, p.unchanged]).toEqual([false, false]);
+  expect(p.backup()).toBe(true);
+  finish(true);
+  expect(p.unchanged).toBe(true);
+  h.host.shutdown();
+});
+
+test("shutdown hands the queued copy to the worker before closing it", () => {
+  const { h, p } = world("queued-stop");
+  const calls: string[] = [];
+  p.keeper.backup = () => { calls.push("copy"); };
+  p.keeper.close = () => { calls.push("close"); };
+  h.host.exec("backup");
+  h.host.exec("backup");
+  expect(calls).toEqual(["copy"]);
+  h.host.shutdown();
+  expect(calls).toEqual(["copy", "copy", "close"]);
+});
+
 test("an hour after its last backup, a world nobody was in is backed up for what it did by itself", () => {
   const db = join(dir, "drift.db");
   const h = new Harness({}, 1, 60, { dbPath: db, backups: true, config: every(1), startingCreatures: 0 });
