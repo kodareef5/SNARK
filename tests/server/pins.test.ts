@@ -1,11 +1,14 @@
-// Pins on the map (server/pins.ts): kept per team, saved, merged with a tribe, refused where a rule says so.
+// Pins on the map (server/pins.ts): kept per team, saved, merged with a tribe, taken along by a leaver, refused where a
+// rule says so.
 
 import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { orderPatrol } from "../../client/core/courses.ts";
 import { pinAt, unpin } from "../../client/core/pins.ts";
 import type { ClientSession } from "../../client/core/session.ts";
+import { ORDERED } from "../../server/courses.ts";
 import { PIN_BURST, PIN_EVERY, PIN_KINDS, PINS_MOST, Pins, cleanLabel } from "../../server/pins.ts";
 import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { BitWriter } from "../../shared/net/codec.ts";
@@ -13,6 +16,7 @@ import { CMD_PIN, PIN_ADD, RESULT_DENIED, RESULT_INVALID, RESULT_NOT_YOURS, RESU
 import { DeadlineHeap } from "../../shared/sim/schedule.ts";
 import { WAYPOINT_KINDS } from "../../shared/world/course.ts";
 import { Harness } from "../fixtures/net.ts";
+import { camp, survivor } from "../kit/kit.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-pins-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -23,6 +27,15 @@ function world(names: string[], dbPath?: string) {
   h.run(800);
   const rec = (s: ClientSession) => h.host.records.byPid.get(h.client(s)!.pid)!;
   return { h, sessions, rec, pins: h.host.pins };
+}
+
+/** Pins on a stand-in server with nothing in it, at tick 100. */
+function bare(): Pins {
+  const ctx = {
+    world: { tick: 100, dims: { chunksX: 4, chunksZ: 4 } }, deadlines: new DeadlineHeap(), records: { byPid: new Map() }, tribes: { of: () => null }, reach: () => 0,
+    game: { handle: () => {}, own: { add: () => {} } },
+  } as unknown as ConstructorParameters<typeof Pins>[0];
+  return new Pins(ctx);
 }
 
 /** The server's answers to what `send` sends, in the order sent. */
@@ -172,7 +185,7 @@ test("the pins are saved by the commit after they change, ten seconds apart at m
   expect(pins.dirty).toBe(false);
 });
 
-test("a survivor's pins join the tribe it joins, renumbered, and the newest 32 stay", () => {
+test("a survivor's pins join the tribe it joins with their ids, and the newest 32 stay", () => {
   const { h, sessions: [bob, ada], rec, pins } = world(["bob", "ada"]);
   const lone = rec(ada!).team;
   h.say(bob!, "tribe create Wolves");
@@ -180,11 +193,13 @@ test("a survivor's pins join the tribe it joins, renumbered, and the newest 32 s
   for (let i = 0; i < 20; i++) pins.place(lone, rec(ada!).pid, i, i, 0, i !== 19, `a${i}`);
   h.run(100);
   for (let i = 0; i < 20; i++) pins.place(team, rec(bob!).pid, i, i, 0, true, `b${i}`);
+  const ids = new Map(pins.of(lone).map((p) => [p.label, p.id]));
   h.say(bob!, "tribe invite ada");
   h.say(ada!, "tribe accept");
   h.run(300);
   const list = pins.of(team);
   expect(pins.of(lone)).toEqual([]);
+  for (const p of list) if (p.label.startsWith("a")) expect(p.id).toBe(ids.get(p.label)!);
   expect(list.length).toBe(PINS_MOST);
   expect(list.filter((p) => p.label.startsWith("a")).map((p) => p.label)).toEqual(["a8", "a9", "a10", "a11", "a12", "a13", "a14", "a15", "a16", "a17", "a18", "a19"]);
   expect(new Set(list.map((p) => p.id)).size).toBe(PINS_MOST);
@@ -194,16 +209,104 @@ test("a survivor's pins join the tribe it joins, renumbered, and the newest 32 s
   expect(bob!.pins.some((p) => p.label === "a19")).toBe(false);
 });
 
-test("when the last member leaves, the tribe's pins go with it", () => {
+test("the last member to leave keeps every pin of the tribe, with their ids", () => {
   const { h, sessions: [bob], rec, pins } = world(["bob"]);
   h.say(bob!, "tribe create Wolves");
   const team = rec(bob!).team;
-  expect(answers(h, bob!, () => void pinAt(bob!, 10, 10, 0, true, "here"))).toEqual([RESULT_OK]);
-  expect(bob!.pins.length).toBe(1);
+  expect(answers(h, bob!, () => (pinAt(bob!, 10, 10, 0, true, "here"), void pinAt(bob!, 20, 20, 0, false, "mine")))).toEqual([RESULT_OK, RESULT_OK]);
+  const was = pins.of(team).map((p) => ({ ...p }));
+  expect(bob!.pins.length).toBe(2);
   h.say(bob!, "tribe leave");
   h.run(300);
   expect(rec(bob!).team).not.toBe(team);
-  expect([pins.of(team).length, pins.version(team), bob!.pins.length]).toEqual([0, 0, 0]);
+  expect([pins.of(team).length, pins.version(team)]).toEqual([0, 0]);
+  expect(pins.of(rec(bob!).team)).toEqual(was as never);
+  expect(bob!.pins.map((p) => [p.id, p.label])).toEqual(was.map((p) => [p.id, p.label]));
+});
+
+test("a pin not shared leaves with its author, by leave or kick, keeping its id", () => {
+  const { h, sessions: [bob, ada, cat], rec, pins } = world(["bob", "ada", "cat"]);
+  tribe(h, bob!, ada!);
+  h.say(bob!, "tribe invite cat");
+  h.say(cat!, "tribe accept");
+  h.run(300);
+  const team = rec(bob!).team;
+  expect([rec(ada!).team, rec(cat!).team]).toEqual([team, team]);
+  const place = (s: ClientSession, label: string, shared: boolean) => pins.place(team, rec(s).pid, 10, 10, 0, shared, label);
+  const adaOpen = place(ada!, "ada open", true), adaOwn = place(ada!, "ada own", false);
+  const catOpen = place(cat!, "cat open", true), catOwn = place(cat!, "cat own", false), bobOwn = place(bob!, "bob own", false);
+  h.say(ada!, "tribe leave");
+  h.say(bob!, "tribe kick cat");
+  h.run(300);
+  expect([rec(ada!).team, rec(cat!).team].some((t) => t === team)).toBe(false);
+  expect(pins.of(team).map((p) => p.id)).toEqual([adaOpen.id, catOpen.id, bobOwn.id]);
+  expect(pins.of(rec(ada!).team)).toEqual([adaOwn]);
+  expect(pins.of(rec(cat!).team)).toEqual([catOwn]);
+  expect([ada!.pins.map((p) => p.id), cat!.pins.map((p) => p.id)]).toEqual([[adaOwn.id], [catOwn.id]]);
+  expect(bob!.pins.map((p) => p.label)).toEqual(["ada open", "cat open", "bob own"]);
+});
+
+test("a tame's patrol over its owner's pins walks on after the owner joins a tribe", () => {
+  const { h, ada, me, at } = camp({ god: true });
+  const bob = survivor(h, "bob", { at: { x: at.x + 4, z: at.z } });
+  const bobs = h.host.records.byPid.get(h.client(bob)!.pid)!;
+  h.say(bob, "tribe create Wolves");
+  const team = bobs.team;
+  for (let i = 0; i < 3; i++) h.host.pins.place(team, bobs.pid, at.x + i, at.z - 30, 0, true, `b${i}`);
+  const ps = [h.host.pins.place(me.team, me.pid, at.x, at.z + 12, 0, true, ""), h.host.pins.place(me.team, me.pid, at.x + 14, at.z + 22, 0, true, "")];
+  for (const p of ps) p.radius = 1.5;
+  const e = h.host.spawnCreature("core:raptor", at.x + 2, at.z, 1);
+  const tame = h.host.records.byPid.get(h.world.ents.pid[e]!)!;
+  expect(h.host.taming.give(tame, me, 0.9, "forced")).toBe(true);
+  orderPatrol(ada, e, ps.map((p) => p.id), false);
+  h.run(500);
+  h.say(bob, "tribe invite ada");
+  h.say(ada, "tribe accept");
+  h.run(300);
+  expect([me.team, tame.team]).toEqual([team, team]);
+  expect(tame.part(ORDERED)!.pins).toEqual(ps.map((p) => p.id));
+  expect(ps.map((p) => h.host.pins.find(team, p.id))).toEqual(ps);
+  const seen: number[] = [];
+  for (let t = 0; t < 400 && seen.length < 3; t++) {
+    h.run(100);
+    const now = h.host.courses.of(e)?.at ?? -1;
+    if (seen.at(-1) !== now) seen.push(now);
+  }
+  expect(seen.slice(0, 3)).toEqual([0, 1, 0]);
+});
+
+test("pin ids are unique across teams, and a restart gives none of them again", () => {
+  const dbPath = join(dir, "ids.db");
+  let saved: unknown[][] = [], teams: number[] = [], gone = 0;
+  {
+    const { h, sessions, rec, pins } = world(["ada", "cat"], dbPath);
+    teams = sessions.map((s) => rec(s).team);
+    for (let i = 0; i < 6; i++) pins.place(teams[i % 2]!, rec(sessions[i % 2]!).pid, i, i, 0, true, `p${i}`);
+    gone = pins.place(teams[0]!, rec(sessions[0]!).pid, 9, 9, 0, true, "gone").id;
+    pins.remove(teams[0]!, gone);
+    const ids = teams.flatMap((t) => pins.of(t).map((p) => p.id));
+    expect(new Set(ids).size).toBe(6);
+    saved = teams.map((t) => pins.of(t).map((p) => ({ ...p })));
+    h.host.shutdown();
+  }
+  {
+    const { h, sessions, rec, pins } = world(["ada", "cat"], dbPath);
+    expect(sessions.map((s) => rec(s).team)).toEqual(teams);
+    expect(teams.map((t) => pins.of(t))).toEqual(saved as never);
+    expect(pins.place(teams[1]!, rec(sessions[1]!).pid, 1, 1, 0, true, "").id).toBe(gone + 1);
+    h.host.shutdown();
+  }
+});
+
+test("a restore drops a pin whose id another team has, and numbers on past every id", () => {
+  const pins = bare();
+  const at = (id: number) => ({ id, x: 1, z: 1, kind: 0, author: 1, at: id });
+  pins.restore(JSON.stringify({ next: 3, teams: [{ team: 7, pins: [at(5), at(2)] }, { team: 9, pins: [at(5), at(8)] }] }));
+  expect([pins.of(7).map((p) => p.id), pins.of(9).map((p) => p.id)]).toEqual([[2, 5], [8]]);
+  expect(pins.place(9, 1, 1, 1, 0, true, "").id).toBe(9);
+  const later = bare();
+  later.restore(JSON.stringify({ next: 40, teams: [{ team: 7, pins: [at(5)] }] }));
+  expect(later.place(7, 1, 1, 1, 0, true, "").id).toBe(40);
 });
 
 test("a lone survivor's pins are its own, and another survivor alone is told none", () => {

@@ -69,6 +69,8 @@ export class Tribes {
   /** Called when everything of team `from` becomes team `to`'s, and when a team's last member has left it. */
   onMerged: ((from: number, to: number) => void) | null = null;
   onGone: ((team: number) => void) | null = null;
+  /** Called with a survivor that left team `from` for a team of its own, before onGone; `last` if nobody is left in `from`. */
+  onLeft: ((rec: EntityRecord, from: number, last: boolean) => void) | null = null;
   private readonly invites = new Map<number, Invite>();
   private readonly survivor: number;
   private readonly world: ServerWorld;
@@ -310,6 +312,7 @@ export class Tribes {
   private remove(tribe: Tribe, rec: EntityRecord, why: string): void {
     tribe.members.splice(tribe.members.indexOf(rec.pid), 1);
     rec.team = this.records.newTeam();
+    this.onLeft?.(rec, tribe.id, tribe.members.length === 0);
     rec.rank = RANK_MEMBER;
     const wasOwner = tribe.owner === rec.pid;
     if (tribe.members.length === 0) {

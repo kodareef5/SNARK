@@ -1192,6 +1192,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     plans.dropTeam(team);
     pins.drop(team);
   };
+  tribes.onLeft = (rec, from, last) => pins.left(from, rec.team, rec.pid, last);
   // Courses walk a body by its goal; a tame keeps its move or patrol on its record and takes it up with each new body.
   const courses = new Courses({ world, mind: creatures.mind });
   const tameOrders = new TameOrders({ world, records, pins, courses, mind: creatures.mind, reach: (c) => gaze.lookReach(c), tell: (pid, text) => notice(pid, text) });

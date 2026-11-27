@@ -43,7 +43,7 @@ export const PIN_KINDS: readonly PinKind[] = [
 ];
 
 export interface Pin extends Waypoint {
-  /** Unique in its team while it lives, and never given again there. */
+  /** Unique in the world, kept when the pin moves to another team, and never given again. */
   id: number;
   label: string;
   /** The permanent id of the survivor that placed it. */
@@ -58,7 +58,6 @@ export interface Pin extends Waypoint {
 interface TeamPins {
   /** Oldest first. */
   readonly list: Pin[];
-  next: number;
   version: number;
 }
 
@@ -98,6 +97,8 @@ export class Pins {
   private readonly byTeam = new Map<number, TeamPins>();
   /** Every change of any team takes the next number, so no two teams' pins as they stand share a version. */
   private serial = 0;
+  /** The id the next pin of any team takes. */
+  private next = 1;
   private readonly deadline: number;
   /** Per author, the tick its allowance of adds is spent to (a leaky bucket). */
   private readonly spent = new Map<number, number>();
@@ -140,7 +141,7 @@ export class Pins {
     const tick = this.ctx.world.tick;
     const k = PIN_KINDS[kind]!;
     const t = this.team(team);
-    const pin: Pin = { id: t.next++, x, z, radius: k.radius, kind, priority: k.priority, pull: k.pull, label: cleanLabel(label), author, shared, at: tick, expires: k.lasts > 0 ? tick + k.lasts * TICK_RATE : 0 };
+    const pin: Pin = { id: this.next++, x, z, radius: k.radius, kind, priority: k.priority, pull: k.pull, label: cleanLabel(label), author, shared, at: tick, expires: k.lasts > 0 ? tick + k.lasts * TICK_RATE : 0 };
     t.list.push(pin);
     if (t.list.length > PINS_MOST) t.list.shift();
     this.lapse(team, pin);
@@ -163,20 +164,17 @@ export class Pins {
     return pin.author === rec.pid || rec.rank > RANK_MEMBER || this.ctx.tribes.of(rec)?.owner === rec.pid;
   }
 
-  /** Everything of team `from` became `to`'s (Tribes.onMerged): its pins join, renumbered, and the newest PINS_MOST stay. */
+  /** Everything of team `from` became `to`'s (Tribes.onMerged): its pins join with their ids, and the newest PINS_MOST stay. */
   merge(from: number, to: number): void {
-    const was = this.byTeam.get(from);
-    if (!was || from === to) return;
-    this.byTeam.delete(from);
-    const t = this.team(to);
-    for (const p of was.list) {
-      const moved = { ...p, id: t.next++ };
-      t.list.push(moved);
-      this.lapse(to, moved);
-    }
-    t.list.sort((a, b) => a.at - b.at);
-    if (t.list.length > PINS_MOST) t.list.splice(0, t.list.length - PINS_MOST);
-    this.changed(t);
+    this.move(from, to, () => true);
+  }
+
+  /**
+   * Survivor `author` left team `from` for its own team `to` (Tribes.onLeft). Its pins not shared go with it; when it was the
+   * `last` member, every pin does, as nobody else could see them.
+   */
+  left(from: number, to: number, author: number, last: boolean): void {
+    this.move(from, to, last ? () => true : (p) => !p.shared && p.author === author);
   }
 
   /** The team is gone (Tribes.onGone), and its pins with it. */
@@ -186,12 +184,12 @@ export class Pins {
   }
 
   serialize(): string {
-    const out: { team: number; next: number; pins: Pin[] }[] = [];
-    for (const [team, t] of this.byTeam) if (t.list.length > 0) out.push({ team, next: t.next, pins: t.list });
-    return JSON.stringify(out);
+    const teams: { team: number; pins: Pin[] }[] = [];
+    for (const [team, t] of this.byTeam) if (t.list.length > 0) teams.push({ team, pins: t.list });
+    return JSON.stringify({ next: this.next, teams });
   }
 
-  /** Takes the pins a save held. What is not a pin is left out. */
+  /** Takes the pins a save held. What is not a pin is left out, and so is a pin whose id another team's pin has. */
   restore(saved: string | number | null): void {
     if (typeof saved !== "string") return;
     let parsed: unknown;
@@ -200,15 +198,21 @@ export class Pins {
     } catch {
       return;
     }
-    if (!Array.isArray(parsed)) return;
+    if (typeof parsed !== "object" || parsed === null) return;
+    const { next, teams } = parsed as { next?: unknown; teams?: unknown };
+    if (!Array.isArray(teams)) return;
     const num = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
-    for (const raw of parsed as { team?: unknown; next?: unknown; pins?: unknown }[]) {
+    const ids = new Set<number>();
+    if (num(next)) this.next = Math.max(this.next, Math.floor(next));
+    for (const raw of teams as { team?: unknown; pins?: unknown }[]) {
       if (typeof raw !== "object" || raw === null || !num(raw.team) || raw.team <= 0 || !Array.isArray(raw.pins) || this.byTeam.has(raw.team)) continue;
       const team = raw.team;
-      const t: TeamPins = { list: [], next: num(raw.next) ? Math.max(1, Math.floor(raw.next)) : 1, version: 0 };
+      const t: TeamPins = { list: [], version: 0 };
       for (const p of raw.pins as Partial<Pin>[]) {
         if (typeof p !== "object" || p === null || !num(p.id) || !num(p.x) || !num(p.z) || !num(p.kind) || !num(p.author) || !num(p.at)) continue;
-        if (p.kind < 0 || p.kind >= WAYPOINT_KINDS.length || t.list.some((q) => q.id === p.id)) continue;
+        if (!Number.isInteger(p.id) || p.id <= 0 || p.kind < 0 || p.kind >= WAYPOINT_KINDS.length || ids.has(p.id)) continue;
+        ids.add(p.id);
+        this.next = Math.max(this.next, p.id + 1);
         const k = PIN_KINDS[p.kind]!;
         const pin: Pin = {
           id: p.id, x: p.x, z: p.z, kind: p.kind, author: p.author, at: p.at,
@@ -220,7 +224,6 @@ export class Pins {
           expires: num(p.expires) && p.expires > 0 ? p.expires : 0,
         };
         t.list.push(pin);
-        t.next = Math.max(t.next, pin.id + 1);
       }
       if (t.list.length === 0) continue;
       t.list.sort((a, b) => a.at - b.at);
@@ -233,8 +236,29 @@ export class Pins {
 
   private team(team: number): TeamPins {
     let t = this.byTeam.get(team);
-    if (!t) this.byTeam.set(team, (t = { list: [], next: 1, version: 0 }));
+    if (!t) this.byTeam.set(team, (t = { list: [], version: 0 }));
     return t;
+  }
+
+  /** Moves the pins of `from` that `which` picks to `to` with their ids; the newest PINS_MOST of `to` stay. */
+  private move(from: number, to: number, which: (p: Pin) => boolean): void {
+    const was = this.byTeam.get(from);
+    if (!was || from === to || !was.list.some(which)) return;
+    const t = this.team(to);
+    let n = 0;
+    for (const p of was.list) {
+      if (!which(p)) was.list[n++] = p;
+      else {
+        t.list.push(p);
+        this.lapse(to, p);
+      }
+    }
+    was.list.length = n;
+    if (n === 0) this.byTeam.delete(from);
+    else this.changed(was);
+    t.list.sort((a, b) => a.at - b.at);
+    if (t.list.length > PINS_MOST) t.list.splice(0, t.list.length - PINS_MOST);
+    this.changed(t);
   }
 
   private changed(t: TeamPins): void {
