@@ -52,6 +52,7 @@ import { exhaustPhase } from "./suit-finish.ts";
 import { Blasts } from "./blasts.ts";
 import { Fires } from "./fires.ts";
 import { FireLights } from "./fire-lights.ts";
+import { Mirage } from "./mirage.ts";
 import { Clouds } from "./clouds.ts";
 import { Dropped } from "./dropped.ts";
 import type { FarSource } from "./far.ts";
@@ -308,6 +309,8 @@ export class Scene {
   readonly fires: Fires;
   /** The light fire throws on what is near it: the fires' and the blasts' (fire-lights.ts). */
   readonly fireLights = new FireLights();
+  /** The air's waver over fires and blasts near the eye (mirage.ts). */
+  readonly mirage = new Mirage();
   /** The wires between the utility poles still standing (street-wires.ts). */
   readonly streetWires: StreetWires;
   /** What hides what this frame. */
@@ -1079,6 +1082,9 @@ export class Scene {
     const { streetLamps, streetWires, fires, fireLights } = this;
     fireLights.begin();
     fires.hour = this.hour;
+    const mirage = this.mirage;
+    mirage.begin();
+    fires.mirage = p.tier.post?.mirage ? mirage : null;
     fires.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ, this.now, this.assets.tier, this.viewHeight, fireLights);
     const fields = this.shots?.tekImpacts;
     fields?.build(this.world.structs, cam, this.now);
@@ -1090,9 +1096,10 @@ export class Scene {
     this.blasts.viewHeight = this.viewHeight;
     this.blasts.cards(cam, this.now, this.own?.firstPerson);
     this.blasts.light(fireLights, cam, this.now);
+    if (p.tier.post?.mirage) this.blasts.waver(mirage, cam, this.now);
     fireLights.write(p.frame, p.tier.lit ? p.tier.fires.lights : 0, this.now, lampsOn(p.frame));
     const beacons = this.supplyDrops.beacons;
-    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, beacons.count + tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count + fires.count + this.dust.count + this.blasts.count + (orbCards?.count ?? 0) + (fields?.count ?? 0));
+    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, beacons.count + tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count + fires.count + mirage.count + this.dust.count + this.blasts.count + (orbCards?.count ?? 0) + (fields?.count ?? 0));
     const particles = p.detailCount;
     // An orb's halo first of the cards, so what is nearer is drawn over it.
     orbCards?.write(p);
@@ -1144,6 +1151,8 @@ export class Scene {
     this.put.drawDetails(seen, solid, DRAW_CUTOUT, far);
     this.put.drawDetails(seen + solid, p.detailCount - seen - solid, DRAW_BLEND, far);
     this.put.drawDetails(numbers, glassAndNumbers - numbers, DRAW_BLEND, this.damage.passes(cam));
+    // Last of the cards, and in no draw: the hot air, which a shell with a light target draws apart (mirage.ts).
+    mirage.frame(p, p.tier, this.now, this.viewHeight);
   }
 
   /**

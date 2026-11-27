@@ -51,7 +51,7 @@ test("bloom's levels run from a quarter of the canvas down to a level no fewer t
   expect([0, 1, 2, 5].map(levelShift)).toEqual([0, 2, 3, 6]);
   expect([tapShift(0, 1), tapShift(1, 2), tapShift(2, 1), tapShift(0, -1)]).toEqual([1, 2, 3, 0]);
   expect([lightSamples(false), lightSamples(true)]).toEqual([2, 0]);
-  expect([lightBytes(2560, 1440, 2), lightBytes(2560, 1440, 4), lightBytes(3840, 1986, 0)].map((b) => Math.round(b / 1e6))).toEqual([119, 207, 94]);
+  expect([lightBytes(2560, 1440, 2), lightBytes(2560, 1440, 4), lightBytes(3840, 1986, 0)].map((b) => Math.round(b / 1e6))).toEqual([141, 244, 109]);
 });
 
 test("the scene's share: high's a laptop's 3,600 by 1,924 at 85% a side and 1,600p and under whole, ultra whole, the player's choice where made, and a tier with no light target always whole", () => {

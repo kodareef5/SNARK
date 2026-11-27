@@ -6,7 +6,7 @@ import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { FLAT_BODY_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX } from "../../client/core/render/glsl.ts";
 import { tekPhaseFragment, tekPhaseVertex } from "../../client/core/render/tek-phase.ts";
 import { HAND_FAR, HAND_NEAR } from "../../client/core/render/hand.ts";
-import { FIRES_AT, FIRE_LIGHTS, ORB_AT, ORB_LANES, DROPS_AT, DROP_LANES, CAST_AT, GLASS_AT, LAMP_AT, DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, FRAME, FRAME_BLOCK, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_TIRE_CONTACTS, MAX_CONTACTS, MAX_WATER_MARKS, ROOF_AT, WATER_MARK_COUNT, WATER_PATHS, WATER_BOUNDS, WATER_MARKS, SHORE_AT, OPTIC_AT, MADE_AT, WINDOW_AT } from "../../client/core/render/packet.ts";
+import { FIRES_AT, FIRE_LIGHTS, MIRAGE_AT, ORB_AT, ORB_LANES, DROPS_AT, DROP_LANES, CAST_AT, GLASS_AT, LAMP_AT, DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, FRAME, FRAME_BLOCK, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_TIRE_CONTACTS, MAX_CONTACTS, MAX_WATER_MARKS, ROOF_AT, WATER_MARK_COUNT, WATER_PATHS, WATER_BOUNDS, WATER_MARKS, SHORE_AT, OPTIC_AT, MADE_AT, WINDOW_AT } from "../../client/core/render/packet.ts";
 import { LATE, PROGRAMS, UNIT, drawProgram, tierPrograms, type ProgramText } from "../../client/core/render/programs.ts";
 // The orb's program is a tier's once its late text has come, as it has here.
 import "../../client/core/render/orb-late.ts";
@@ -75,10 +75,10 @@ test("the frame block: each value inside its slot, a GLSL slot for every four fl
   expect(WATER_MARKS + 8 * MAX_WATER_MARKS).toBe(WATER_PATHS);
   // The supply drops' casts, a visor's optic, the made materials and the orb's screen are the block's last lanes
   // (supply-sky.ts, post.ts opticFrame, texgen/slots.ts, orb.ts writeOrb), then the terrain window's corner (terrain.ts)
-  // and the lights from fire (fire-lights.ts).
-  expect([WATER_PATHS + 4 * MAX_WATER_MARKS, ROOF_AT + 4, CAST_AT + 4, LAMP_AT + 8 + 16 + 4, GLASS_AT + 4, SHORE_AT + 4, DROPS_AT + 4 * DROP_LANES, OPTIC_AT + 8, MADE_AT + 8 * MATERIAL_RECIPES.length, ORB_AT + 4 * ORB_LANES, WINDOW_AT + 4, FIRES_AT + 8 * FIRE_LIGHTS]).toEqual([ROOF_AT, CAST_AT, LAMP_AT, GLASS_AT, SHORE_AT, DROPS_AT, OPTIC_AT, MADE_AT, ORB_AT, WINDOW_AT, FIRES_AT, FRAME_FLOATS]);
+  // and the lights from fire (fire-lights.ts) and the hot air's lane (mirage.ts).
+  expect([WATER_PATHS + 4 * MAX_WATER_MARKS, ROOF_AT + 4, CAST_AT + 4, LAMP_AT + 8 + 16 + 4, GLASS_AT + 4, SHORE_AT + 4, DROPS_AT + 4 * DROP_LANES, OPTIC_AT + 8, MADE_AT + 8 * MATERIAL_RECIPES.length, ORB_AT + 4 * ORB_LANES, WINDOW_AT + 4, FIRES_AT + 8 * FIRE_LIGHTS, MIRAGE_AT + 4]).toEqual([ROOF_AT, CAST_AT, LAMP_AT, GLASS_AT, SHORE_AT, DROPS_AT, OPTIC_AT, MADE_AT, ORB_AT, WINDOW_AT, FIRES_AT, MIRAGE_AT, FRAME_FLOATS]);
   expect(FRAME_BLOCK).toContain(`highp vec4 fDrops[${DROP_LANES}]`);
-  expect(FRAME_BLOCK).toContain("highp vec4 fRoof, fCast, fLamp, fLampColor;\n  highp mat4 fLampShadow;\n  highp vec4 fLampWay, fGlass;\n  highp vec4 fShore;\n  highp vec4 fDrops[11];\n  highp vec4 fOptic, fPhosphor;\n  highp vec4 fMade[" + MATERIAL_RECIPES.length * 2 + "];\n  highp vec4 fOrb[" + ORB_LANES + "];\n  highp vec4 fWindow;\n  highp vec4 fFires[" + FIRE_LIGHTS * 2 + "];\n};");
+  expect(FRAME_BLOCK).toContain("highp vec4 fRoof, fCast, fLamp, fLampColor;\n  highp mat4 fLampShadow;\n  highp vec4 fLampWay, fGlass;\n  highp vec4 fShore;\n  highp vec4 fDrops[11];\n  highp vec4 fOptic, fPhosphor;\n  highp vec4 fMade[" + MATERIAL_RECIPES.length * 2 + "];\n  highp vec4 fOrb[" + ORB_LANES + "];\n  highp vec4 fWindow;\n  highp vec4 fFires[" + FIRE_LIGHTS * 2 + "];\n  highp vec4 fMirage;\n};");
   expect(FRAME_BLOCK).toContain(`fWaterMarks[${2 * MAX_WATER_MARKS}]`);
   const p = new FramePacket();
   p.split = 384;
@@ -153,8 +153,8 @@ test("a tier's programs are every one its frames may draw with, each once, the s
       const names = tierPrograms(tier).map(named);
       expect(new Set(names).size).toBe(names.length);
       if (!tier.lit) expect(names).toEqual(["flat", "terrain", "terrainWindow", "far", "pulled", "sky", "details", "skyline", "signal", "fire", "orb", "screens"]);
-      // The programs that draw prints are a tier's once a print's array has been made (LATE.prints).
-      else expect(names).toEqual(Object.keys(PROGRAMS).filter((n) => (tier.post !== null || !["bloomDown", "bloomUp", "finish"].includes(n)) && (!n.startsWith("surfacePrinted") || LATE.prints)));
+      // The programs that draw prints are a tier's once a print's array has been made (LATE.prints), and the hot air's where its finish reads it.
+      else expect(names).toEqual(Object.keys(PROGRAMS).filter((n) => (tier.post !== null || !["bloomDown", "bloomUp", "finish"].includes(n)) && (n !== "mirage" || tier.post?.mirage === true) && (!n.startsWith("surfacePrinted") || LATE.prints)));
       const texts = new Set(names.map((n) => JSON.stringify(PROGRAMS[n]!(tier, "astc"))));
       expect(texts.size).toBe(names.length);
     }

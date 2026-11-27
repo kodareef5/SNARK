@@ -161,7 +161,7 @@ export interface Tier {
    * leaves the render resolution to the game, the finish taking it up to the canvas (post.ts sceneShare); 0 for the
    * canvas's own. `scale`: the share a side of that the governor's steps draw, 1 where left out.
    */
-  readonly post: { readonly bloom: number; readonly pixels: number; readonly scale?: number } | null;
+  readonly post: { readonly bloom: number; readonly pixels: number; readonly scale?: number; readonly mirage?: boolean } | null;
   /**
    * An orb's screen (render/orb.ts): the octaves of noise a scene reads at the most, and whether its pucks are drawn
    * close up. Low poly shows the same picture with the fewest. `ground`: whether the ground takes the ball's
@@ -256,7 +256,7 @@ export const TIERS: readonly Tier[] = [
     name: "high", reflectionHz: 4, texture: 2048, textureShare: 0.6, view: 1024, bones: 32768, threshold: 0.14, finest: 0, instanced: 384, pixelRatio: 2, fewest: 0, canvas: 0, anisotropy: 16, gpuBytes: 1536 * MB, uploadBytes: 2 * MB, diskBytes: 8192 * MB,
     lit: true, split: 384, viewDistance: 6000, reach: { bases: 2048, city: 3000, trees: 1500, rocks: 900, bushes: 500, parts: 2000 }, fade: 0.25, city: { levels: HIGH_CITY }, nodes: { chunks: 4, band: [216, 248], levels: 400, cover: { from: 8, per: 3, most: 8 } }, shadows: { cascades: 3, size: 2048, distance: 128, taps: 9, blend: 0.85, everyOther: false, moon: true, lamp: true, pools: true }, touch: { shadows: { cascades: 3, size: 1024, distance: 128, taps: 1, blend: 0.85, everyOther: false }, gpuBytes: PHONE_HIGH_CARD, finish: "light", city: { levels: nearer(HIGH_CITY, PHONE_CITY) }, anisotropy: 1, viewDistance: VIEW, budget: { triangles: 4e6, draws: 2048 }, nodes: { chunks: 4, band: [216, 248] } }, finish: "full", finishes: 1024, relief: false, clouds: 2, water: "simple", waterMarks: 12,
     details: { pool: 3072, share: 1, reach: 1, fill: 1.5 }, bursts: { particles: 100, lobes: 3, noise: 2 }, fires: { most: 12, tongues: 4, lights: 4, plume: 600 }, breaks: { pieces: 1024, bones: 2048, draws: 48, rest: 8 }, budget: { triangles: 6e6, draws: 2048, spend: 2, spendTo: 3.5e6 }, bodyError: 1, finestBodies: [8, 8, 8, 8, 8],
-    post: { bloom: 1, pixels: HIGH_PIXELS },
+    post: { bloom: 1, pixels: HIGH_PIXELS, mirage: true },
     orb: { octaves: 4, pucks: true, light: true, ground: true, video: true },
     screens: { reach: 800, near: 60, count: 32, layers: 16, video: 2, fps: 30 },
     prints: { side: 512, layers: 32 },
@@ -267,7 +267,7 @@ export const TIERS: readonly Tier[] = [
     name: "ultra", reflectionHz: 4, texture: 4096, textureShare: 0.6, view: 2048, bones: 65536, threshold: 0.08, finest: 0, instanced: 512, pixelRatio: 0, fewest: 0, canvas: 0, anisotropy: 16, gpuBytes: 4096 * MB, uploadBytes: 4 * MB, diskBytes: 24576 * MB,
     lit: true, split: 384, viewDistance: 8000, reach: { bases: 2048, city: 3000, trees: 2000, rocks: 1200, bushes: 600, parts: 3000 }, fade: 0.25, city: { levels: [boxes(1100), lattice(1500), bare(2000), mass(2500, 4), mass(Infinity, 8)] }, nodes: { chunks: 5, band: [280, 312], levels: 400, cover: { from: 8, per: 3, most: 8 } }, shadows: { cascades: 4, size: 2048, distance: 192, taps: 9, blend: 0.9, everyOther: false, moon: true, lamp: true, pools: true }, touch: { offered: false, fewest: 0, anisotropy: 1 }, finish: "full", finishes: 2048, relief: false, clouds: 2, water: "simple", waterMarks: 12,
     details: { pool: 6144, share: 1, reach: 1.25, fill: 2 }, bursts: { particles: 160, lobes: 3, noise: 2 }, fires: { most: 16, tongues: 4, lights: 4, plume: 600 }, breaks: { pieces: 1024, bones: 4096, draws: 64, rest: 12 }, budget: { triangles: 8e6, draws: 4096, spend: 2, spendTo: 5e6 }, bodyError: 1, finestBodies: [16, 16, 16, 16, 16],
-    post: { bloom: 1, pixels: 0 },
+    post: { bloom: 1, pixels: 0, mirage: true },
     orb: { octaves: 4, pucks: true, light: true, ground: true, video: true },
     screens: { reach: 800, near: 60, count: 32, layers: 16, video: 2, fps: 30 },
     prints: { side: 512, layers: 64 },

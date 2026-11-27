@@ -16,6 +16,7 @@ import { DROP_GLSL } from "./supply-light.ts";
 import { FACE_FRAGMENT, FACE_VERTEX } from "./screen-shade.ts";
 import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_FIRE, DRAW_ORB, DRAW_PRINTED, DRAW_SCREENS, DRAW_SKYLINE, FRAME_BLOCK, SKYLINE_MAX_FOG, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, SOURCE_MAP, SOURCE_WINDOW, WATER_MARK_COUNT, type FramePacket } from "./packet.ts";
 import { BLOOM_DOWN, BLOOM_UP, FINISH, POST_VERTEX, drawsLight } from "./post.ts";
+import { MIRAGE_FRAGMENT, MIRAGE_VERTEX } from "./mirage.ts";
 import { DEPTH_CUTOUT_FRAGMENT, DEPTH_FRAGMENT, DEPTH_VERTEX, clampDepth, shadowDefines } from "./shadowtext.ts";
 import { MAX_PRINT_LAYERS } from "./print-term.ts";
 import { PIECE_SPALL_RIM, PIECE_SPALL_TEXT, SURFACE_ANY, surfaceFragment, surfaceVertex, type SurfaceVariant } from "./surface.ts";
@@ -213,13 +214,16 @@ void main() {
   // The finish (post.ts): bloom's chain down and up, and the pass into the canvas.
   bloomDown: () => post(BLOOM_DOWN, { uSource: UNIT.details }),
   bloomUp: () => post(BLOOM_UP, { uSource: UNIT.details }),
-  finish: () => post(FINISH, { uScene: UNIT.details, uBloom: UNIT.layer }),
+  // The frame's hot air is read on the shadows' unit, whose array is another kind of texture and stays bound beside it.
+  finish: () => post(FINISH, { uScene: UNIT.details, uBloom: UNIT.layer, uMirage: UNIT.shadow }),
   // Last, so the programs before keep their numbers: a draw whose instances carry prints (packet.ts DRAW_PRINTED, print-term.ts): never dropping, able to, and with a layer.
   surfacePrinted: (tier, format, hard = false, light = false) => surface(tier, format, hard, light, { ...SURFACE_ANY, drops: false, printed: true }),
   surfacePrintedCut: (tier, format, hard = false, light = false) => surface(tier, format, hard, light, { ...SURFACE_ANY, printed: true }),
   surfacePrintedLayer: (tier, format, hard = false, light = false) => surface(tier, format, hard, light, { ...SURFACE_ANY, layered: true, printed: true }),
   // Hair, cut-out cards and solid core both, with its shifted highlight (surface.ts hairBand).
   surfaceHair: (tier, format, hard = false, light = false) => surface(tier, format, hard, light, { ...SURFACE_ANY, hair: true }),
+  // The air's waver over what is hot (mirage.ts): its cards' shifts, into the scene's second attachment.
+  mirage: () => ({ vertex: MIRAGE_VERTEX, fragment: MIRAGE_FRAGMENT, defines: "", samplers: {} }),
 } satisfies Record<string, Make>;
 
 /**
@@ -283,6 +287,7 @@ const WARM: Readonly<Record<keyof typeof MAKE, WarmDraw>> = {
   surfacePrintedCut: warm(TEXTURED, CUT),
   surfacePrintedLayer: warm(TEXTURED, CUT),
   surfaceHair: warm(TEXTURED, CUT),
+  mirage: warm(WARM_FORM.detail, WARM_STATE.blended),
 };
 /**
  * The programs the first frame waits for (WarmDraw.early). The world's own are drawn at once by the first frame or a
@@ -333,6 +338,7 @@ const ROWS: Readonly<Record<keyof typeof MAKE, readonly UniformRow[]>> = {
   surfacePrintedCut: [...SURFACE_DRAW, ...PRINT_ROWS],
   surfacePrintedLayer: [...SURFACE_DRAW, ...LAYER_ROWS, ...PRINT_ROWS],
   surfaceHair: SURFACE_DRAW,
+  mirage: [],
 };
 /** The same by a program's number. */
 export const UNIFORMS: readonly (readonly UniformRow[])[] = Object.keys(MAKE).map((name) => ROWS[name as keyof typeof MAKE]);
@@ -352,7 +358,7 @@ const PRINTED = ["surfacePrinted", "surfacePrintedCut", "surfacePrintedLayer"];
 
 /** The programs a frame of `tier` may ask for, by number, which a shell may begin making before one does. */
 export function tierPrograms(tier: Tier): number[] {
-  return Object.keys(MAKE).flatMap((name, n) => ((tier.lit || UNLIT.includes(name)) && (name !== "seeThrough" || tier.split > 0) && (!name.startsWith("depth") || tier.shadows.size > 0) && (!POST.includes(name) || tier.post !== null) && (name !== "orb" || LATE.orb !== null) && (!PRINTED.includes(name) || (LATE.prints && tier.prints.layers > 0)) ? [n] : []));
+  return Object.keys(MAKE).flatMap((name, n) => ((tier.lit || UNLIT.includes(name)) && (name !== "seeThrough" || tier.split > 0) && (!name.startsWith("depth") || tier.shadows.size > 0) && (!POST.includes(name) || tier.post !== null) && (name !== "mirage" || tier.post?.mirage === true) && (name !== "orb" || LATE.orb !== null) && (!PRINTED.includes(name) || (LATE.prints && tier.prints.layers > 0)) ? [n] : []));
 }
 
 /**

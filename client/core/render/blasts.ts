@@ -27,6 +27,7 @@ import type { Camera } from "./camera.ts";
 import type { Draws } from "./draws.ts";
 import { FIRE_FLAME, FIRE_LOBE, flamePhase, lobeSwell, putFlame, putLobe } from "./fire-light.ts";
 import { BLAST_BY_DAY, type FireLights } from "./fire-lights.ts";
+import { MIRAGE_REACH, type Mirage } from "./mirage.ts";
 import { DETAIL, DETAIL_FLOATS, DETAIL_GLOW, DETAIL_SMOKE, SMOKE_STEPS, DRAW_BLEND, DRAW_FIRE, DRAW_PLAIN, GLOW_STEPS, TRANSIENT_BUFFER, type FramePacket } from "./packet.ts";
 
 /** Rounds with a motor kept at once, flying or their smoke still thinning, and blasts whose fire is still alight. */
@@ -64,6 +65,8 @@ export const SCORCHES = 8;
 const SCORCH_MS = 32000;
 /** A blast's flash's light before exposure a metre off, for each square metre of its fireball's radius, and the seconds it lasts; and its fireball's glow's. */
 const FLASH_LIGHT = 60, FLASH_SECONDS = 0.25, BALL_LIGHT = 14;
+/** Seconds a blast's shock takes to cross the air about it as a ring that bends what is seen through it. */
+const SHOCK_SECONDS = 0.2;
 /** A rocket's reach in metres, which a blast's size is measured against. */
 const ROCKET_REACH = 7.5;
 
@@ -767,6 +770,24 @@ export class Blasts {
       const flash = FLASH_LIGHT * area * Math.max(0, 1 - age / FLASH_SECONDS) ** 3, fire = BALL_LIGHT * area * (1 - age / life) ** 2, all = flash + fire;
       const white = flash / Math.max(all, 1e-6);
       lights.add(this.bAt[b * 3]! - cam.x, this.bAt[b * 3 + 1]! + 0.6 * ball - cam.y, this.bAt[b * 3 + 2]! - cam.z, all, 1, 0.42 + 0.38 * white, 0.12 + 0.43 * white, BLAST_BY_DAY);
+    }
+  }
+
+  /**
+   * Hands `mirage` each blast's hot air from the eye at `cam`: its shock, a ring thrown out to twice its fireball's reach
+   * in SHOCK_SECONDS, and the air over its fireball while it burns.
+   */
+  waver(mirage: Mirage, cam: Camera, nowMs: number): void {
+    if (!this.on) return;
+    for (let b = 0; b < MAX_BURSTS; b++) {
+      if (this.bLive[b] === 0) continue;
+      const age = (nowMs - this.bBorn[b]!) / 1000, life = this.bLife[b]!;
+      if (age < 0 || age >= life) continue;
+      const ball = this.bBall[b]!, x = this.bAt[b * 3]! - cam.x, y = this.bAt[b * 3 + 1]! - cam.y, z = this.bAt[b * 3 + 2]! - cam.z;
+      if (Math.hypot(x, y, z) > MIRAGE_REACH) continue;
+      const t = age / SHOCK_SECONDS;
+      if (t < 1) mirage.ring(x, y + 0.5 * ball, z, ball * (0.6 + 5 * (1 - (1 - t) * (1 - t))), (1 - t) * (1 - t));
+      mirage.over(x, y + 2.2 * ball, z, 1.3 * ball, 2 * ball, 0.9 * (1 - age / life), (b * 0.37) % 1);
     }
   }
 

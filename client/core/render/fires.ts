@@ -15,6 +15,7 @@ import type { Camera } from "./camera.ts";
 import type { Draws } from "./draws.ts";
 import { BLAZE_REACH, FIRE_BLAZE, blazePhase, putBlaze } from "./fire-light.ts";
 import { FIRE_BY_DAY, FIRE_COLOUR, FIRE_LIGHT, type FireLights } from "./fire-lights.ts";
+import type { Mirage } from "./mirage.ts";
 import { DETAIL, DETAIL_GLOW, DETAIL_SMOKE, DRAW_BLEND, DRAW_FIRE, DRAW_PLAIN, GLOW_STEPS, SMOKE_STEPS, TRANSIENT_BUFFER, type FramePacket } from "./packet.ts";
 import { lampsOn } from "./surface.ts";
 import { VehicleCards } from "./vehicle-cards.ts";
@@ -35,6 +36,8 @@ const TONGUE_BAND = 0.25;
 /** Pixels high under which a fire is a glow alone, crossing over from the one to the other. */
 export const GLOW_UNDER = 10;
 const GLOW_OVER = 16;
+/** Pixels high from which the air over a fire begins to waver. */
+const MIRAGE_OVER = 50;
 /** Pixels high over which a fire throws embers. */
 const EMBERS_OVER = 60;
 /** The share of the tier's fill of the screen the fires may take: past it a fire has its bed alone and half its smoke. */
@@ -110,6 +113,8 @@ export class Fires extends VehicleCards {
   on = true;
   /** The hour, which says when a pool stands in for a fire's light on low poly, whose frame holds no sky. The scene sets it. */
   hour = 12;
+  /** What takes the hot air over the fires near the eye (mirage.ts), or null. The scene sets it. */
+  mirage: Mirage | null = null;
   /** False where no kind burns: the pass then does nothing at all. */
   readonly any: boolean;
   /** Fires drawn in the last frame, the blazes of their flames, their draws, and the share of the screen they cover. */
@@ -228,6 +233,8 @@ export class Fires extends VehicleCards {
       const fx = flames[q]! + slide * lay.slideX, fz = flames[q + 2]! + slide * lay.slideZ, high = flames[q + 3]!, wide = flames[q + 4]!;
       const x = found[f]! - cam.x + co * fx + si * fz, y = bottom + flames[q + 1]!, z = found[f + 2]! - cam.z + co * fz - si * fx;
       layFlame(this.holder, x, y, z, high, wide, px, tongues, fract(seed + q * 0.1309), fade);
+      // The air over a flame large on the screen wavers, from within its tongues to well over their tips.
+      if (this.mirage && !plain) this.mirage.over(x, y + 1.5 * high, z, 0.7 * wide + 0.25 * high, 1.3 * high, fade * smooth(MIRAGE_OVER, 2.5 * MIRAGE_OVER, px), fract(seed + q * 0.37));
       if (cross < 0.99) this.glow(x, y + 0.45 * high, z, 0.5 * wide + 0.2 * high, 0.55 * high, FLAME, 2.4, (1 - cross) * fade);
       if (this.pools > 0.01) this.pool(x, y + 0.03, z, wide + 1.5 * high, this.pools * fade);
     }

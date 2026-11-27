@@ -395,6 +395,7 @@ export const FRAME_SECTIONS = [
   { name: "orb", first: "fOrb", floats: ORB_LANES * 4 },
   { name: "window", first: "fWindow", floats: 4 },
   { name: "fires", first: "fFires", floats: FIRE_LIGHTS * 8 },
+  { name: "mirage", first: "fMirage", floats: 4 },
 ] as const satisfies readonly FrameSection[];
 
 /** Where each section of `rows` begins, in floats, by its name, and where the last ends, `end`. */
@@ -616,6 +617,11 @@ export const WINDOW_AT = SECTION.window;
  * the most its glint off the sea shows, after exposure.
  */
 export const FIRES_AT = SECTION.fires;
+/**
+ * fMirage: the frame's hot air (mirage.ts): 1 where its cards are drawn, the pixels a unit of their shift is, and the
+ * phase of their waves, radians.
+ */
+export const MIRAGE_AT = SECTION.mirage;
 export const OPTIC_NONE = 0;
 export const OPTIC_NIGHT = 1;
 export const OPTIC_HEAT = 2;
@@ -643,6 +649,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fOrb[${ORB_LANES}];
   highp vec4 fWindow;
   highp vec4 fFires[${FIRE_LIGHTS * 2}];
+  highp vec4 fMirage;
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)
@@ -1009,6 +1016,9 @@ export class FramePacket {
   detailOwn = 0;
   readonly detailTag = new Uint8Array(MAX_DETAILS);
   burstFirst = 0;
+  /** The run of cards that is the frame's hot air (mirage.ts), which no draw of the frame names: a shell with a light target draws it apart. */
+  mirageFirst = 0;
+  mirageCount = 0;
   burstCount = 0;
 
   /**
@@ -1094,7 +1104,7 @@ export class FramePacket {
     this.triangles = 0;
     this.detailCount = 0;
     this.detailFill = 0;
-    this.detailOwn = this.burstCount = 0;
+    this.detailOwn = this.burstCount = this.mirageCount = 0;
   }
 }
 

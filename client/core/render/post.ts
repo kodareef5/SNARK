@@ -19,6 +19,7 @@
 import { GRADE, type GradeKey } from "../../../content/grade.ts";
 import type { Tier } from "../assets/tiers.ts";
 import { FEED_GLSL } from "./feed.ts";
+import { MIRAGE_GLSL } from "./mirage.ts";
 import { FRAME, FRAME_BLOCK, OPTIC_AT, OPTIC_BURST_AT, OPTIC_FEED, OPTIC_FEED_AT, OPTIC_NIGHT } from "./packet.ts";
 import { sunHeight } from "./sky.ts";
 import { GRADED, TONE } from "./surface.ts";
@@ -66,10 +67,11 @@ const BRIGHTEST = 256;
 
 /**
  * Bytes the light target takes on the card for a canvas `width` by `height` drawn with `samples` (Tier.post), in its
- * larger format: each sample's colour and depth, the resolved scene (with depth of its own where there are no samples),
- * and bloom's levels, a fifteenth of a pixel of four bytes: on high and ultra at 1,440p, with two, 119 MB.
+ * larger format: each sample's colour and depth and its two bytes of hot air (mirage.ts), the resolved scene and hot
+ * air (with depth of its own where there are no samples), and bloom's levels, a fifteenth of a pixel of four bytes: on
+ * high and ultra at 1,440p, with two, 141 MB.
  */
-export const lightBytes = (width: number, height: number, samples: number): number => Math.ceil(width * height * ((samples > 0 ? samples * 12 + 8 : 12) + 4 / 15));
+export const lightBytes = (width: number, height: number, samples: number): number => Math.ceil(width * height * ((samples > 0 ? samples * 14 + 10 : 14) + 4 / 15));
 
 /** Whether a frame of `tier` is drawn into the light target, on a device whose target's format is `light` (0 for none). */
 export const drawsLight = (tier: Tier, light: number | boolean): boolean => tier.post !== null && light !== 0 && light !== false;
@@ -263,7 +265,7 @@ uniform sampler2D uScene, uBloom;
 uniform vec4 uPass, uExtent;
 in vec2 vUv;
 out vec4 o;
-${FRAME_BLOCK}${TONE}${GRADED}${BRIGHT}vec3 scene(vec2 at) {
+${FRAME_BLOCK}${MIRAGE_GLSL}${TONE}${GRADED}${BRIGHT}vec3 scene(vec2 at) {
   return texture(uScene, min(at, uExtent.xy - 0.5 * uPass.xy)).rgb;
 }
 float toned(vec3 c) {
@@ -291,6 +293,8 @@ ${FEED_GLSL}void main() {
     o = vec4(clamp(feed(), 0.0, 1.0) + (hash(at) + hash(at + uvec3(0u, 0u, 1u)) - 1.0) / 255.0, 1.0);
     return;
   }
+  // What is seen through hot air is read from a little way off (mirage.ts).
+  uv = wavered(uv, uExtent.xy - 0.5 * uPass.xy, uPass.xy);
   vec3 cn = scene(uv + vec2(uPass.x, 0.0)), cs = scene(uv - vec2(uPass.x, 0.0)), ce = scene(uv + vec2(0.0, uPass.y)), cw = scene(uv - vec2(0.0, uPass.y)), c, middle;
   if (uPass.w > 0.5) c = clamp(upscaled(uv, middle), min(middle, min(min(cn, cs), min(ce, cw))), max(middle, max(max(cn, cs), max(ce, cw))));
   else c = scene(uv);
