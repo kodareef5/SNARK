@@ -316,7 +316,8 @@ new Sheet(SERVER_ROWS, "snark", "Cast")
   .t("CastModel", "anthropic/claude-haiku-5.5", "The OpenRouter model Cast's planner asks; empty runs Cast on its rules alone.", live({ live: true, note: "Ours. Needs CastModelKey or OPENROUTER_API_KEY." }))
   .t("CastModelKey", "", "The OpenRouter key Cast's planner uses; empty takes OPENROUTER_API_KEY from the environment.", live({ live: true, secret: true, note: "Ours." }))
   .i("CastCallsPerHour", 90, "Calls Cast's planner may make an hour at most.", live({ live: true, min: 0, max: 3600, note: "Ours. About $0.0006 a call with Claude Haiku 5.5." }))
-  .i("CastHourlyBatch", 50, "Featured people the planner's hourly pass looks in on.", live({ live: true, min: 0, max: 500, note: "Ours." }));
+  .i("CastHourlyBatch", 50, "Featured people the planner's hourly pass looks in on.", live({ live: true, min: 0, max: 500, note: "Ours." }))
+  .i("CastLogMegabytes", 256, "The most disk the log of Cast's decisions may take, in megabytes: a line for each answer its planner gave, in a folder beside the save, a file a day, the oldest day dropped first. 0 keeps none.", live({ live: true, max: 1048576, note: "Ours. The lines are written every few seconds off the tick, and a disk that cannot keep up loses lines, not ticks." }));
 
 new Sheet(SERVER_ROWS, "snark", "Loot")
   .b("WorldLootEnabled", true, "Loot lies in the world besides supply drops: in creatures' bodies, by the drop book's sources. Off, nothing of it is rolled.", live({ live: true, public: true, note: "Ours (planning/workstreams/loot.md)." }))

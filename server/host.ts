@@ -1097,7 +1097,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     places: (parsed?.content?.landmarks ?? []).map((l) => ({ name: l.name, kind: "landmark", x: l.x, z: l.z })),
     rules,
     ...(typeof opts.cast === "object" ? { settings: { enabled: true, ...opts.cast } } : opts.cast === true ? { settings: { enabled: true } } : {}),
-    logDir: opts.dbPath ? join(dirname(resolve(opts.dbPath)), "cast") : null,
+    // A folder of the save's own, as its backups have, so no two worlds write one file.
+    logDir: opts.dbPath ? `${resolve(opts.dbPath)}.cast` : null,
     people,
   });
   const fixtures = new Fixtures(world, records, items);
@@ -2684,6 +2685,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       permissionStore.close();
       signinStore.close();
       people.close();
+      castHost.log.close();
       if (!persistence) return;
       // A creature in someone's arms is saved standing where it is set down, not where the arms had it, and so is whoever
       // sits in a car or on a creature.

@@ -216,6 +216,7 @@ export class CastHost {
     this.planner.model = s.model;
     this.gate.budget = { callsPerHour: s.callsPerHour, tokensPerHour: s.callsPerHour * 6000 };
     this.modelFor(s);
+    this.log.cap = (this.ctx.rules?.num("CastLogMegabytes") ?? 256) * 2 ** 20;
     if (was && !s.enabled) for (const st of [...this.cast.stories.values()]) if (st.phase !== "planned") this.cast.finish(st, this.ctx.world.tick);
   }
 
@@ -230,6 +231,8 @@ export class CastHost {
       if (live || this.live) this.saved.dirty = true;
       this.live = live;
       this.forgetSaid();
+      // The decisions made since the last look go to the disk, which the tick does not wait for.
+      void this.log.flush();
     }
     if (!this.cast.settings.enabled) {
       // Turned off: the people still about walk off where no one sees, then nothing more happens.
