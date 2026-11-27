@@ -422,8 +422,15 @@ test("a puff that billows has its outline broken into folds, still never shows i
         const a = (k / 64) * 2 * Math.PI, m = Math.max(Math.abs(Math.cos(a)), Math.abs(Math.sin(a)));
         smokeOf(Math.cos(a) / m, Math.sin(a) / m, seed, out, 1, 0, true);
         expect(out[0]!).toBeLessThan(0.02);
-        expect([out[2]! >= 0.44, out[2]! <= 1]).toEqual([true, true]);
+        // Its folds are far more light and shade than a plain puff's mottle: from under a half to over one.
+        expect([out[2]! >= 0.44, out[2]! <= 1.24]).toEqual([true, true]);
       }
+      const shades: number[] = [];
+      for (let y = -0.5; y <= 0.5; y += 0.05) for (let x = -0.5; x <= 0.5; x += 0.05) {
+        smokeOf(x, y, seed, out, 1, 0, true);
+        shades.push(out[2]!);
+      }
+      expect([Math.min(...shades) < 0.55, Math.max(...shades) > 1.1]).toEqual([true, true]);
     }
   }
   // A rope's length is as it was: the noise is a puff's alone.
@@ -438,7 +445,9 @@ test("a puff that billows has its outline broken into folds, still never shows i
   }
   expect(TIERS.filter((t) => t.lit && t.bursts.noise > 1).map((t) => t.name)).toEqual(["high", "ultra"]);
   expect(DETAIL_LIT_FRAGMENT).toContain("float n = tiled(2.4 * c.x + 8.0 + 7.0 * fract(seed * 3.7), 2.4 * c.y + 8.0 + 7.0 * fract(seed * 9.1), 16, 16, k + 3);");
-  expect(DETAIL_LIT_FRAGMENT).toContain("lump = 0.35 * lump + 0.65 * n;\n    r += 0.22 * (0.5 - n);");
+  expect(DETAIL_LIT_FRAGMENT).toContain("lump = 0.35 * lump + 0.65 * n;\n    r += 0.3 * (0.5 - n);");
+  expect(DETAIL_LIT_FRAGMENT).toContain("fold = smoothstep(0.3, 0.72, n);");
+  expect(DETAIL_LIT_FRAGMENT).toContain("fold < 0.0 ? 0.58 + 0.2 * lump + 0.22 * puff : 0.44 + 0.8 * fold");
 });
 
 test("a length of a rope of smoke runs the whole of its card, ends thinned into the next, and tears where it is thinnest; a scorch is a patch with rays", () => {

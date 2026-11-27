@@ -485,16 +485,21 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const debugServer: DebugServer = { log, sender, state: (c) => serverState(host, meter, c) };
   if (opts.probeScene) {
     const ents = host.world.ents;
+    // On a map with no ground at the probe's places, a cut of a city with sea there, they are left out.
     const e = host.spawnCreature("core:grazer", PROBE_CREATURE.x, PROBE_CREATURE.z, 1);
-    const genome = host.records.byPid.get(ents.pid[e]!)!.genome!;
-    genome.colors.fill(0);
-    genome.colors[0] = PROBE_CREATURE.color;
-    ents.setLook(e, genome.level, genome.colors, "");
+    const genome = e >= 0 ? host.records.byPid.get(ents.pid[e]!)?.genome : undefined;
+    if (genome) {
+      genome.colors.fill(0);
+      genome.colors[0] = PROBE_CREATURE.color;
+      ents.setLook(e, genome.level, genome.colors, "");
+    }
     // One body with bones, in its species' own colour.
     const body = host.spawnCreature("core:survivor", PROBE_BODY.x, PROBE_BODY.z, 1);
-    const look = host.records.byPid.get(ents.pid[body]!)!.genome!;
-    look.colors.fill(0);
-    ents.setLook(body, look.level, look.colors, "");
+    const look = body >= 0 ? host.records.byPid.get(ents.pid[body]!)?.genome : undefined;
+    if (look) {
+      look.colors.fill(0);
+      ents.setLook(body, look.level, look.colors, "");
+    }
   }
   let onConnection: ((conn: Connection) => void) | null = null;
   host.game.sessions.listen({

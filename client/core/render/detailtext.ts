@@ -219,7 +219,7 @@ vec3 wakeOf(vec2 c, float seed) {
 }
 vec3 smokeOf(vec2 c, float seed, float stretch, float torn) {
   float s = 6.2831853 * seed;
-  float r, lump, puff = 1.0, rim = 0.82;
+  float r, lump, puff = 1.0, rim = 0.82, fold = -1.0;
   if (stretch > 1.5) {
     float y = c.y * stretch;
     float x = c.x - 0.07 * sin(1.9 * y + s) - 0.04 * sin(4.3 * y + 2.3 * s);
@@ -235,12 +235,14 @@ vec3 smokeOf(vec2 c, float seed, float stretch, float torn) {
     int k = int(floor(seed * 255.0));
     float n = tiled(2.4 * c.x + 8.0 + 7.0 * fract(seed * 3.7), 2.4 * c.y + 8.0 + 7.0 * fract(seed * 9.1), 16, 16, k + 3);
     lump = 0.35 * lump + 0.65 * n;
-    r += 0.22 * (0.5 - n);
+    r += 0.3 * (0.5 - n);
+    // Its folds: light on what swells out and dark in the creases between, far more than a plain puff's mottle.
+    fold = smoothstep(0.3, 0.72, n);
 #endif
     rim = 0.6 + 0.2 * lump;
   }
   float a = (1.0 - smoothstep(0.3 + 0.22 * lump, rim, r)) * smoothstep(1.3 * torn - 0.24, 1.3 * torn, lump + 0.3 * (1.0 - r));
-  return vec3(a, 0.0, 0.58 + 0.2 * lump + 0.22 * puff);
+  return vec3(a, 0.0, fold < 0.0 ? 0.58 + 0.2 * lump + 0.22 * puff : 0.44 + 0.8 * fold);
 }
 float scorchOf(vec2 c, float seed) {
   float s = 6.2831853 * seed;
@@ -434,7 +436,7 @@ export function smokeOf(x: number, y: number, seed: number, out: Float64Array | 
     const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
     return t * t * (3 - 2 * t);
   };
-  let r: number, lump: number, puff = 1, rim = 0.82;
+  let r: number, lump: number, puff = 1, rim = 0.82, fold = -1;
   if (stretch > 1.5) {
     const along = y * stretch;
     const off = x - 0.07 * Math.sin(1.9 * along + s) - 0.04 * Math.sin(4.3 * along + 2.3 * s);
@@ -451,14 +453,16 @@ export function smokeOf(x: number, y: number, seed: number, out: Float64Array | 
       const k = Math.floor(seed * 255), frac = (v: number): number => v - Math.floor(v);
       const n = tiled(2.4 * x + 8 + 7 * frac(seed * 3.7), 2.4 * y + 8 + 7 * frac(seed * 9.1), 16, 16, k + 3);
       lump = 0.35 * lump + 0.65 * n;
-      r += 0.22 * (0.5 - n);
+      r += 0.3 * (0.5 - n);
+      // Its folds: light on what swells out and dark in the creases between, far more than a plain puff's mottle.
+      fold = step(0.3, 0.72, n);
     }
     // A puff's outline is as lumpy as its middle, and no disc.
     rim = 0.6 + 0.2 * lump;
   }
   out[0] = (1 - step(0.3 + 0.22 * lump, rim, r)) * step(1.3 * torn - 0.24, 1.3 * torn, lump + 0.3 * (1 - r));
   out[1] = 0;
-  out[2] = 0.58 + 0.2 * lump + 0.22 * puff;
+  out[2] = fold < 0 ? 0.58 + 0.2 * lump + 0.22 * puff : 0.44 + 0.8 * fold;
 }
 
 /** How much of a scorch shows at corner (x, y) of its card: an uneven patch of soot, and five rays thrown out of it. Twin of scorchOf. */

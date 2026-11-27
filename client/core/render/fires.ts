@@ -501,6 +501,8 @@ export class Fires extends VehicleCards {
       wide = Math.max(wide, flames[q + 4]!);
       spread = Math.max(spread, Math.hypot(flames[q]!, flames[q + 2]!));
     }
+    // Flames in a row along a deck hide one another's light: a wreck's is by seven tenths of them.
+    if (!listed) area *= 0.7;
     // A hearth's smoke leaves by its chimney, the top of its box; a wreck's and an open fire's off its tips.
     const height = structs.top[kind]! - structs.low[kind]!;
     const smoke = listed && height > tip ? height : tip;
