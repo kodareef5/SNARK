@@ -583,7 +583,7 @@ if (import.meta.main) {
   const point = arg("--point");
   const kind = arg("--kind") ?? "linear";
   if (!point || (kind !== "linear" && kind !== "hidden")) {
-    console.error("usage: bun tools/decide/fit.ts --point <name> --kind linear|hidden [--hidden 16] [--seed 1] [--profile <name>] [--reading 1s|5s|end] [--from-rule] [--soft 0.05] [--stop loss|regret] [--tag <word>]");
+    console.error("usage: bun tools/decide/fit.ts --point <name> --kind linear|hidden [--hidden 16] [--seed 1] [--profile <name>] [--reading 1s|5s|end] [--from-rule] [--soft 0.05] [--stop loss|regret] [--tag <word>] [--root .cache/decide]");
     process.exit(2);
   }
   const { catalog } = await import("./catalog.ts");
@@ -593,7 +593,7 @@ if (import.meta.main) {
     reading: reading ? READINGS.indexOf(reading as (typeof READINGS)[number]) : undefined,
     fromRule: process.argv.includes("--from-rule"), soft: Number(arg("--soft") ?? 0), stop: arg("--stop") === "regret" ? "regret" : "loss", tag: arg("--tag"),
     decay: arg("--decay") ? Number(arg("--decay")) : undefined,
-  }, catalog(point));
+  }, catalog(point), arg("--root") ?? ".cache/decide");
   const s = r.written.about!.score as Score;
   console.log(`${r.file}: ${r.train} decisions trained on, ${r.val} to stop on; ${r.fitted.epochs} epochs, best at ${r.fitted.best}`);
   console.log(`  on validation: log loss ${r.fitted.valLoss.toFixed(4)}, ${r.fitted.valLossT.toFixed(4)} at temperature ${r.written.temperature.toFixed(3)}; ECE ${r.fitted.eceBefore.toFixed(4)} then ${r.fitted.eceAfter.toFixed(4)}; regret ${s.regretRatio.toFixed(3)} of the rule's`);

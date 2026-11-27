@@ -23,8 +23,8 @@ export interface Seen {
   way: number;
   line: number;
   /** For today's code and the rule: ticks to arrive (-1 for never), ticks stuck or pinned, answers of nav.ring, and in a pair whether it went round. */
-  off: { arrived: number; stuck: number; asked: number; round?: boolean; caught?: boolean };
-  rule: { arrived: number; stuck: number; asked: number; round?: boolean; caught?: boolean; away?: number };
+  off: { arrived: number; stuck: number; asked: number; round?: boolean; caught?: boolean; apart?: number };
+  rule: { arrived: number; stuck: number; asked: number; round?: boolean; caught?: boolean; away?: number; apart?: number };
   /** The oracle at real pace: its seconds and which way it takes. */
   seconds?: number;
   choice?: "cross" | "round";
@@ -53,8 +53,9 @@ export function see(s: Scene): Seen {
       return LEAVE;
     };
     const t = play(w, { point: "nav.ring", policy, answered });
+    const apart = w.threat ? Math.hypot(ents.x[w.mover]! - w.threat.x, ents.z[w.mover]! - w.threat.z) : NaN;
     w.lab.host.shutdown();
-    return { arrived: t.arrivedAt, stuck: t.stuckTicks, asked: t.answers, ...(s.pair ? { round: t.round } : {}), ...(s.intent?.kind === "escape" ? { caught: w.caught, away: picks ? away / picks : NaN } : {}) };
+    return { arrived: t.arrivedAt, stuck: t.stuckTicks, asked: t.answers, ...(s.pair ? { round: t.round } : {}), ...(s.intent?.kind === "escape" ? { caught: w.caught, away: picks ? away / picks : NaN, apart } : {}) };
   };
   const seen: Seen = { family: s.family, seed: s.seed, kind: s.kind, way, line, off: run("off"), rule: run("rule") };
   if (b.oracle) Object.assign(seen, { seconds: b.oracle.seconds, choice: b.oracle.choice, ...(s.pair ? { round: b.oracle.round, cross: b.oracle.cross } : {}) });
@@ -127,7 +128,8 @@ export function intentText(all: readonly Seen[]): string[] {
       const of = (p: "off" | "rule") => {
         const got = list.filter((s) => s[p].arrived >= 0), caught = list.filter((s) => s[p].caught).length;
         const mean = got.length ? (got.reduce((a, s) => a + s[p].arrived, 0) / got.length / TICK_RATE).toFixed(1) : "–";
-        return `${got.length} in ${mean} s${intent === "escape" ? `, caught ${caught}` : ""}`;
+        const apart = list.map((s) => s[p].apart ?? NaN).filter((v) => !Number.isNaN(v));
+        return `${got.length} in ${mean} s${intent === "escape" ? `, caught ${caught}, ${(apart.reduce((a, v) => a + v, 0) / (apart.length || NaN)).toFixed(1)} m from the threat at the end` : ""}`;
       };
       const asked = list.filter((s) => s.rule.asked > 0).length;
       const aways = list.map((s) => s.rule.away ?? NaN).filter((v) => !Number.isNaN(v));

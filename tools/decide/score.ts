@@ -4,6 +4,7 @@
 // held-out Score in its weights file's `about`.
 //
 //   bun tools/decide/score.ts [--point <name>] [--layouts 40] [--fresh 0] [--workers 8] [--reading 1s|5s|end] [--note <text>]...
+//     [--root .cache/decide] [--held-families a,b --held-first 900001]
 //   bun tools/decide/score.ts --headroom <point>     how far the best candidate beats the rule, before any training
 //
 // One answer is timed in a child pinned to a fast core and to a slow one (taskset -c 2 and -c 20 on this machine).
@@ -26,7 +27,8 @@ import { episodeScore, headroom, ratePoint, type Trained } from "./rate.ts";
 
 /** Cores this machine calls fast and slow (16 to 31 are its slow ones). */
 export const CORES = { fast: 2, slow: 20 } as const;
-const ROOT = ".cache/decide";
+/** Where the data, models and board are; `--root` names another, as for a second dataset to set beside the first. */
+const ROOT = arg("--root") ?? ".cache/decide";
 
 /** Median and 99th percentile, in microseconds, of one answer of `m` over the tables of `ds`. */
 export function timeAnswers(m: Model, p: Profile, ds: readonly Decision[], answers = 20000): { median: number; p99: number } {
@@ -54,7 +56,7 @@ export function timeAnswers(m: Model, p: Profile, ds: readonly Decision[], answe
 
 /** Times a weights file in a child pinned to `core`; unpinned where taskset is missing. */
 function timed(file: string, point: string, core: number): { median: number; p99: number; pinned: boolean } {
-  const args = [process.execPath, join(import.meta.dir, "score.ts"), "--time", file, "--point", point];
+  const args = [process.execPath, join(import.meta.dir, "score.ts"), "--time", file, "--point", point, "--root", ROOT];
   const has = Bun.spawnSync(["which", "taskset"], { stdout: "pipe" }).exitCode === 0;
   const r = Bun.spawnSync(has ? ["taskset", "-c", String(core), ...args] : args, { stdout: "pipe", stderr: "pipe" });
   if (r.exitCode !== 0) return { median: NaN, p99: NaN, pinned: has };
@@ -152,7 +154,7 @@ async function play(point: string, policies: readonly Policy[], scenes: readonly
  * One point's scores, one entry for each profile of its tables; whole episodes are played on `workers` processes, the
  * held-out scenes its decisions came from and `fresh` new scenes of every family.
  */
-export async function scorePoint(point: string, o: { layouts: number; workers: number; reading?: number; fresh?: number }): Promise<PointScores[]> {
+export async function scorePoint(point: string, o: { layouts: number; workers: number; reading?: number; fresh?: number; held?: { families: Family[]; first: number } }): Promise<PointScores[]> {
   const cat = catalog(point);
   const { manifest, decisions } = readData(dataDir(point, join(ROOT, "data")), cat.profiles);
   const agreed = agreement(point, manifest, decisions, cat);
@@ -165,7 +167,9 @@ export async function scorePoint(point: string, o: { layouts: number; workers: n
     ...[...found.values()].flat().map((f) => ({ name: f.name, policy: "model" as const, models: [f.file] })),
   ];
   const game = !point.startsWith("toy.");
-  const episodes = game ? await play(point, policies, layouts(cat, o.layouts), o.workers) : [];
+  // The held-out layouts: seeds 1 to `layouts` of the split's held families, or that many of the families named from `first`.
+  const fixed = o.held ? scenes(o.held.families, o.layouts, o.held.first) : layouts(cat, o.layouts);
+  const episodes = game ? await play(point, policies, fixed, o.workers) : [];
   const fresh = game && o.fresh ? await play(point, policies, scenes([...FAMILIES, "miami"], o.fresh, FRESH_FIRST), o.workers) : [];
   const out: PointScores[] = [];
   for (const p of profiles) {
@@ -229,7 +233,8 @@ if (import.meta.main && process.argv.includes("--time")) {
   for (const point of points) {
     status({ step: "score", point, done: 0, of: 1 });
     const reading = READINGS.indexOf((arg("--reading") ?? "end") as (typeof READINGS)[number]);
-    board.points.push(...(await scorePoint(point, { layouts: Number(arg("--layouts") ?? 40), workers: Number(arg("--workers") ?? 8), reading: reading < 0 ? undefined : reading, fresh: Number(arg("--fresh") ?? 0) })));
+    const held = arg("--held-families") ? { families: arg("--held-families")!.split(",") as Family[], first: Number(arg("--held-first") ?? 1) } : undefined;
+    board.points.push(...(await scorePoint(point, { layouts: Number(arg("--layouts") ?? 40), workers: Number(arg("--workers") ?? 8), reading: reading < 0 ? undefined : reading, fresh: Number(arg("--fresh") ?? 0), held })));
   }
   writeFileSync(join(ROOT, "scoreboard.json"), JSON.stringify(board, null, 1));
   writeFileSync(join(ROOT, "scoreboard.html"), boardHtml(board));
