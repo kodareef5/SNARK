@@ -10,14 +10,17 @@ import { SNAG_SECONDS } from "../../shared/decide/profiles.ts";
 import { Rng } from "../../shared/rng.ts";
 import type { Model } from "../../shared/decide/forward.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
+import { combine } from "../../shared/decide/combine.ts";
+import { answer } from "../../shared/decide/forward.ts";
+import { Table } from "../../shared/decide/table.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
 import { PATH_FOUND, PATH_REACH, PathFinder } from "../../shared/world/path.ts";
 import type { MapData } from "../../shared/world/mapfile.ts";
 import { MapWater } from "../../shared/world/water.ts";
 import { miamiSlice } from "../../tests/fixtures/cityslice.ts";
 import { flatMap } from "../../tests/fixtures/map.ts";
-import { NAV_POINTS } from "./catalog.ts";
-import { READINGS } from "./dataset.ts";
+import { GAME_CATALOG, NAV_POINTS } from "./catalog.ts";
+import { READINGS, type Final } from "./dataset.ts";
 import { ALONE, type Answer, type Replay, type Replayer } from "./label.ts";
 import { MIAMI_SIDE, bodyOf, type Scene } from "./random.ts";
 import type { EpisodeResult } from "./rate.ts";
@@ -79,7 +82,7 @@ export interface Built {
 }
 
 /** The nearest place to (x, z), out to 24 m, where a body of `r` and `h` stands free. */
-function freeNear(b: Lab, x: number, z: number, r: number, h: number): { x: number; z: number } {
+export function freeNear(b: Lab, x: number, z: number, r: number, h: number): { x: number; z: number } {
   const hf = b.world.hf;
   for (let d = 0; d <= 24; d += 0.75) {
     const steps = d === 0 ? 1 : Math.ceil((2 * Math.PI * d) / 0.75);
@@ -120,7 +123,7 @@ const CITY_TRIES = 24;
 const WAY_SHARE = 0.8;
 const placed = new Map<string, Placed | null>();
 
-interface Placed {
+export interface Placed {
   start: { x: number; z: number };
   goal: { x: number; z: number };
   way: number;
@@ -162,13 +165,13 @@ function place(w: Lab, s: Scene, body: { radius: number; height: number; pace: n
   return out;
 }
 
-/** A scene on its own lab world, its mover making for its goal. */
-export function build(s: Scene): Built {
+/** A scene on its own lab world, its mover making for its goal; `at` puts it down there in place of where `place` would. */
+export function build(s: Scene, at0?: Placed | null): Built {
   const w = lab(mapFor(s), s.seed);
   const reg = w.world.reg, wall = reg.index.get("core:wall_stone")!;
   for (const p of s.pieces) for (let y = 0; y < p.storeys; y++) w.world.structs.add(wall, p.x, w.world.hf.heightAt(p.x, p.z) + 1.5 + 3 * y, p.z, p.quarter * 16384, 0, 10000);
   const body = bodyOf(s.kind), mind = w.host.creatures.mind, arrive = Math.max(1.5, body.radius + 0.5);
-  const at = place(w, s, body, arrive);
+  const at = at0 !== undefined ? at0 : place(w, s, body, arrive);
   const start = at?.start ?? freeNear(w, s.start.x, s.start.z, body.radius, body.height), goal = at?.goal ?? s.goal;
   const standers: Built["standers"] = [];
   for (const st of s.standers) {
@@ -202,6 +205,8 @@ export interface Hooks {
 /** What a play saw of its mover. */
 export interface Trace {
   arrivedAt: number;
+  /** Answers acted on that steered the mover: of nav.ring where the world has it, else of the point studied. */
+  acted: number;
   ticks: number;
   stuckTicks: number;
   decideMicros: number[];
@@ -247,15 +252,18 @@ export function play(b: Built, hooks: Hooks, limit = b.scene.horizon): Trace {
   for (const m of hooks.models ?? []) d.trained.set(m.profile, m);
   const point = install(b, hooks.point, hooks.extra);
   d.set(policyText(hooks.point, hooks.policy));
-  const trace: Trace = { arrivedAt: -1, ticks: 0, stuckTicks: 0, decideMicros: [], answers: 0 };
+  const trace: Trace = { arrivedAt: -1, acted: 0, ticks: 0, stuckTicks: 0, decideMicros: [], answers: 0 };
   if (Number.isNaN(b.way)) return trace;
   d.force = (p, e, pick) => {
     if (p !== point.id || e !== b.mover || !hooks.answered) return LEAVE;
     const told = hooks.answered(trace.answers, w.world.tick, pick);
     return told === ALONE ? SPARE : told;
   };
+  const steers = d.points.findIndex((q) => q.name === "nav.ring");
   d.tap = (p, e) => {
-    if (p === point.id && e === b.mover) trace.answers++;
+    if (e !== b.mover) return;
+    if (p === point.id) trace.answers++;
+    if (p === (steers >= 0 ? steers : point.id) && d.acts(p)) trace.acted++;
   };
   const step = d.step.bind(d);
   let spent = 0;
@@ -298,11 +306,37 @@ export function episode(s: Scene, point: string, policy: Hooks["policy"], models
   const tick0 = b.lab.world.tick;
   const t = play(b, { point, policy, models, extra });
   const result: EpisodeResult = {
-    family: s.map === "miami" ? "miami" : s.family, skipped: Number.isNaN(b.way), arrived: t.arrivedAt >= 0, ticks: t.ticks, healthLost: Math.max(0, health0 - healthShare(b)), stuckTicks: t.stuckTicks,
+    family: s.map === "miami" ? "miami" : s.family, seed: s.seed, skipped: Number.isNaN(b.way), route: b.way, acted: t.acted, arrived: t.arrivedAt >= 0, ticks: t.ticks, healthLost: Math.max(0, health0 - healthShare(b)), stuckTicks: t.stuckTicks,
     searches: mind.searches - searches0, cells: mind.searched - cells0, end: { x: b.lab.world.ents.x[b.mover]!, z: b.lab.world.ents.z[b.mover]! }, cost: costNow(b, tick0, health0, cells0, true), decideMicros: t.decideMicros,
   };
   b.lab.host.shutdown();
   return result;
+}
+
+/**
+ * The answer of a point of several passes made again with `combine` (shared/decide/combine.ts) from its tables as they
+ * stand: each pass by the weight it says, or else by its mix over the temperature of whoever scored it, and the stick on
+ * the heading its `held` column marks; with the server's own answer, its mask too. Whether that gives the server's pick,
+ * and its probabilities where it says them, and the answer as made.
+ */
+function madeAgain(b: Built, id: number, pick: number, policy: Hooks["policy"]): { agrees: boolean; final: Final } | null {
+  const d = b.lab.host.decide, point = d.points[id]!, passes = GAME_CATALOG.passes?.[point.name];
+  if (!passes || point.tables.length < 2) return null;
+  const first = point.tables[0]!, held = first.profile.columns.indexOf("held"), k = first.table.k;
+  let at = -1;
+  for (let c = 0; c < k && held >= 0; c++) if (first.table.rows[c * first.table.width + held] === 1) at = c;
+  const weights = point.tables.map(({ profile, weight }) => weight ?? (passes.mix[profile.name] ?? 0) / (policy === "model" ? (d.trained.get(profile.name)?.temperature ?? 1) : 1));
+  const into = new Table(k, 0, 1);
+  let again = combine(into, point.tables.map(({ table }, i) => ({ table, weight: weights[i]! })), at, passes.stick);
+  const made = point.final;
+  let close = true;
+  if (made) {
+    for (let c = 0; c < k; c++) if (made.mask[c] !== 0) into.mask[c] = 1;
+    again = answer("choice", into, 1);
+    for (let c = 0; c < k; c++) if (Math.abs(into.out[c]! - made.out[c]!) > 1e-6) close = false;
+  }
+  const final: Final = { weights: Float32Array.from(weights), out: (made ?? into).out.slice(0, k), mask: (made ?? into).mask.slice(0, k) };
+  return { agrees: again === pick && close, final };
 }
 
 /** Copies a point's tables as they stand. */
@@ -347,7 +381,8 @@ export function gameReplayer(point: string, under: Under): Replayer<Scene> {
         answered: (_n, tick, pick) => {
           id = d.points.findIndex((p) => p.name === point);
           const p = d.points[id]!;
-          out.push({ tables: served(b, id), pick, hash: stateHash(b.lab.world), tick });
+          const again = madeAgain(b, id, pick, under.policy);
+          out.push({ tables: served(b, id), pick, hash: stateHash(b.lab.world), tick, ...(again ? { final: again.final, agrees: again.agrees } : {}) });
           if (p.horizon > 0 && p.outcome) waiting.push({ e: b.mover, due: tick + p.horizon, at: out.length - 1, from: 0 });
           else if (seen) waiting.push({ e: b.mover, due: tick + seen.ticks, at: out.length - 1, from: seen.start(b) });
           return LEAVE;

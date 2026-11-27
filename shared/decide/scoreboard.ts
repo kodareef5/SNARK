@@ -59,6 +59,11 @@ export interface EpisodeScore {
   decideMicros: number;
   /** By family of scene: episodes, those that arrived, and mean ticks. */
   families?: Record<string, { scenes: number; arrived: number; ticks: number }>;
+  /**
+   * Each layout, those with no way to their goal too (not played, so not in the counts above): the metres of the way
+   * (NaN for none), whether it arrived, its ticks and health lost, and how many of the decider's answers were acted on.
+   */
+  layouts?: { family: string; seed: number; route: number; arrived: boolean; ticks: number; healthLost: number; acted: number }[];
 }
 
 export interface PointScores {
@@ -68,6 +73,8 @@ export interface PointScores {
   episodes: EpisodeScore[];
   /** The same policies on fresh scenes of every family, held out or not, for a look at each family. */
   fresh?: EpisodeScore[];
+  /** Stored decisions made again from their passes with `combine`, and those that gave the pick stored; under the rule alone too. */
+  agreement?: { checked: number; agreed: number; ruleChecked: number; ruleAgreed: number };
   /** How far the best candidate beats the rule at one decision, as a share of the median cost. Gains compound over an episode, so a small one is no reason not to train. */
   headroom: number;
   scores: Score[];

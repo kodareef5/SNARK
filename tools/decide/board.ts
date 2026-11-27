@@ -38,6 +38,8 @@ export const GATE = {
 } as const;
 
 const BANDS = 10;
+/** The game's tick rate (shared/coords.ts), written here so the board imports nothing of the game. */
+const TICKS_A_SECOND = 30;
 
 /** Expected calibration error over `bands` equal bands of probability, and the bands. */
 export function eceOf(said: readonly number[], happened: readonly number[], bands = BANDS): { ece: number; reliability: Reliability[] } {
@@ -170,6 +172,21 @@ function episodes(list: readonly EpisodeScore[]): string {
   return `<div class="wide"><table><thead><tr><th>policy</th><th>arrived</th><th>ticks</th><th>health lost</th><th>stuck ticks</th><th>searches / cells</th><th>cost</th><th>decide p99 µs</th>${families.map((f) => `<th>${esc(f)} arrived</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
+/** One row a layout: its way, and under each policy whether it arrived (in seconds), and the decider's answers acted on. */
+function layouts(list: readonly EpisodeScore[]): string {
+  const first = list[0]?.layouts;
+  if (!first?.length) return "";
+  const rows = first.map((l, i) => {
+    const cells = list.map((e) => {
+      const x = e.layouts?.[i];
+      if (!x || Number.isNaN(x.route) || x.route === null) return `<td class="muted">not played</td>`;
+      return `<td class="${x.arrived ? "pass" : "fail"}">${x.arrived ? `${num(x.ticks / TICKS_A_SECOND, 0)} s` : "no"}<br><span class="muted">${x.acted} acted${x.healthLost > 0 ? `, −${num(x.healthLost, 2)}` : ""}</span></td>`;
+    }).join("");
+    return `<tr><th>${esc(l.family)} ${l.seed}</th><td>${l.route === null || Number.isNaN(l.route) ? "none" : `${num(l.route, 0)} m`}</td>${cells}</tr>`;
+  }).join("");
+  return `<details><summary>Each layout</summary><div class="wide"><table><thead><tr><th>layout</th><th>way</th>${list.map((e) => `<th>${esc(e.name)}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div></details>`;
+}
+
 function scores(list: readonly Score[]): string {
   const rows = list.map((s) => `<tr><th>${esc(s.name)}<br><span class="muted">${s.kind}</span></th><td>${num(s.regret, 1)}</td><td>${num(s.regretRatio)}<br><span class="muted">${num(s.interval[0], 2)} to ${num(s.interval[1], 2)}</span></td><td>${num(s.worstFamily)}</td><td>${num(s.disagreeRatio)}</td><td>${num(s.logLoss)}</td><td>${num(s.brier)}</td><td>${num(s.ece)}</td><td>${num(s.blind.state, 2)} / ${num(s.blind.columns, 2)} / ${num(s.blind.shuffled, 2)}</td><td>${num(s.medianFast, 2)} / ${num(s.microsFast, 2)}<br><span class="muted">${num(s.medianSlow, 2)} / ${num(s.microsSlow, 2)}</span></td><td>${s.bytes || "–"}</td><td class="${s.gate.pass ? "pass" : "fail"}">${s.gate.pass ? "passes" : "fails"}</td></tr>`).join("");
   return `<div class="wide"><table><thead><tr><th>entry</th><th>regret, ticks</th><th>of the rule's</th><th>worst family</th><th>where they disagree</th><th>log loss</th><th>Brier</th><th>ECE</th><th>blind: state / columns / shuffled</th><th>µs, median / p99: fast core<br>slow core</th><th>bytes</th><th>gate</th></tr></thead><tbody>${rows}</tbody></table></div>`;
@@ -180,7 +197,7 @@ function point(p: PointScores): string {
   const verdicts = trained.map((s) => `<li><b>${esc(s.name)}</b>: ${s.gate.pass ? "passes the gate" : `fails: ${s.gate.why.map(esc).join("; ")}`}</li>`).join("");
   const charts = p.scores.filter((s) => s.reliability.length > 0).map((s) => `<figure>${chart(s.reliability)}<figcaption>${esc(s.name)}, ECE ${num(s.ece)}</figcaption></figure>`).join("");
   const fresh = p.fresh?.length ? `<h3>Whole episodes on fresh scenes of every family</h3><p class="muted">Seeds no dataset holds; the families trained on are here too, so this is a look at the scenes, not the gate.</p>${episodes(p.fresh)}` : "";
-  return `<section><h2>${esc(p.point)} <span class="muted">${esc(p.profile)}</span></h2><p>Headroom: at one decision, the best candidate beats the rule by <b>${num(p.headroom)}</b> of the median cost. It is information, not a bar: gains compound over an episode.</p><h3>Whole episodes on held-out layouts</h3>${episodes(p.episodes)}${fresh}<h3>Single decisions, held out</h3>${scores(p.scores)}${verdicts ? `<ul>${verdicts}</ul>` : ""}<h3>Reliability</h3><div class="charts">${charts || `<p class="muted">Nothing to chart.</p>`}</div></section>`;
+  return `<section><h2>${esc(p.point)} <span class="muted">${esc(p.profile)}</span></h2>${p.agreement ? `<p>Stored decisions made again from their passes with <code>combine</code>: <b>${p.agreement.agreed} of ${p.agreement.checked}</b> give the pick stored (${p.agreement.ruleAgreed} of ${p.agreement.ruleChecked} under the rule).</p>` : ""}<p>Headroom: at one decision, the best candidate beats the rule by <b>${num(p.headroom)}</b> of the median cost. It is information, not a bar: gains compound over an episode.</p><h3>Whole episodes on held-out layouts</h3><p class="muted">The same seeds of each held-out family and map, fixed before anything was played.</p>${episodes(p.episodes)}${layouts(p.episodes)}${fresh}<h3>Single decisions, held out</h3>${scores(p.scores)}${verdicts ? `<ul>${verdicts}</ul>` : ""}<h3>Reliability</h3><div class="charts">${charts || `<p class="muted">Nothing to chart.</p>`}</div></section>`;
 }
 
 /** The board as one page with nothing outside it: no scripts, fonts or pictures fetched. */

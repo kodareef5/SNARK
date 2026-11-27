@@ -33,7 +33,7 @@ export type Job =
   | { kind: "episode"; scene: Scene; point: string; policy: Hooks["policy"]; models: string[] };
 
 export type Done =
-  | { kind: "label"; yes: boolean; decision: string | null; more: string[]; runs: number; thrown: number; noReseed: number; seconds: number; rss: number }
+  | { kind: "label"; yes: boolean; decision: string | null; more: string[]; checked: number; agreed: number; runs: number; thrown: number; noReseed: number; seconds: number; rss: number }
   | { kind: "episode"; result: EpisodeResult; rss: number }
   | { kind: "error"; error: string; rss: number };
 
@@ -56,7 +56,7 @@ export function work(job: Job): Done {
     if (job.kind === "episode") return { kind: "episode", result: episode(job.scene, job.point, job.policy, models), rss: rss() };
     const under = { policy: models.length ? "model" as const : "rule" as const, models };
     const l = labelScene(gameReplayer(job.point, under), job.scene, { seed: job.scene.seed, family: job.scene.family, map: job.scene.map }, { kind: (a) => PROFILES.find((q) => q.name === a.tables[0]?.profile)?.kind ?? "choice", seeds: job.seeds, today: true, yeses: job.yeses });
-    return { kind: "label", yes: l.kind === "yes", decision: l.decision ? pack(l.decision) : null, more: l.more.map(pack), runs: l.runs, thrown: l.thrown, noReseed: l.noReseed, seconds: (performance.now() - from) / 1000, rss: rss() };
+    return { kind: "label", yes: l.kind === "yes", decision: l.decision ? pack(l.decision) : null, more: l.more.map(pack), checked: l.checked, agreed: l.agreed, runs: l.runs, thrown: l.thrown, noReseed: l.noReseed, seconds: (performance.now() - from) / 1000, rss: rss() };
   } catch (err) {
     return { kind: "error", error: err instanceof Error ? (err.stack ?? err.message) : String(err), rss: rss() };
   }
@@ -157,7 +157,7 @@ export interface GenerateOptions {
 }
 
 /** Labels one decision of each scene and adds them to the point's dataset. */
-export async function generate(o: GenerateOptions): Promise<{ decisions: number; none: number; thrown: number; noReseed: number; runs: number; busy: number; seconds: number; errors: string[] }> {
+export async function generate(o: GenerateOptions): Promise<{ checked: number; agreed: number; decisions: number; none: number; thrown: number; noReseed: number; runs: number; busy: number; seconds: number; errors: string[] }> {
   const from = performance.now();
   const list = scenes(o.families, o.scenes, o.first);
   const jobs: Job[] = list.map((scene) => ({ kind: "label", scene, point: o.point, seeds: o.seeds, models: o.under, yeses: o.yeses }));
@@ -166,7 +166,7 @@ export async function generate(o: GenerateOptions): Promise<{ decisions: number;
   let w: Writer | null = null;
   let scenesSeen = 0, none = 0;
   const pool = new Workers(o.workers);
-  let done = 0, written = 0, runs = 0, last = 0, busy = 0;
+  let done = 0, written = 0, runs = 0, last = 0, busy = 0, checked = 0, agreed = 0;
   const kept = new Map<number, Done>(), errors: string[] = [];
   const flush = () => {
     for (let d = kept.get(written); d; d = kept.get(written)) {
@@ -176,6 +176,8 @@ export async function generate(o: GenerateOptions): Promise<{ decisions: number;
       else if (d.kind === "label") {
         runs += d.runs;
         busy += d.seconds;
+        checked += d.checked ?? 0;
+        agreed += d.agreed ?? 0;
         if (d.decision) {
           w ??= new Writer(dataDir(o.point, join(o.root ?? ".cache/decide", "data")), o.point, d.yes ? "yes" : "choice", PROFILES, note, o.fresh);
           w.run.thrown += d.thrown;
@@ -202,10 +204,12 @@ export async function generate(o: GenerateOptions): Promise<{ decisions: number;
   if (ww) {
     ww.run.scenes = scenesSeen;
     ww.run.none = none;
+    ww.run.checked = checked;
+    ww.run.agreed = agreed;
     ww.save();
   }
   status({ step: "idle", point: o.point, done, of: jobs.length });
-  return { decisions: ww?.run.decisions ?? 0, none, thrown: ww?.run.thrown ?? 0, noReseed: ww?.run.noReseed ?? 0, runs, busy, seconds: (performance.now() - from) / 1000, errors };
+  return { checked, agreed, decisions: ww?.run.decisions ?? 0, none, thrown: ww?.run.thrown ?? 0, noReseed: ww?.run.noReseed ?? 0, runs, busy, seconds: (performance.now() - from) / 1000, errors };
 }
 
 function arg(name: string): string | undefined {
@@ -228,5 +232,14 @@ if (import.meta.main && process.argv.includes("--worker")) {
   const r = await generate({ point, families, scenes: Number(arg("--scenes") ?? 40), first: Number(arg("--first") ?? 1), workers: Number(arg("--workers") ?? 8), seeds: Number(arg("--seeds") ?? 3), yeses: Number(arg("--yeses") ?? 1), under, fresh: process.argv.includes("--fresh") });
   console.log(`${point}: ${r.decisions} decisions from ${r.runs} plays in ${r.seconds.toFixed(1)} s; ${r.none} scenes gave no answer, ${r.thrown} replays thrown away, ${r.noReseed} run with no reseed; a play took ${((1000 * r.busy) / Math.max(1, r.runs)).toFixed(0)} ms of a worker's time`);
   for (const e of r.errors.slice(0, 5)) console.error(e);
-  if (r.errors.length) process.exit(1);
+  if (r.checked > 0) console.log(`  ${r.agreed} of ${r.checked} answers made again from their passes came out as the server made them`);
+  // Under the hand rule every answer must come out the same, or no regret or calibration of this data can be trusted.
+  if (under.length === 0 && r.agreed < r.checked) {
+    console.error(`FAILED: ${r.checked - r.agreed} answers made again under the rule differ from the server's`);
+    process.exit(3);
+  }
+  if (r.errors.length) {
+    console.error(`${r.errors.length} scenes failed`);
+    process.exit(1);
+  }
 }

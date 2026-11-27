@@ -11,6 +11,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { combine } from "../../shared/decide/combine.ts";
 import { inputsAt, scoreTable, type Model } from "../../shared/decide/forward.ts";
 import { inputsOf, profileHash, type Profile } from "../../shared/decide/profile.ts";
 import { Table } from "../../shared/decide/table.ts";
@@ -92,17 +93,9 @@ export function examples(ds: readonly Decision[], p: Profile, profiles: readonly
     const rows = alter ? d.tables.map((t, i) => (i === at ? alter(t, index) : t)) : d.tables;
     const k = rows[at]!.k;
     const x = new Float32Array(k * n), offset = new Float64Array(k), fixed = new Float64Array(k), mask = new Uint8Array(k), one = new Float32Array(n);
-    // Outside its own score, all is fixed where the point adds passes, and divided by the scorer's temperature where not.
-    const rest = passes ? fixed : offset;
+    const tables = rows.map((row) => tableOf(row, profiles.find((r) => r.name === row.profile)!));
     rows.forEach((row, i) => {
-      const q = profiles.find((r) => r.name === row.profile)!;
-      const t = tableOf(row, q);
-      const held = passes ? q.columns.indexOf("held") : -1;
-      for (let c = 0; c < k; c++) {
-        rest[c] = rest[c]! + row.bias[c]!;
-        if (row.mask[c] !== 0) mask[c] = 1;
-        if (i === at && held >= 0 && d.tables[i]!.rows[c * q.columns.length + held] === 1) rest[c] = rest[c]! + passes!.stick;
-      }
+      const q = profiles.find((r) => r.name === row.profile)!, t = tables[i]!;
       if (i === at) {
         for (let c = 0; c < k; c++) {
           inputsAt(q, t, c, one);
@@ -111,11 +104,28 @@ export function examples(ds: readonly Decision[], p: Profile, profiles: readonly
         return;
       }
       const rule = rules.get(row.profile);
-      if (!rule) return;
-      scoreTable(rule, q, t);
-      const weight = passes ? (passes.mix[row.profile] ?? 0) / rule.temperature : 1;
-      for (let c = 0; c < k; c++) rest[c] = rest[c]! + t.score[c]! * weight;
+      if (rule) scoreTable(rule, q, t);
     });
+    if (passes) {
+      // The others by their rule and this one at nothing, added by `combine` as the game adds them, with the held heading's
+      // stick and any mask the answer as made carried: what is left is this pass's fixed offset.
+      const first = d.tables[0]!, fp = profiles.find((r) => r.name === first.profile)!, held = fp.columns.indexOf("held");
+      let at0 = -1;
+      for (let c = 0; c < k && held >= 0; c++) if (first.rows[c * fp.columns.length + held] === 1) at0 = c;
+      const into = new Table(k, 0, 1);
+      combine(into, tables.map((t, i) => ({ table: t, weight: i === at ? 0 : (passes.mix[rows[i]!.profile] ?? 0) / (rules.get(rows[i]!.profile)?.temperature ?? 1) })), at0, passes.stick);
+      for (let c = 0; c < k; c++) {
+        fixed[c] = into.score[c]! + into.bias[c]!;
+        mask[c] = into.mask[c]! !== 0 || (d.final?.mask[c] ?? 0) !== 0 ? 1 : 0;
+      }
+    } else {
+      rows.forEach((row, i) => {
+        for (let c = 0; c < k; c++) {
+          offset[c] = offset[c]! + row.bias[c]! + (i !== at && rules.has(row.profile) ? tables[i]!.score[c]! : 0);
+          if (row.mask[c] !== 0) mask[c] = 1;
+        }
+      });
+    }
     const scale = passes ? (passes.mix[p.name] ?? 0) : 1;
     let target: Float64Array, cost: Float64Array;
     if (p.kind === "yes") {

@@ -3,12 +3,15 @@
 //
 //   u32 bytes in the rest of the record
 //   u32 scene seed, u16 family, u16 map (places in the manifest's lists), u32 ordinal (which answer of the point in the
-//   scene it was), u32 tick, i16 the chooser's pick (-1 for none), u8 tables, u8 seeds, u8 readings, three u8 of 0,
+//   scene it was), u32 tick, i16 the chooser's pick (-1 for none), u8 tables, u8 seeds, u8 readings, u8 1 where the answer
+//   as made follows (else 0), two u8 of 0,
 //   f32 label (a "yes" point's observed outcome; 0 for a choice)
 //   each table: u16 profile (place in the manifest's list), u16 k, f32 state, f32 k * width rows, f32 k bias, u8 k mask,
 //   then u8 0 up to a multiple of four
 //   f32 k * seeds * readings costs, by candidate, then seed, then reading; NaN where not run or thrown away
 //   f32 seeds * readings costs of leaving the point alone at the decision ("today"); NaN where not run
+//   where the point adds passes, the answer as made: f32 each table's weight, f32 k probabilities, u8 k mask, then u8 0
+//   up to a multiple of four
 //
 // Imports only the engine, so the pipeline can leave with it.
 
@@ -41,6 +44,14 @@ export interface Decision {
   tables: TableRow[];
   costs: Float32Array;
   today: Float32Array;
+  /** Where the point adds its tables as passes: what each counted for, and the answer as the server made it. */
+  final?: Final;
+}
+
+export interface Final {
+  weights: Float32Array;
+  out: Float32Array;
+  mask: Uint8Array;
 }
 
 export interface ProfileNote {
@@ -62,6 +73,9 @@ export interface RunNote {
   none: number;
   thrown: number;
   noReseed: number;
+  /** Answers made again from their passes with `combine`, and how many came out as the server made them. */
+  checked?: number;
+  agreed?: number;
 }
 
 export interface Manifest {
@@ -103,6 +117,7 @@ export function encode(d: Decision, m: Manifest, profiles: readonly Profile[]): 
   }
   size += 4 * (d.costs.length + d.today.length);
   const k = d.tables[0]?.k ?? 0;
+  if (d.final) size += align(4 * (d.tables.length + k) + k);
   if (d.costs.length !== k * d.seeds * d.readings || d.today.length !== d.seeds * d.readings) throw new Error("costs of the wrong length");
   const out = new Uint8Array(size), v = new DataView(out.buffer);
   let at = 0;
@@ -123,7 +138,8 @@ export function encode(d: Decision, m: Manifest, profiles: readonly Profile[]): 
   u8(d.tables.length);
   u8(d.seeds);
   u8(d.readings);
-  at += 3;
+  u8(d.final ? 1 : 0);
+  at += 2;
   v.setFloat32(at, d.label, true);
   at += 4;
   for (const t of d.tables) {
@@ -137,6 +153,11 @@ export function encode(d: Decision, m: Manifest, profiles: readonly Profile[]): 
   }
   f32s(d.costs);
   f32s(d.today);
+  if (d.final) {
+    f32s(d.final.weights);
+    f32s(d.final.out);
+    out.set(d.final.mask.subarray(0, k), at);
+  }
   return out;
 }
 
@@ -159,8 +180,8 @@ export function decode(bytes: Uint8Array, m: Manifest): Decision[] {
     const seed = u32(), family = m.families[u16()]!, map = m.maps[u16()]!, ordinal = u32(), tick = u32();
     const pick = v.getInt16(at, true);
     at += 2;
-    const n = u8(), seeds = u8(), readings = u8();
-    at += 3;
+    const n = u8(), seeds = u8(), readings = u8(), made = u8();
+    at += 2;
     const label = v.getFloat32(at, true);
     at += 4;
     const tables: TableRow[] = [];
@@ -173,8 +194,14 @@ export function decode(bytes: Uint8Array, m: Manifest): Decision[] {
     }
     const k = tables[0]?.k ?? 0;
     const costs = f32s(k * seeds * readings), today = f32s(seeds * readings);
+    let final: Final | undefined;
+    if (made) {
+      const weights = f32s(n), probs = f32s(k), mask = bytes.slice(at, at + k);
+      at = align(at + k);
+      final = { weights, out: probs, mask };
+    }
     if (at !== end) throw new Error(`a record of ${m.point} ends at ${at}, not ${end}`);
-    out.push({ seed, family, map, ordinal, tick, pick, label, seeds, readings, tables, costs, today });
+    out.push({ seed, family, map, ordinal, tick, pick, label, seeds, readings, tables, costs, today, ...(final ? { final } : {}) });
   }
   return out;
 }
@@ -303,14 +330,15 @@ const f32 = (s: string): Float32Array => {
 
 /** A decision as JSON, every number exact (NaN too), to pass between processes. */
 export function pack(d: Decision): string {
-  return JSON.stringify({ ...d, tables: d.tables.map((t) => ({ ...t, state: b64(t.state), rows: b64(t.rows), bias: b64(t.bias), mask: b64(t.mask) })), costs: b64(d.costs), today: b64(d.today), label: b64(Float32Array.of(d.label)) });
+  return JSON.stringify({ ...d, tables: d.tables.map((t) => ({ ...t, state: b64(t.state), rows: b64(t.rows), bias: b64(t.bias), mask: b64(t.mask) })), costs: b64(d.costs), today: b64(d.today), label: b64(Float32Array.of(d.label)), ...(d.final ? { final: { weights: b64(d.final.weights), out: b64(d.final.out), mask: b64(d.final.mask) } } : {}) });
 }
 
 export function unpack(s: string): Decision {
-  const o = JSON.parse(s) as Record<string, unknown> & { tables: Record<string, string | number>[]; costs: string; today: string; label: string };
+  const o = JSON.parse(s) as Record<string, unknown> & { tables: Record<string, string | number>[]; costs: string; today: string; label: string; final?: Record<string, string> };
   return {
     ...(o as unknown as Decision),
     tables: o.tables.map((t) => ({ profile: t.profile as string, k: t.k as number, state: f32(t.state as string), rows: f32(t.rows as string), bias: f32(t.bias as string), mask: new Uint8Array(Buffer.from(t.mask as string, "base64")) })),
     costs: f32(o.costs), today: f32(o.today), label: f32(o.label)[0]!,
+    ...(o.final ? { final: { weights: f32(o.final.weights!), out: f32(o.final.out!), mask: new Uint8Array(Buffer.from(o.final.mask!, "base64")) } } : {}),
   };
 }

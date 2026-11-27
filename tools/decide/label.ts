@@ -8,7 +8,7 @@
 // is labelled a scene play, so its rows are not correlated.
 
 import { Rng } from "../../shared/rng.ts";
-import { READINGS, type Decision, type TableRow } from "./dataset.ts";
+import { READINGS, type Decision, type Final, type TableRow } from "./dataset.ts";
 
 /** Act on the chooser's own pick at the decision. */
 export const LEAVE = -1;
@@ -23,6 +23,10 @@ export interface Answer {
   tick: number;
   /** For a "yes" point, what was observed at its horizon after the answer. */
   outcome?: number;
+  /** Where the point adds passes: each one's weight and the answer as made. */
+  final?: Final;
+  /** Whether the answer made again from its passes with `combine` gave the pick and probabilities the server gave. */
+  agrees?: boolean;
 }
 
 export interface Replay {
@@ -53,6 +57,9 @@ export interface Labelled {
   more: Decision[];
   /** The point's kind, as its first table says. */
   kind?: "choice" | "yes";
+  /** Answers of the survey made again from their passes, and of those, the ones that came out as the server made them. */
+  checked: number;
+  agreed: number;
   /** Replays run, thrown away for a world that differed, and run with no reseed. */
   runs: number;
   thrown: number;
@@ -76,12 +83,16 @@ export function ordinalOf(seed: number, n: number): number {
  */
 export function labelScene<S>(rp: Replayer<S>, scene: S, key: Key, o: { kind: "choice" | "yes" | ((a: Answer) => "choice" | "yes"); seeds: number; today?: boolean; ordinal?: number; yeses?: number }): Labelled {
   const answers = rp.survey(scene);
-  const out: Labelled = { decision: null, more: [], runs: 1, thrown: 0, noReseed: 0 };
+  const out: Labelled = { decision: null, more: [], checked: 0, agreed: 0, runs: 1, thrown: 0, noReseed: 0 };
+  for (const a of answers) if (a.agrees !== undefined) {
+    out.checked++;
+    if (a.agrees) out.agreed++;
+  }
   if (answers.length === 0) return out;
   const ordinal = o.ordinal ?? ordinalOf(key.seed, answers.length);
   const a = answers[Math.min(ordinal, answers.length - 1)]!;
   const R = READINGS.length;
-  const base = { ...key, ordinal, tick: a.tick, pick: a.pick, tables: a.tables, readings: R };
+  const base = { ...key, ordinal, tick: a.tick, pick: a.pick, tables: a.tables, readings: R, ...(a.final ? { final: a.final } : {}) };
   const kind = typeof o.kind === "function" ? o.kind(a) : o.kind;
   out.kind = kind;
   if (kind === "yes") {

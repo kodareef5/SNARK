@@ -8,11 +8,12 @@ import { RING_MID } from "../../shared/decide/profiles.ts";
 import { RULE_MID } from "../../shared/decide/rules.ts";
 import { writeModel } from "../../shared/decide/weights.ts";
 import { GAME_CATALOG } from "../../tools/decide/catalog.ts";
-import { READINGS, readData, type Decision } from "../../tools/decide/dataset.ts";
+import { READINGS, emptyManifest, readData, type Decision } from "../../tools/decide/dataset.ts";
 import { argmax, examples, probabilities, scoreModel } from "../../tools/decide/fit.ts";
 import { generate } from "../../tools/decide/generate.ts";
 import type { Answer } from "../../tools/decide/label.ts";
 import { draw } from "../../tools/decide/random.ts";
+import { agreement, layouts } from "../../tools/decide/score.ts";
 import { build, gameReplayer } from "../../tools/decide/setups.ts";
 
 const scene = draw("water", 3);
@@ -46,15 +47,18 @@ test("the lab finds the ladder's two points by name on a host", () => {
   b.lab.host.shutdown();
 });
 
-test("the trainer adds the three passes as nav.ts does, under the rule", () => {
+test("the trainer adds the three passes with combine as nav.ts does, under the rule", () => {
   const answers = gameReplayer("nav.ring", { policy: "rule", models: [] }).survey(scene);
   expect(answers.length).toBeGreaterThan(5);
   expect(agrees(answers, RULE_MID)).toBe(1);
+  // Made again with combine as the survey saw them, every answer is the server's.
+  expect(answers.map((a) => a.agrees)).toEqual(answers.map(() => true));
 });
 
 test("a trained pass's temperature divides only its own score in the sum", () => {
   const answers = gameReplayer("nav.ring", { policy: "model", models: [warm] }).survey(scene);
   expect(agrees(answers, warm)).toBe(1);
+  expect(answers.map((a) => a.agrees)).toEqual(answers.map(() => true));
   // Read as if the temperature divided the other passes too, some answers come out otherwise.
   const ex = examples(asDecisions(answers), RING_MID, GAME_CATALOG.profiles, GAME_CATALOG.rules, 2);
   const wrong = ex.filter((e, i) => {
@@ -93,4 +97,19 @@ test("decisions generated under a trained scorer are its own picks", async () =>
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("stored ring decisions made again with combine give their stored picks", () => {
+  const answers = gameReplayer("nav.ring", { policy: "rule", models: [] }).survey(scene);
+  const ds = asDecisions(answers).map((d, i) => ({ ...d, final: answers[i]!.final }));
+  const manifest = { ...emptyManifest("nav.ring", "choice"), decisions: ds.length, runs: [{ made: "", revision: "", under: "rule", scenes: 1, decisions: ds.length, none: 0, thrown: 0, noReseed: 0 }] };
+  expect(agreement("nav.ring", manifest, ds, GAME_CATALOG)).toEqual({ checked: ds.length, agreed: ds.length, ruleChecked: ds.length, ruleAgreed: ds.length });
+  // A pick that was not the server's is caught.
+  const wrong = ds.map((d, i) => (i === 0 ? { ...d, pick: (d.pick + 1) % d.tables[0]!.k } : d));
+  expect(agreement("nav.ring", manifest, wrong, GAME_CATALOG).ruleAgreed).toBe(ds.length - 1);
+});
+
+test("held-out layouts are the same seeds of each held-out family and map", () => {
+  const list = layouts(GAME_CATALOG, 3);
+  expect(list.map((s) => `${s.family}/${s.seed}`)).toEqual(["pen/1", "pen/2", "pen/3", "miami/1", "miami/2", "miami/3"]);
 });

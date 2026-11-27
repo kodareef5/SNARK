@@ -5,7 +5,7 @@ import { GATE, boardHtml, eceOf, gateOf, regretInterval, ruleGate, summarize, ty
 import { gradeOne, type Example } from "../../tools/decide/fit.ts";
 
 const example = (cost: number[], target: number[]): Example => ({
-  k: cost.length, n: 0, x: new Float32Array(0), offset: new Float64Array(cost.length), mask: new Uint8Array(cost.length),
+  k: cost.length, n: 0, x: new Float32Array(0), scale: 1, offset: new Float64Array(cost.length), fixed: new Float64Array(cost.length), mask: new Uint8Array(cost.length),
   target: Float64Array.from(target), cost: Float64Array.from(cost), group: "flat/pen/1", family: "pen", map: "flat",
 });
 

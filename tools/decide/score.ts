@@ -3,13 +3,14 @@
 // Scoreboard type) and a page with nothing outside it, .cache/decide/scoreboard.html, and puts each trained scorer's
 // held-out Score in its weights file's `about`.
 //
-//   bun tools/decide/score.ts [--point <name>] [--episodes 40] [--fresh 0] [--workers 8] [--reading 1s|5s|end]
+//   bun tools/decide/score.ts [--point <name>] [--layouts 40] [--fresh 0] [--workers 8] [--reading 1s|5s|end]
 //   bun tools/decide/score.ts --headroom <point>     how far the best candidate beats the rule, before any training
 //
 // One answer is timed in a child pinned to a fast core and to a slow one (taskset -c 2 and -c 20 on this machine).
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { combine } from "../../shared/decide/combine.ts";
 import { answer, scoreTable, type Model } from "../../shared/decide/forward.ts";
 import type { Profile } from "../../shared/decide/profile.ts";
 import type { EpisodeScore, PointScores, Scoreboard } from "../../shared/decide/scoreboard.ts";
@@ -17,10 +18,10 @@ import { Table } from "../../shared/decide/table.ts";
 import { readModel, writeModel } from "../../shared/decide/weights.ts";
 import { boardHtml } from "./board.ts";
 import { FAMILIES, catalog } from "./catalog.ts";
-import { READINGS, dataDir, readData, revision, type Decision } from "./dataset.ts";
-import { examples, roleOf, type Catalog } from "./fit.ts";
-import { Workers, status, type Job } from "./generate.ts";
-import { draw, scenes, type Family, type Scene } from "./random.ts";
+import { READINGS, dataDir, readData, revision, type Decision, type Manifest } from "./dataset.ts";
+import { examples, type Catalog } from "./fit.ts";
+import { Workers, loadModels, status, type Job } from "./generate.ts";
+import { scenes, type Family, type Scene } from "./random.ts";
 import { episodeScore, headroom, ratePoint, type Trained } from "./rate.ts";
 
 /** Cores this machine calls fast and slow (16 to 31 are its slow ones). */
@@ -70,18 +71,58 @@ function modelsOf(point: string, p: Profile): { file: string; model: Model; byte
   });
 }
 
-/** The held-out scenes the decisions came from, at most `most`, taken in turn from each held-out family and map, for whole episodes. */
-function heldScenes(ds: readonly Decision[], cat: Catalog, most: number): Scene[] {
-  const seen = new Set<string>(), by = new Map<string, Scene[]>();
-  for (const d of ds) {
-    const key = `${d.family}/${d.seed}`;
-    if (roleOf(cat.split, d.family, d.map) !== "held" || seen.has(key)) continue;
-    seen.add(key);
-    const group = by.get(d.family) ?? [];
-    by.set(d.family, [...group, draw(d.family as Family, d.seed)]);
+/**
+ * The held-out layouts whole episodes are played on, fixed before anything is played: seeds 1 to `per` of each held-out
+ * family, and of the held-out maps (the Miami slice), whatever happens in them.
+ */
+export function layouts(cat: Catalog, per: number): Scene[] {
+  return scenes([...cat.split.held, ...cat.split.heldMaps] as Family[], per, 1);
+}
+
+/**
+ * Every decision of a point of passes made again from its tables with `combine`, each pass scored by whoever scored it
+ * in its run (the rule, or the run's trained scorers), by its mix over that scorer's temperature, with the held heading's
+ * stick and the mask the answer as made carried: how many, and how many give the pick and probabilities stored. Under the
+ * rule, all must, or the board's numbers cannot be trusted.
+ */
+export function agreement(point: string, manifest: Manifest, decisions: readonly Decision[], cat: Catalog): { checked: number; agreed: number; ruleChecked: number; ruleAgreed: number } {
+  const passes = cat.passes?.[point], out = { checked: 0, agreed: 0, ruleChecked: 0, ruleAgreed: 0 };
+  if (!passes) return out;
+  let from = 0;
+  for (const run of manifest.runs) {
+    const models = run.under === "rule" ? [] : loadModels(run.under.split(","));
+    for (const d of decisions.slice(from, from + run.decisions)) {
+      const k = d.tables[0]!.k, tables = d.tables.map((row) => {
+        const q = cat.profiles.find((r) => r.name === row.profile)!, t = new Table(k, q.state.length, q.columns.length);
+        t.k = k;
+        t.state.set(row.state);
+        t.rows.set(row.rows);
+        t.bias.set(row.bias);
+        t.mask.set(row.mask);
+        const m = models.find((x) => x.profile === q.name) ?? cat.rules.get(q.name)!;
+        scoreTable(m, q, t);
+        return { table: t, weight: (passes.mix[q.name] ?? 0) / m.temperature, q };
+      });
+      const first = tables[0]!, held = first.q.columns.indexOf("held");
+      let at = -1;
+      for (let c = 0; c < k && held >= 0; c++) if (first.table.rows[c * first.q.columns.length + held] === 1) at = c;
+      const into = new Table(k, 0, 1);
+      let pick = combine(into, tables, at, passes.stick), close = true;
+      if (d.final) {
+        for (let c = 0; c < k; c++) if (d.final.mask[c] !== 0) into.mask[c] = 1;
+        pick = answer("choice", into, 1);
+        for (let c = 0; c < k; c++) if (Math.abs(into.out[c]! - d.final.out[c]!) > 1e-6) close = false;
+      }
+      const same = pick === d.pick && close;
+      out.checked++;
+      if (same) out.agreed++;
+      if (run.under === "rule") {
+        out.ruleChecked++;
+        if (same) out.ruleAgreed++;
+      }
+    }
+    from += run.decisions;
   }
-  const lists = [...by.keys()].sort().map((k) => by.get(k)!), out: Scene[] = [];
-  for (let i = 0; out.length < most && lists.some((l) => i < l.length); i++) for (const l of lists) if (i < l.length && out.length < most) out.push(l[i]!);
   return out;
 }
 
@@ -111,9 +152,12 @@ async function play(point: string, policies: readonly Policy[], scenes: readonly
  * One point's scores, one entry for each profile of its tables; whole episodes are played on `workers` processes, the
  * held-out scenes its decisions came from and `fresh` new scenes of every family.
  */
-export async function scorePoint(point: string, o: { episodes: number; workers: number; reading?: number; fresh?: number }): Promise<PointScores[]> {
+export async function scorePoint(point: string, o: { layouts: number; workers: number; reading?: number; fresh?: number }): Promise<PointScores[]> {
   const cat = catalog(point);
   const { manifest, decisions } = readData(dataDir(point, join(ROOT, "data")), cat.profiles);
+  const agreed = agreement(point, manifest, decisions, cat);
+  if (agreed.checked > 0) console.log(`${point}: ${agreed.agreed} of ${agreed.checked} stored decisions made again with combine give the stored pick (${agreed.ruleAgreed} of ${agreed.ruleChecked} under the rule)`);
+  if (agreed.ruleAgreed < agreed.ruleChecked) throw new Error(`${point}: ${agreed.ruleChecked - agreed.ruleAgreed} decisions under the rule do not come out as the server made them: no regret or calibration of them can be trusted`);
   const profiles = manifest.profiles.map((n) => cat.profiles.find((q) => q.name === n.name)!);
   const found = new Map(profiles.map((p) => [p.name, modelsOf(point, p)]));
   const policies: Policy[] = [
@@ -121,7 +165,7 @@ export async function scorePoint(point: string, o: { episodes: number; workers: 
     ...[...found.values()].flat().map((f) => ({ name: f.name, policy: "model" as const, models: [f.file] })),
   ];
   const game = !point.startsWith("toy.");
-  const episodes = game ? await play(point, policies, heldScenes(decisions, cat, o.episodes), o.workers) : [];
+  const episodes = game ? await play(point, policies, layouts(cat, o.layouts), o.workers) : [];
   const fresh = game && o.fresh ? await play(point, policies, scenes([...FAMILIES, "miami"], o.fresh, FRESH_FIRST), o.workers) : [];
   const out: PointScores[] = [];
   for (const p of profiles) {
@@ -133,6 +177,7 @@ export async function scorePoint(point: string, o: { episodes: number; workers: 
     const names = new Set(["today", "rule", ...mine.map((f) => f.name)]);
     const scores = ratePoint({ point, profile: p, cat, decisions, reading: o.reading ?? READINGS.length - 1, trained, episodes: episodes.filter((e) => names.has(e.name)) });
     scores.fresh = fresh.filter((e) => names.has(e.name));
+    if (agreed.checked > 0) scores.agreement = agreed;
     // The rule is timed as the trained are, from a file of its own outside the models.
     const rule = cat.rules.get(p.name), ruled = scores.scores.find((s) => s.name === "rule");
     if (rule && ruled) {
@@ -183,7 +228,7 @@ if (import.meta.main && process.argv.includes("--time")) {
   for (const point of points) {
     status({ step: "score", point, done: 0, of: 1 });
     const reading = READINGS.indexOf((arg("--reading") ?? "end") as (typeof READINGS)[number]);
-    board.points.push(...(await scorePoint(point, { episodes: Number(arg("--episodes") ?? 40), workers: Number(arg("--workers") ?? 8), reading: reading < 0 ? undefined : reading, fresh: Number(arg("--fresh") ?? 0) })));
+    board.points.push(...(await scorePoint(point, { layouts: Number(arg("--layouts") ?? 40), workers: Number(arg("--workers") ?? 8), reading: reading < 0 ? undefined : reading, fresh: Number(arg("--fresh") ?? 0) })));
   }
   writeFileSync(join(ROOT, "scoreboard.json"), JSON.stringify(board, null, 1));
   writeFileSync(join(ROOT, "scoreboard.html"), boardHtml(board));
