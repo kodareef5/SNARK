@@ -252,6 +252,9 @@ export class Faces {
   /** Whether the last frame read and made nothing, and nothing is under way: what bodies want is made, or cannot be yet. */
   idle = false;
 
+  /** Bodies this frame drawn with less face, hair or beard than they asked for and will get: the shared head, or the pack's hair. */
+  short = 0;
+
   /** Begins `job`, if any, its first step the next frame; whether it began. */
   private start(job: Job | null): boolean {
     if (!job) return false;
@@ -265,6 +268,7 @@ export class Faces {
    */
   begin(tier: Tier, uploads: AssetUpload[], drops: number[]): void {
     this.frame++;
+    this.short = 0;
     this.cap = this.refusals > MOST_REFUSALS ? 0 : (FACE_HEADS[tier.name] ?? 0);
     for (const mesh of this.wanted) this.assets.wantFaces(mesh);
     for (const slot of this.dropLater) drops.push(slot);
@@ -314,7 +318,9 @@ export class Faces {
   ready(mesh: number): boolean {
     if (!this.heads.has(mesh) || this.refusals > MOST_REFUSALS) return false;
     this.wanted.add(mesh);
-    return this.sources.get(mesh)?.shared != null;
+    if (this.sources.get(mesh)?.shared != null) return true;
+    if (this.cap > 0) this.short++;
+    return false;
   }
 
   /**
@@ -339,7 +345,10 @@ export class Faces {
       face[f] = (look[lookAt + LOOK_FACE + f]! << 24) >> 24;
       if (face[f] !== 0) any = true;
     }
-    if (!any || this.cap === 0) return out;
+    if (!any || this.cap === 0) {
+      if (this.lacks(hair, out.hair) || this.lacks(beard, out.beard)) this.short++;
+      return out;
+    }
     for (let a = 0; a < 3; a++) g[a] = Math.round(grow[growAt + a]! * GROW_STEPS);
     const key = keyOf(mesh, face, g, worn);
     const h = this.byKey.get(key);
@@ -351,6 +360,8 @@ export class Faces {
       out.beard = worn[1] >= 0 ? h.slot + 4 : 0;
       return out;
     }
+    // Past the cap's nearest, a body gets no head of its own while those nearer keep theirs.
+    if (rank < this.cap) this.short++;
     if (rank < this.wantRank) {
       this.wantRank = rank;
       this.wantMesh = mesh;
@@ -359,6 +370,13 @@ export class Faces {
       this.wantWorn.set(worn);
     }
     return out;
+  }
+
+  /** Whether hair or beard `mesh`, drawn from `slot`, is the pack's where a made one is to come. */
+  private lacks(mesh: number, slot: number): boolean {
+    if (mesh < 0 || !this.wearing.has(mesh)) return false;
+    const w = this.worn.get(mesh);
+    return !w || (w.rows && slot === 0);
   }
 
   /** The slot of hair or beard `mesh`'s shared mesh, 0 where the pack's own is drawn. */
