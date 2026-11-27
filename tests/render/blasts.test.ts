@@ -9,11 +9,11 @@ import { join } from "node:path";
 import { TIERS, tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { Details } from "../../client/core/details/details.ts";
 import { effectsOff, packetWithout, sceneWithout } from "../../client/core/passes.ts";
-import { BURST_REACH, Blasts, LOBES_MID, LOBES_NEAR, MAX_BURSTS, MAX_TRAILS, MAX_TRAIL_CARDS, TRAIL_CARDS, TRAIL_SECONDS } from "../../client/core/render/blasts.ts";
+import { BURST_REACH, Blasts, LOBES_MID, LOBES_NEAR, MAX_BURSTS, MAX_LEFT, MAX_TRAILS, MAX_TRAIL_CARDS, TRAIL_CARDS, TRAIL_SECONDS } from "../../client/core/render/blasts.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { DETAIL_FLAT_FRAGMENT, DETAIL_LIT_FRAGMENT } from "../../client/core/render/detailtext.ts";
-import { UNGRADED } from "../../client/core/render/fire-light.ts";
-import { DETAIL, DETAIL_FLOATS, DETAIL_GLOW, DETAIL_SMOKE, DETAIL_TEK, DRAW_BLEND, DRAW_DETAILS, DRAW_FIRE, FramePacket } from "../../client/core/render/packet.ts";
+import { FIRE_BLAZE, UNGRADED } from "../../client/core/render/fire-light.ts";
+import { DETAIL, DETAIL_FLOATS, DETAIL_GLOW, DETAIL_SMOKE, DETAIL_TEK, DRAW_BLEND, DRAW_DETAILS, DRAW_FIRE, FIRES_AT, FramePacket } from "../../client/core/render/packet.ts";
 import { SETTING_ROWS, Settings } from "../../client/core/settings.ts";
 import { SHAKE_LAUNCH, SHAKE_MOST, SHAKE_MS, Shake, blastShake } from "../../client/core/view/shake.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -205,8 +205,51 @@ function frame(tier: string, far: number, nowMs: number): FramePacket {
   return scene.build(cam, remote);
 }
 
-const fires = (p: FramePacket): number[] => [...Array(p.drawCount).keys()].filter((d) => (p.drawFlags[d]! & DRAW_FIRE) !== 0);
+/** The draws of a blast's own fire and of rockets' flames: not of the fires a blast leaves burning, which are a fire that stands' (FIRE_BLAZE). */
+const fires = (p: FramePacket): number[] => [...Array(p.drawCount).keys()].filter((d) => (p.drawFlags[d]! & DRAW_FIRE) !== 0 && p.drawEffect[d * 4] !== FIRE_BLAZE);
+/** The fires left burning that a frame draws: the instances of its blazes, as bytes. */
+const leftBurning = (p: FramePacket): number[][] => [...Array(p.drawCount).keys()].filter((d) => (p.drawFlags[d]! & DRAW_FIRE) !== 0 && p.drawEffect[d * 4] === FIRE_BLAZE)
+  .flatMap((d) => Array.from({ length: p.drawInstances[d]! }, (_, k) => [...p.transient.subarray((p.drawFirst[d]! + k) * INSTANCE_BYTES, (p.drawFirst[d]! + k + 1) * INSTANCE_BYTES)]));
 let clock = 100000;
+
+test("a blast on the ground leaves a few small fires burning for some seconds, by its seed; one on water or in the air leaves none", () => {
+  const { scene } = view;
+  const y = hf.heightAt(X, Z);
+  const after = (surface: number, seed: number, ms: number): number[][] => {
+    clock += 60000;
+    frame("high", 14, clock);
+    scene.blasts.burst(ROCKET, X, surface === SURFACE_AIR ? y + 9 : y, Z, 0, 1, 0, 7.5, surface, 0, seed, clock);
+    return leftBurning(frame("high", 14, clock + ms));
+  };
+  // None while the fireball is new; then one to four, each lit within half a second, burning four seconds at the least and eight and a half at the most.
+  expect(after(SURFACE_GROUND, 7, 100).length).toBe(0);
+  const lit = after(SURFACE_GROUND, 7, 1500);
+  expect([lit.length >= 1, lit.length <= 4]).toEqual([true, true]);
+  expect(after(SURFACE_GROUND, 7, 3500).length).toBe(lit.length);
+  expect(after(SURFACE_GROUND, 7, 9000).length).toBe(0);
+  // Each is small, a metre high at the most, and burns down: lower later than sooner.
+  const high = (b: number[]): number => b[14]! / 24;
+  expect(lit.every((b) => high(b) > 0.1 && high(b) <= 1)).toBe(true);
+  const late = after(SURFACE_GROUND, 7, 3900);
+  expect(Math.max(...late.map(high))).toBeLessThanOrEqual(Math.max(...lit.map(high)));
+  // The same seed leaves the same fires; another seed others.
+  const again = after(SURFACE_GROUND, 7, 1500), other = after(SURFACE_GROUND, 8, 1500);
+  const told = (list: number[][]): string[] => list.map((b) => b.slice(12).join()).sort();
+  expect(told(again)).toEqual(told(lit));
+  expect(told(other)).not.toEqual(told(lit));
+  expect([after(SURFACE_WATER, 7, 1500).length, after(SURFACE_AIR, 7, 1500).length, after(SURFACE_BODY, 7, 1500).length]).toEqual([0, 0, 0]);
+  // Never more than the most at once, however many blasts, and each gives light while it burns.
+  clock += 60000;
+  frame("high", 14, clock);
+  for (let k = 0; k < 9; k++) scene.blasts.burst(ROCKET, X + k * 0.5, y, Z, 0, 1, 0, 7.5, SURFACE_GROUND, 0, 20 + k, clock);
+  const p = frame("high", 14, clock + 1500);
+  expect([leftBurning(p).length <= MAX_LEFT, leftBurning(p).length > 4, p.frame[FIRES_AT + 3]! > 0, scene.blasts.left]).toEqual([true, true, true, leftBurning(p).length]);
+  // With what burns switched off there are none.
+  scene.bursts = false;
+  expect(leftBurning(frame("high", 14, clock + 1600)).length).toBe(0);
+  scene.bursts = true;
+  clock += 60000;
+});
 
 test("a blast is three lobes near, two farther, one far off and one glow beyond, one lobe on low poly, in one draw", () => {
   const { scene } = view;

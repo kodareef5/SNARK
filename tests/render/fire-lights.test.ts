@@ -178,7 +178,10 @@ test("a burning wreck lights what is near it, a blast flashes and then glows, an
   p = frame("high", 2500);
   const glow = written(p.frame).find((l) => Math.abs(l[0]! - 6) < 2)!;
   expect([glow[4]! < flash[4]!, glow[6]! / glow[4]! < flash[6]! / flash[4]!]).toEqual([true, true]);
-  p = frame("high", 6000);
+  // The fires it left burning on the ground give light for some seconds more, and then the wreck's is alone again.
+  p = frame("high", 5000);
+  expect(written(p.frame).length).toBeGreaterThan(1);
+  p = frame("high", 11500);
   expect(written(p.frame).length).toBe(1);
   // On low poly none is carried, and by night a warm pool lies under the fire; by day it is not there.
   const pools = (q: FramePacket): number => {
