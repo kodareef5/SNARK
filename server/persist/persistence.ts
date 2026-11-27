@@ -8,7 +8,7 @@ import { MODE_FLYER } from "../../shared/sim/character.ts";
 import { F_ALIVE } from "../../shared/sim/entities.ts";
 import type { EntityRecord, Records } from "../records.ts";
 import type { ServerWorld } from "../world.ts";
-import type { BackupReport } from "./backup.ts";
+import { KEEP, type BackupKeep, type BackupReport } from "./backup.ts";
 import { inlineKeeper, type Keeper } from "./keeper.ts";
 import { sqliteCode, sqliteIs, type TransferRow, type WorldStore } from "./store.ts";
 
@@ -108,6 +108,13 @@ export class Persistence {
   keeper: Keeper;
   /** Called with what came of each backup. */
   onBackup: ((r: BackupReport) => void) | null = null;
+  /** How long backups are kept and how much disk they may take, given with each one asked for. */
+  backupKeep: BackupKeep = KEEP;
+  /** A backup has been asked for and has not been answered. */
+  backingUp = false;
+  /** `changes` as it was when the last backup that was made was asked for, and as the one being made was: -1 for none. */
+  private backedUp = -1;
+  private asked = -1;
   private keep: (store: WorldStore) => Keeper = (store) => inlineKeeper(store.db, store.path);
 
   private readonly world: ServerWorld;
@@ -143,7 +150,7 @@ export class Persistence {
     this.saveId = store.saveId;
     this.opts = { positionTicks: 1800, clockTicks: 60 * TICK_RATE, journalKeep: 100_000, journalApart: [], ...opts };
     this.keeper = this.keep(store);
-    this.keeper.onBackup = (r) => this.onBackup?.(r);
+    this.keeper.onBackup = (r) => this.answered(r);
     world.structs.onChunkChanged = (chunk, healthOnly) => (healthOnly ? this.hurtChunks : this.dirtyChunks).add(chunk);
   }
 
@@ -203,7 +210,28 @@ export class Persistence {
   private rekeep(): void {
     this.keeper.close();
     this.keeper = this.keep(this.store);
-    this.keeper.onBackup = (r) => this.onBackup?.(r);
+    this.keeper.onBackup = (r) => this.answered(r);
+    // Another file has no backups, and a keeper that was closed answers nothing.
+    this.backingUp = false;
+    this.backedUp = this.asked = -1;
+  }
+
+  /** Asks the keeper for a backup of the save as its last commit left it. */
+  backup(): void {
+    this.backingUp = true;
+    this.asked = this.changes;
+    this.keeper.backup(this.backupKeep);
+  }
+
+  /** Whether a backup made now would hold what the last one made holds, the clock aside. */
+  get unchanged(): boolean {
+    return this.changes === this.backedUp;
+  }
+
+  private answered(r: BackupReport): void {
+    this.backingUp = false;
+    if (r.path !== "") this.backedUp = this.asked;
+    this.onBackup?.(r);
   }
 
   /** Stops the keeper, then closes the save without a commit. A server stopping commits first (Host.shutdown). */

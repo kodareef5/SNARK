@@ -51,6 +51,8 @@ export interface SaveState {
   checkpoint: { ms: number; pages: number };
   /** Newest first. */
   backups: Backup[];
+  /** Nothing but the clock has been saved since the newest backup, which is why no newer one was made. */
+  unchanged: boolean;
 }
 
 export interface ModuleCost {
