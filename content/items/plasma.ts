@@ -26,14 +26,14 @@ export const PLASMA: readonly Def[] = [
   {
     type: "item", class: "weapon", id: id("rifle_plasma"), label: "plasma rifle", stack: 1, weight: 10, color: 11,
     optic: { min: 2, max: 6, window: [0.96, 0.6] },
-    weapon: { kind: "gun", ammo: [id("plasma_cell")], power: 1, clip: 50, reload: 4, interval: 1 / 4, auto: true, uses: 1600, melee: BLOW, mesh: id("rifle_plasma"), hold: "rifle", spread: { hip: 2, aim: 0.15, move: 3, bloom: 0.3, recover: 3 }, recoil: { kick: 0.8, recover: 6 } },
+    weapon: { kind: "gun", ammo: [id("plasma_cell")], power: 1, clip: 50, reload: 4, interval: 1 / 4, auto: true, uses: 1600, melee: BLOW, mesh: id("rifle_plasma"), hold: "rifle", muzzle: [-0.00141, 0.05221, 0.64448], spread: { hip: 2, aim: 0.15, move: 3, bloom: 0.3, recover: 3 }, recoil: { kick: 0.8, recover: 6 } },
   },
   // ark.wiki.gg, Tek Phase Pistol, infobox, 2026-11-23: weight 2.5; 40 a shot; rateoffire 6.4; 55 engram points; made in
   // 10 s. ARK's is a beam with three modes and no magazine. Ours fires a bolt a press, 20 to a magazine, reloaded in 1.5 s,
   // for 1,000 shots.
   {
     type: "item", class: "weapon", id: id("pistol_plasma"), label: "plasma pistol", stack: 1, weight: 2.5, color: 11,
-    weapon: { kind: "gun", ammo: [id("plasma_charge")], power: 1, clip: 20, reload: 1.5, interval: 1 / 6.4, uses: 1000, melee: BLOW, mesh: id("pistol_plasma"), hold: "pistol", spread: { hip: 1.2, aim: 0.3, move: 2, bloom: 0.6, recover: 2.5 }, recoil: { kick: 1, recover: 8 } },
+    weapon: { kind: "gun", ammo: [id("plasma_charge")], power: 1, clip: 20, reload: 1.5, interval: 1 / 6.4, uses: 1000, melee: BLOW, mesh: id("pistol_plasma"), hold: "pistol", muzzle: [-0.00011, 0.060, 0.24667], spread: { hip: 1.2, aim: 0.3, move: 2, bloom: 0.6, recover: 2.5 }, recoil: { kick: 1, recover: 8 } },
   },
   // What they fire. A bolt's speed and reach are ours: fast enough to come when its harm does, and gone in 1.25 s and
   // 0.75 s, so that a fight keeps few in the air.

@@ -38,7 +38,7 @@ import { EMOTES, EMOTE_GROUP, emoteClipId, emoteOf } from "../../../shared/anim/
 import { AnimState, CUE_TORPOR, DIR_STEPS, HumanAnim, LAUNCHER_AT_MUZZLE, LAUNCHER_FETCHED, LAUNCHER_HOME, advanceHuman, humanPose, launcherReloadShare } from "../../../shared/anim/pose.ts";
 import { ROUND_HELD, ROUND_SLIDE } from "../../../shared/anim/launcher-pose.ts";
 import { wield } from "../../../shared/anim/wield.ts";
-import { HELD_ROUND } from "../../../shared/content/kinds/weapons.ts";
+import { HELD_MUZZLE, HELD_ROUND } from "../../../shared/content/kinds/weapons.ts";
 import { handsAt } from "../../../shared/anim/hold.ts";
 import { ACT_COOL, ACT_NONE, ACT_RELOAD, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
 import { MODE_FLYER, MODE_SWIM, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../../../shared/sim/character.ts";
@@ -288,13 +288,15 @@ interface Held {
   /** Its content index, the places on it that Registry.heldHas says it has, and the mesh of the round drawn in it (-1 for none). */
   item: number;
   has: number;
+  ammo: number;
   round: number;
 }
 
 /** Bodies whose held item's places are kept from frame to frame (Characters.heldPoint). */
 const HELD_NOTES = 64;
-/** Kept for each: where it stood, then its item's muzzle, vent and round, each x, y and z in the world. */
-const NOTE_FLOATS = 12;
+/** Kept for each: where it stood, its item's muzzle, vent and loaded round, then the forward direction of the held mesh. */
+const NOTE_AXIS = 12;
+const NOTE_FLOATS = NOTE_AXIS + 3;
 /** Metres a shooter may stand from where its shot is said to have left, level and upright, to be taken for its shooter. */
 const SHOOTER_NEAR = 1.6;
 const SHOOTER_TALL = 2.6;
@@ -491,11 +493,14 @@ export class Characters {
   /** The bodies posed holding an item with places on it: each one's id, the frame it was last posed in, and its floats. */
   private readonly noteId = new Int32Array(HELD_NOTES);
   private readonly noteFrame = new Int32Array(HELD_NOTES).fill(-9);
+  private readonly noteAmmo = new Uint16Array(HELD_NOTES);
   private readonly noteHas = new Uint8Array(HELD_NOTES);
   private readonly noteAt = new Float64Array(HELD_NOTES * NOTE_FLOATS);
   private notes = 0;
   /** The rounds loaded in the viewer's own gun, which whoever knows them sets; below 0 while they are not known. */
   ownRounds = -1;
+  /** The viewer’s body in either camera mode. */
+  ownBodyId = -1;
   /** The meshes of a glider's two wings, -1 for one not there, or null where no glider has any. */
   private wings: { right: number; left: number } | null;
   /** 1 for each content index that is a saddle. */
@@ -683,7 +688,7 @@ export class Characters {
       if (mesh < 0) return null;
       // Its loaded round is its first ammunition's, as that flies.
       const has = reg.heldHas[item]!, ammo = d?.type === "item" ? d.weapon?.ammo?.[0] : undefined;
-      return { mesh, bone: table.bone[mesh]!, item, has, round: (has & (1 << HELD_ROUND)) !== 0 && ammo ? bind.own(ammo, "shot") : -1 };
+      return { mesh, bone: table.bone[mesh]!, item, has, ammo: ammo ? reg.index.get(ammo) ?? 0 : 0, round: (has & (1 << HELD_ROUND)) !== 0 && ammo ? bind.own(ammo, "shot") : -1 };
     });
     // The wings of the first glider that has them, one for each hand.
     this.wings = null;
@@ -2247,8 +2252,11 @@ export class Characters {
       this.noteId[n] = id;
       this.noteFrame[n] = this.frame;
       this.noteHas[n] = h.has;
+      this.noteAmmo[n] = h.ammo;
       const at = this.noteAt, o = n * NOTE_FLOATS;
       at[o] = x + p.camX; at[o + 1] = y + p.camY; at[o + 2] = z + p.camZ;
+      // Held guns point along local +Z; the third column carries it through the same pose as the mesh.
+      at[o + NOTE_AXIS] = bones[m + 2]!; at[o + NOTE_AXIS + 1] = bones[m + 6]!; at[o + NOTE_AXIS + 2] = bones[m + 10]!;
       for (let k = 0; k < 3; k++) {
         // A vertex of the held mesh goes through its bone from where the bone rests, and so does a place on it.
         const q = k * 3, pt = reg.heldPoints[h.item] ?? NO_POINTS, vx = rest[r]! + pt[q]!, vy = rest[r + 1]! + pt[q + 1]!, vz = rest[r + 2]! + pt[q + 2]!;
@@ -2311,14 +2319,33 @@ export class Characters {
   }
 
   /** The same for whichever such body stood nearest under (x, y, z), a place its shot left from: its eye. */
-  heldNear(x: number, y: number, z: number, which: number, out: Float64Array | number[]): boolean {
+  heldNear(x: number, y: number, z: number, which: number, out: Float64Array | number[], ammo = 0): boolean {
+    const n = this.nearestGun(x, y, z, which, ammo);
+    return n >= 0 && this.noted(n, which, out);
+  }
+
+  /** World-space barrel tip and unit forward axis from the same hand transform as the visible plasma gun. */
+  plasmaBore(x: number, y: number, z: number, ammo: number, mine: boolean, muzzle: number[] | Float64Array, axis: number[] | Float64Array): boolean {
+    const n = this.nearestGun(x, y, z, HELD_MUZZLE, ammo, mine);
+    if (n < 0 || !this.noted(n, HELD_MUZZLE, muzzle)) return false;
+    const o = n * NOTE_FLOATS + NOTE_AXIS, at = this.noteAt;
+    const length = Math.hypot(at[o]!, at[o + 1]!, at[o + 2]!);
+    if (length < 1e-6) return false;
+    for (let i = 0; i < 3; i++) axis[i] = at[o + i]! / length;
+    return true;
+  }
+
+  private nearestGun(x: number, y: number, z: number, which: number, ammo: number, mine?: boolean): number {
     let best = -1, near = SHOOTER_NEAR * SHOOTER_NEAR;
     const at = this.noteAt;
     for (let k = 0; k < this.notes; k++) {
+      if (this.noteFrame[k]! < this.frame - 1 || (this.noteHas[k]! & (1 << which)) === 0) continue;
+      if (ammo && this.noteAmmo[k] !== ammo) continue;
+      if (mine !== undefined && (this.noteId[k] === this.ownBodyId) !== mine) continue;
       const o = k * NOTE_FLOATS, dx = at[o]! - x, dy = y - at[o + 1]!, dz = at[o + 2]! - z, d = dx * dx + dz * dz;
-      if (d < near && dy > -0.5 && dy < SHOOTER_TALL && this.noteFrame[k]! >= this.frame - 1) { near = d; best = k; }
+      if (d < near && dy > -0.5 && dy < SHOOTER_TALL) { near = d; best = k; }
     }
-    return best >= 0 && this.noted(best, which, out);
+    return best;
   }
 
   private noted(k: number, which: number, out: Float64Array | number[]): boolean {

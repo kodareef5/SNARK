@@ -1160,6 +1160,7 @@ export class Scene {
     const st = this.state;
     const own = this.own;
     this.drawing = remote;
+    ch.ownBodyId = own?.id ?? -1;
     if (!this.charactersPrepared) {
       ch.clock = this.shotTick;
       ch.begin(p, this.world);
