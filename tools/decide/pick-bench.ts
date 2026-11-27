@@ -19,7 +19,7 @@ function arg(name: string, dflt: number): number {
 
 const pct = (v: number[], q: number): number => [...v].sort((a, b) => a - b)[Math.min(v.length - 1, Math.floor(v.length * q))] ?? NaN;
 
-function bench(policy: string, movers: number, seconds: number, seed: number): string {
+function bench(policy: string, movers: number, seconds: number, seed: number, near: boolean): string {
   const w = lab(flatMap(4), seed), rng = new Rng(seed), reg = w.world.reg, wall = reg.index.get("core:wall_stone")!;
   // A U every 40 m, open to a side drawn from the seed.
   for (let cx = 30; cx < 230; cx += 40) for (let cz = 30; cz < 230; cz += 40) {
@@ -35,6 +35,8 @@ function bench(policy: string, movers: number, seconds: number, seed: number): s
     }
   }
   w.host.decide.set(policy);
+  // Every mover with a player close by, or every one in the background.
+  if (near) w.host.creatures.mind.close?.fill(1);
   const kinds = ["core:raptor", "core:parasaur", "core:dodo"], courses = w.host.courses, ents = w.world.ents;
   const objective = (e: number): Objective => ({
     choices: Array.from({ length: 3 }, () => {
@@ -70,12 +72,12 @@ function bench(policy: string, movers: number, seconds: number, seed: number): s
   const counts = d.report().points.map((p, i) => ({ name: p.name, answered: p.counts.answered - before[i]!.answered, cut: p.counts.cut - before[i]!.cut }));
   const ticks = seconds * TICK_RATE, f = (v: number) => v.toFixed(1);
   const of = (name: string) => counts.find((c) => c.name === name)!;
-  const line = `${policy || "today"}: ${all.length} movers; decider row median ${f(pct(decideUs, 0.5))} µs, 99th ${f(pct(decideUs, 0.99))}; courses row median ${f(pct(coursesUs, 0.5))} µs, 99th ${f(pct(coursesUs, 0.99))}, most ${f(Math.max(...coursesUs))}; nav.pick ${f(of("nav.pick").answered / ticks)} a tick (cut ${of("nav.pick").cut}), nav.reach ${f(of("nav.reach").answered / ticks)} a tick; legs given up ${courses.gaveUp}, objectives done ${courses.finished}`;
+  const line = `${policy || "today"}, ${near ? "a player near each" : "all in the background"}: ${all.length} movers; decider row median ${f(pct(decideUs, 0.5))} µs, 99th ${f(pct(decideUs, 0.99))}; courses row median ${f(pct(coursesUs, 0.5))} µs, 99th ${f(pct(coursesUs, 0.99))}, most ${f(Math.max(...coursesUs))}; nav.pick ${f(of("nav.pick").answered / ticks)} a tick (cut ${of("nav.pick").cut}), nav.reach ${f(of("nav.reach").answered / ticks)} a tick; legs given up ${courses.gaveUp}, objectives done ${courses.finished}`;
   w.host.shutdown();
   return line;
 }
 
 if (import.meta.main) {
   const movers = arg("--movers", 500), seconds = arg("--seconds", 60), seed = arg("--seed", 1);
-  for (const policy of ["", "nav.pick=rule,nav.reach=rule"]) console.log(bench(policy, movers, seconds, seed));
+  for (const near of [false, true]) for (const policy of ["", "nav.pick=rule,nav.reach=rule"]) console.log(bench(policy, movers, seconds, seed, near));
 }

@@ -17,9 +17,16 @@ const place = (x: number, z: number, priority = 1, radius = 1.5): Waypoint => ({
 /** A team the movers of these scenes are put in, so the pins of it are theirs. */
 const TEAM = 77;
 
-/** A raptor south of a U open to the north, with a choice inside the U near by line and another in the open further off. */
-function walled(policy: string): { w: Lab; e: number; o: Objective } {
+/** A world with a player close to every mover, so its picks are priced by a way. */
+function near(): Lab {
   const w = lab(flatMap(4), 1);
+  w.host.creatures.mind.close?.fill(1);
+  return w;
+}
+
+/** A raptor south of a U open to the north, with a choice inside the U near by line and another in the open further off. */
+function walled(policy: string, back = false): { w: Lab; e: number; o: Objective } {
+  const w = back ? lab(flatMap(4), 1) : near();
   wallX(w, 110, 146, 108);
   wallZ(w, 110, 108, 130);
   wallZ(w, 146, 108, 130);
@@ -38,15 +45,20 @@ function walk(w: Lab, e: number, o: Objective, seconds: number): [number, number
   return order;
 }
 
-test("a choice near by line and far by way is left for later under the rule", () => {
+test("a choice near by line and far by way is left for later, where a player is near", () => {
   const today = walled("");
   const plain = walk(today.w, today.e, today.o, 120);
   today.w.host.shutdown();
   const ruled = walled("nav.pick=rule");
   const rule = walk(ruled.w, ruled.e, ruled.o, 120);
   ruled.w.host.shutdown();
+  // With no player near, the pick is priced by sight and line alone, and goes as the plain pick does.
+  const far = walled("nav.pick=rule", true);
+  const unpriced = walk(far.w, far.e, far.o, 120);
+  far.w.host.shutdown();
   expect(plain.map(([i]) => i)).toEqual([0, 1]);
   expect(rule.map(([i]) => i)).toEqual([1, 0]);
+  expect(unpriced.map(([i]) => i)).toEqual([0, 1]);
   // Both finish; the rule is at its first choice sooner, and done no later.
   expect(rule[0]![1]).toBeLessThan(plain[0]![1]);
   expect(rule[1]![1]).toBeLessThanOrEqual(plain[1]![1]);
@@ -90,7 +102,7 @@ test("a pin that repels beside the nearer choice sends the rule to the other", (
 
 test("the rule takes a detour worth its seconds off the way, and not one behind a wall", () => {
   const go = (wall: boolean): number[] => {
-    const w = lab(flatMap(4), 1);
+    const w = near();
     // Off the way by 9 m: past the plain look aside's slack, an extra few seconds by the open way.
     if (wall) wallZ(w, 133, 100, 172);
     const e = w.host.spawnCreature("core:raptor", 128, 110, 1);

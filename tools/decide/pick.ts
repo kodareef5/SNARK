@@ -262,6 +262,8 @@ function build(s: PickScene): Built {
   const e = w.host.spawnCreature(s.kind, at.x, at.z, 1);
   if (e < 0) throw new Error(`no room for ${s.kind} in ${s.family} ${s.seed}`);
   w.world.ents.team[e] = TEAM;
+  // A player is close to every mover, as to a tame its tribe sends: its picks are priced by a way.
+  w.host.creatures.mind.close?.fill(1);
   w.world.ents.yaw[e] = w.host.creatures.mind.look[e] = s.start.yaw;
   const pins: Pin[] = [];
   for (const p of s.pins) {

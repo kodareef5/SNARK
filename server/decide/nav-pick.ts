@@ -5,10 +5,11 @@
 //
 // Each choice is priced by a way, not a line: a straight walk where the body can walk it, else a search of the point's
 // own, first back from the choice (a choice shut in is told in a few hundred cells) and then out from the mover. A cell
-// costs one to three microseconds, so the question is priced before it is put: a mover's searches run in Courses' row,
-// PICK_TICK_CELLS a tick for every mover in turn, and the question is put once they are done. A choice that one already
-// priced beats whatever its way (a lower priority, or a line longer than that one's way) is not searched, and one whose
-// search ran out is priced by its line and says so.
+// costs one to three microseconds, so the question is priced before it is put: for a mover a player is close to, its
+// searches run in Courses' row, PICK_TICK_CELLS a tick for every such mover in turn, and the question is put once they
+// are done; a mover in the background is asked at once, its trips priced by sight and line alone. A choice that one
+// already priced beats whatever its way (a lower priority, or a line longer than that one's way) is not searched, and one
+// whose search ran out is priced by its line and says so.
 
 import { TICK_RATE } from "../../shared/coords.ts";
 import { answer as choose } from "../../shared/decide/forward.ts";
@@ -27,12 +28,17 @@ import { COST_RING, type Decide, type Point } from "./decide.ts";
 
 /** Choices one answer weighs at the most; an objective with more weighs the first of those still open. */
 export const PICK_MOST = 16;
-/** Cells the pricing of every mover may expand in one tick, one search out from a mover, and one back from a choice. */
+/**
+ * Cells the pricing of every mover may expand in one tick, one search out from a mover, and one back from a choice. A
+ * search's start is counted as SEARCH_START cells and a straight walk tried as one cell for each SIGHT_METRES of it.
+ */
 export const PICK_TICK_CELLS = 150;
 export const PICK_SEARCH = 2500;
 export const PICK_BACK = 400;
 /** Movers waiting to be priced at the most; one past it is asked with its trips priced by sight and line alone. */
 export const PICK_QUEUE = 256;
+const SEARCH_START = 10;
+const SIGHT_METRES = 5;
 /** Ticks a mover's prices are good for. */
 const PRICED_TICKS = TICK_RATE;
 /** Added to a candidate's score whatever the scorer says: for each step of priority, and for its pull. */
@@ -118,6 +124,8 @@ export class Pick implements Picker {
   cells = 0;
   priced = 0;
   overflow = 0;
+  /** Movers in the background asked at once, unsearched. */
+  unsearched = 0;
   private readonly world: ServerWorld;
   private readonly mind: Behavior;
   private readonly courses: Courses;
@@ -145,6 +153,8 @@ export class Pick implements Picker {
   private tx1 = 0;
   private tz1 = 0;
   private trip: Way = way();
+  /** Cells' worth of work done this step besides the cells searched: starts and straight walks. */
+  private charge = 0;
 
   constructor(world: ServerWorld, mind: Behavior, courses: Courses, pinsOf: PinsOf, decide: Decide, lane: Lane | null = null) {
     this.world = world;
@@ -184,9 +194,11 @@ export class Pick implements Picker {
       this.queueGen.splice(i, 1);
       break;
     }
-    if (this.queue.length >= PICK_QUEUE) {
-      this.overflow++;
-      this.decide.put(this.id, e, 0, this.mind.back(e));
+    const back = this.mind.back(e);
+    if (back || this.queue.length >= PICK_QUEUE) {
+      if (back) this.unsearched++;
+      else this.overflow++;
+      this.decide.put(this.id, e, 0, back);
       return;
     }
     this.queue.push(e);
@@ -210,16 +222,21 @@ export class Pick implements Picker {
       if (job === null) break;
       if (this.phase !== 0) {
         if (this.lane !== null && left < PICK_TICK_CELLS && !this.lane.may()) break;
-        left -= this.advance(left);
+        left -= this.advance(left) + this.charge;
+        this.charge = 0;
         if (this.phase !== 0) break;
         this.settle(job, job.next - 1);
         continue;
       }
-      if (!this.begin(job)) {
+      const more = this.begin(job);
+      left -= this.charge;
+      this.charge = 0;
+      if (!more) {
         this.finish(job);
         this.job = null;
       }
     }
+    this.charge = 0;
   }
 
   /** The next mover waiting that still has an objective, set up for pricing; null for none. */
@@ -360,7 +377,9 @@ export class Pick implements Picker {
     out.byWay = true;
     out.seconds = line / p.pace;
     out.danger = dangerLine(p.pins, x0, z0, x1, z1);
-    if (line <= r || this.sighter.sight(x0, z0, x1, z1)) return false;
+    if (line <= r) return false;
+    this.charge += 1 + line / SIGHT_METRES;
+    if (this.sighter.sight(x0, z0, x1, z1)) return false;
     if (!search) {
       out.byWay = false;
       return false;
@@ -374,6 +393,7 @@ export class Pick implements Picker {
     this.trip = out;
     f.budget = PICK_BACK;
     this.searches++;
+    this.charge += SEARCH_START;
     if (!f.begin(x1, z1, x0, z0)) {
       out.none = true;
       return false;
@@ -395,6 +415,7 @@ export class Pick implements Picker {
       // Nothing shuts the end in that close: out from the mover, with the full budget.
       f.budget = PICK_SEARCH;
       this.searches++;
+      this.charge += SEARCH_START;
       if (f.begin(this.tx0, this.tz0, this.tx1, this.tz1)) {
         this.phase = 2;
         return spent;
