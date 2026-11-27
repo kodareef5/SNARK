@@ -6,9 +6,10 @@
 // would, the mover climbs, and only the hunt's own limits (its time and its leash) end a hunt.
 
 import { TICK_RATE } from "../../shared/coords.ts";
-import { addPass, stick } from "../../shared/decide/combine.ts";
+import { combine, type Pass } from "../../shared/decide/combine.ts";
 import { answer as choose } from "../../shared/decide/forward.ts";
 import { MODES, RING_FAR, RING_MID, RING_NEAR, SNAG, SURE, SURE_SECONDS } from "../../shared/decide/profiles.ts";
+import type { Profile } from "../../shared/decide/profile.ts";
 import { Table, tableFor } from "../../shared/decide/table.ts";
 import { soon, unit } from "../../shared/decide/units.ts";
 import { F_AWAKE } from "../../shared/sim/entities.ts";
@@ -107,6 +108,8 @@ export class Nav implements Ladder, Held {
   private readonly mid = tableFor(RING_MID, 16);
   private readonly near = tableFor(RING_NEAR, 16);
   private readonly all = new Table(16, 0, 1);
+  /** The three passes as they are added into `all`, each with what its scores counted for. */
+  private readonly passes: readonly (Pass & { readonly profile: Profile })[];
   private readonly sure = tableFor(SURE, 1);
   /** Of the answer just given: the headings `nav.sure` passed over, a bit each, and how sure it was of the pick. */
   private rejected = 0;
@@ -164,21 +167,41 @@ export class Nav implements Ladder, Held {
     this.stuckAt = new Int32Array(n);
     this.tryYaw = new Uint16Array(n);
     this.waysOf = new Float32Array(n);
+    this.passes = [{ profile: RING_FAR, table: this.far, weight: 0 }, { profile: RING_MID, table: this.mid, weight: 0 }, { profile: RING_NEAR, table: this.near, weight: 0 }];
     const nav = this;
     this.snagPoint = {
       name: "nav.snag", cost: COST_YES, horizon: 0, tables: [{ profile: SNAG, table: this.snagTable }],
       still: (e) => nav.moving(e) && mind.wants(e) !== 0,
       answer: (e, _tick, _rung, ask) => nav.askSnag(e, ask),
       apply: (e, tick) => nav.snagged(e, tick),
+      release: () => nav.release(1),
     };
     this.ringPoint = {
       name: "nav.ring", cost: COST_RING, horizon: SURE_SECONDS * TICK_RATE,
-      tables: [{ profile: RING_FAR, table: this.far }, { profile: RING_MID, table: this.mid }, { profile: RING_NEAR, table: this.near }, { profile: SURE, table: this.sure }],
+      tables: [...this.passes, { profile: SURE, table: this.sure }],
+      final: this.all,
       still: (e) => nav.moving(e),
       answer: (e, tick, rung, ask) => nav.askRing(e, tick, rung, ask),
       apply: (e, tick, rung, pick) => nav.go(e, tick, rung, pick),
       outcome: (e, tick, out) => nav.freed(e, tick, out),
+      release: () => nav.release(3),
     };
+  }
+
+  /**
+   * Lets go of every mover on rung `most` or lower: off the ladder, its held heading, trail, marks and any action under way
+   * gone, and any search given the patient rung's budget cut back, so it is on today's code at once.
+   */
+  release(most: number): void {
+    const pool = this.pool;
+    for (let s = 0; s < pool.size; s++) {
+      const e = pool.ent[s]!;
+      if (e < 0 || this.rungs[s]! > most) continue;
+      this.actions?.clear(s);
+      this.owner[s] = -1;
+      pool.drop(e);
+      this.mind.letGo(e);
+    }
   }
 
   held(e: number, tick: number): number {
@@ -258,7 +281,10 @@ export class Nav implements Ladder, Held {
 
   drop(e: number): void {
     const s = this.slot(e);
-    if (s >= 0) this.owner[s] = -1;
+    if (s >= 0) {
+      this.owner[s] = -1;
+      this.actions?.clear(s);
+    }
     this.pool.drop(e);
     this.mind.rung[e] = 0;
   }
@@ -409,17 +435,15 @@ export class Nav implements Ladder, Held {
       far.rows[i * FAR_W + fc.held] = mid.rows[i * MID_W + mc.held] = near.rows[i * NEAR_W + nc.held] = h;
       far.rows[i * FAR_W + fc.tried] = mid.rows[i * MID_W + mc.tried] = near.rows[i * NEAR_W + nc.tried] = tried;
     }
-    const all = this.all;
-    all.clear(k);
-    addPass(all, far, MIX_FAR / ask(RING_FAR, far));
-    addPass(all, mid, MIX_MID / ask(RING_MID, mid));
-    addPass(all, near, MIX_NEAR / ask(RING_NEAR, near));
-    stick(all, held, STICK);
+    const all = this.all, [pf, pm, pn] = this.passes;
+    pf!.weight = MIX_FAR / ask(RING_FAR, far);
+    pm!.weight = MIX_MID / ask(RING_MID, mid);
+    pn!.weight = MIX_NEAR / ask(RING_NEAR, near);
     // Where it would go if nothing stood in the way: what it may act on, if it is stuck.
     let wants = 0;
     for (let i = 1; i < k; i++) if (far.score[i]! > far.score[wants]!) wants = i;
     this.wantPick = wants;
-    let pick = choose("choice", all, 1);
+    let pick = combine(all, this.passes, held, STICK);
     this.rejected = 0;
     this.picked = -1;
     this.lastWays = 1;

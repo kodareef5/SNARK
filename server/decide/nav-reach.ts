@@ -69,6 +69,7 @@ export class Reach {
       answer: (e, tick, _rung, ask) => reach.ask(e, tick, ask),
       apply: (e) => reach.keep(e),
       outcome: (e, tick, out) => reach.arrived(e, tick, out),
+      release: () => reach.value.fill(-1),
     };
   }
 

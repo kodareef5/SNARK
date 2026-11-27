@@ -198,7 +198,14 @@ export class Actions {
       still: (e) => held.rungOf(e) >= 2 && held.trying(e) >= 0,
       answer: (e, tick, rung, ask) => me.ask(e, tick, rung, ask),
       apply: (e, tick, _rung, pick) => me.take(e, tick, pick),
+      release: () => me.release(),
     };
+  }
+
+  /** No longer acted on: nothing is under way for anyone. */
+  release(): void {
+    this.doing.fill(-1);
+    this.prefer.fill(-1);
   }
 
   /** A new mover took slot `s`: nothing is under way. */

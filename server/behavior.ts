@@ -936,6 +936,12 @@ export class Behavior {
     return true;
   }
 
+  /** The ladder let `e` go: it is calm, and a search under way for it is cut back to the budget of any other. */
+  letGo(e: number): void {
+    this.rung[e] = 0;
+    if (this.searching === e && this.finder.budget > SEARCH_CELLS) this.finder.budget = SEARCH_CELLS;
+  }
+
   /** `e` is on the patient rung: it asks at once for a way, which is searched further (LONG_SEARCH). */
   patient(e: number, tick: number): void {
     if (this.way[e] === WAY_ON) return;
