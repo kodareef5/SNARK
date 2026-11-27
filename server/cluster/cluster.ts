@@ -81,8 +81,12 @@ interface Away {
   id: string;
   pid: number;
   to: number;
-  /** Its file was taken: there is nothing more to wait for here. */
+  /** There is nothing more to wait for here: its file was taken, or cannot be had. */
   settled: boolean;
+  /** When its ticket ends, wall clock milliseconds: 0 until its file has been read for it, -1 for never. */
+  expires: number;
+  /** Nobody took it and it is settled all the same: its file is not in the folder, or cannot be read. */
+  lost?: "gone" | "damaged";
 }
 
 export class Cluster {
@@ -193,7 +197,7 @@ export class Cluster {
     this.resumes = !fresh;
     this.recover();
     this.rebuildAway();
-    this.expire(this.folder.places(), this.resumes);
+    this.expire(this.resumes);
     this.announce();
   }
 
@@ -207,7 +211,7 @@ export class Cluster {
         this.folder.writeNames(this.world, names);
         this.namesAt = names.size;
       }
-      this.expire(this.folder.places(), false);
+      this.expire(false);
       this.folder.sweep(this.now());
     } catch (err) {
       // A folder that cannot be written now is tried again; the log says so once a minute.
@@ -386,7 +390,7 @@ export class Cluster {
     }
     tribes.departed(rec);
     this.note(head, TRANSFER_OUT);
-    this.away.set(rec.name, { id, pid: rec.pid, to, settled: false });
+    this.away.set(rec.name, { id, pid: rec.pid, to, settled: false, expires: head.expires === 0 ? -1 : head.expires });
     persistence.afterCommit(() => ctx.game.sessions.travel(conn, ticket, to));
     ctx.say(`${rec.name} left for ${dest.name} by transfer ${id}`);
     return "";
@@ -498,21 +502,39 @@ export class Cluster {
     return true;
   }
 
-  /** Takes back what left from here and is past its ticket. `places` is the folder as it was just read. */
-  private expire(places: readonly ParcelPlace[], loading: boolean): void {
-    if (this.away.size === 0) return;
+  /**
+   * Takes back what left from here and is past its ticket. Each unsettled ticket's own sealed file is looked for by its
+   * name, and read once for when the ticket ends. The folder is listed only when one of those files has gone, to learn who
+   * took it, so a world with nothing owed lists nothing.
+   */
+  private expire(loading: boolean): void {
     const now = this.now();
-    const where = new Map(places.map((p) => [p.id, p]));
+    let where: Map<string, ParcelPlace> | null = null;
     for (const [name, a] of this.away) {
       if (a.settled) continue;
-      const place = where.get(a.id);
-      if (!place) continue;
-      if (place.by !== 0) {
+      const sealed = this.folder.sealed(a.id, this.world);
+      if (!sealed) {
+        where ??= new Map(this.folder.places().map((p) => [p.id, p]));
+        const place = where.get(a.id);
+        // Sealed again between the two looks: the next look finds it.
+        if (place?.by === 0) continue;
         a.settled = true;
+        if (!place) {
+          a.lost = "gone";
+          this.ctx!.say(`${name} left for ${this.serverName(a.to)} by transfer ${a.id}, and the cluster's folder has no file of it: ask an operator`);
+        }
         continue;
       }
-      const parcel = this.read(place);
-      if (!parcel || parcel.head.expires === 0 || now < parcel.head.expires) continue;
+      if (a.expires < 0 || (a.expires > 0 && now < a.expires)) continue;
+      const parcel = this.read(sealed);
+      if (!parcel) {
+        // What is wrong with it has been said. It is not read again every few seconds.
+        a.settled = true;
+        a.lost = "damaged";
+        continue;
+      }
+      a.expires = parcel.head.expires === 0 ? -1 : parcel.head.expires;
+      if (a.expires < 0 || now < a.expires) continue;
       if (this.takeBack(parcel, loading)) this.ctx!.say(`${name}'s ticket to ${this.serverName(a.to)} ran out unused, so ${name} is back here`);
     }
   }
@@ -689,6 +711,6 @@ export class Cluster {
       const was = last.get(t.pid);
       if (!was || t.hop > was.hop || (t.hop === was.hop && t.dir > was.dir)) last.set(t.pid, t);
     }
-    for (const t of last.values()) if (t.dir === TRANSFER_OUT && !records.byPid.has(t.pid)) this.away.set(t.name, { id: t.id, pid: t.pid, to: t.peer, settled: false });
+    for (const t of last.values()) if (t.dir === TRANSFER_OUT && !records.byPid.has(t.pid)) this.away.set(t.name, { id: t.id, pid: t.pid, to: t.peer, settled: false, expires: 0 });
   }
 }

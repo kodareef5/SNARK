@@ -94,8 +94,10 @@ test("another program holding the file makes commits wait their turn, not the se
 });
 
 test("sessions are told after ten seconds without a save, and nobody new joins after a minute", () => {
-  const { h, ada, p } = world("told");
+  const { h, ada, rec, p, stone } = world("told");
   breakStore(p, "SQLITE_FULL");
+  // A turn with nothing to save writes nothing, so there is something to save.
+  h.host.items.mint(rec, stone, 1);
   const told = (): number => ada.log.filter((l) => l.text.includes("has not been able to save")).length;
   h.run(9000);
   expect(told()).toBe(0);
@@ -112,13 +114,14 @@ test("sessions are told after ten seconds without a save, and nobody new joins a
 });
 
 test("an error of our own in a commit is not swallowed", () => {
-  const { h, p } = world("bug");
+  const { h, rec, p, stone } = world("bug");
   breakStore(p, "");
+  h.host.items.mint(rec, stone, 1);
   expect(() => h.run(500)).toThrow("a bug of ours");
 });
 
 test("the decay clocks are written inside a commit, a minute apart at most, and always at shutdown", () => {
-  const { db, h, p } = world("decay");
+  const { db, h, rec, p, stone } = world("decay");
   h.run(61000);
   const decay = h.host.build.decay;
   decay.dirty = true;
@@ -127,6 +130,8 @@ test("the decay clocks are written inside a commit, a minute apart at most, and 
   expect(decay.dirty).toBe(false);
   const at = p.commits;
   decay.dirty = true;
+  // Something else is saved meanwhile, and the clocks wait their minute.
+  h.host.items.mint(rec, stone, 1);
   h.run(5000);
   expect(p.commits).toBeGreaterThan(at);
   expect(decay.dirty).toBe(true);
@@ -184,18 +189,20 @@ test("a save file that is broken is left, and the world is saved beside it", () 
 test("SQLite's longer codes for a file that is gone or broken bring the rescue too, and one for a busy file does not", () => {
   const { h, rec, stone } = world("gone");
   const p = h.host.persistence!;
-  h.host.items.mint(rec, stone, 9);
   const moved: string[] = [];
   // Bun reports the extended code. The first is macOS's for a save that was moved or deleted, the second SQLite's own.
   for (const code of ["SQLITE_IOERR_VNODE", "SQLITE_READONLY_DBMOVED", "SQLITE_CORRUPT_INDEX"]) {
     breakStore(p, code);
     p.onMoved = (path) => void moved.push(path);
+    // Each has something to save: a broken file is found by the write that fails.
+    h.host.items.mint(rec, stone, 2);
     h.run(500);
     expect([code, p.failing, p.store.path]).toEqual([code, null, moved.at(-1)!]);
   }
   expect(moved.length).toBe(3);
   const fault = breakStore(p, "SQLITE_BUSY_SNAPSHOT");
   p.onMoved = (path) => void moved.push(path);
+  h.host.items.mint(rec, stone, 3);
   h.run(500);
   expect([p.failing!.code, moved.length]).toEqual(["SQLITE_BUSY_SNAPSHOT", 3]);
   fault.mend();

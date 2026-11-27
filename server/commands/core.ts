@@ -238,7 +238,7 @@ export function addCoreCommands(con: Console): void {
         const p = ctx.host.persistence;
         if (!p) return "this world is not saved to disk";
         p.commit(true);
-        p.keeper.backup();
+        p.backup();
         return "a backup was started; the server's log says where it went";
       },
     },

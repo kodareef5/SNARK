@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 637 of them: 274 take effect,
+is listed here, 640 of them: 277 take effect,
 173 wait for a feature that is not built yet, and 190 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -143,6 +143,8 @@ the admin's settings page may change a setting without a restart.
 | `SurvivorLogMegabytes` | 1024 | The most disk the survivor log may take, in megabytes: where each survivor in the world was, what it held and when it played, kept in a folder beside the save for admins to look back over, the oldest dropped first. At the other two settings' defaults a gigabyte holds about 9 days of 200 survivors, 5 weeks of 50 and half a year of 10. 0 keeps none. Lowered while the server runs, the oldest goes at once; set to 0, the log stops and what it holds stays. *Ours. ARK has no such log. A server with no save keeps none.* | yes |
 | `SurvivorLogPositionSeconds` | 1 | Seconds between two notes of where each survivor is, and what it rides or sits in. *Ours. ARK has no key.* | yes |
 | `SurvivorLogInventorySeconds` | 5 | Seconds the survivor log waits once a survivor's inventory changes before it notes what it holds, so a burst of changes is one entry. *Ours. ARK has no key.* | yes |
+| `BackupKeepDays` | 180 | Days of backups kept. The newest dozen backups and the newest of each of the last 48 hours are always kept; beyond those, the newest backup of each day is kept for this many days on which one was made, so days a world is switched off or unchanged do not use them up. 0 keeps no daily ones. *Ours. ARK has no key. It takes hold at the next backup, and no backup removes more than 24 old ones.* | yes |
+| `BackupMaxGigabytes` | 100 | The most disk one world's backups may take, in gigabytes. Over it the hourly ones go first, oldest first, then the oldest days, then the newest; the one just made stays. 0 is no limit. *Ours. ARK has no key. Each world of a cluster has its own. A disk with no room left gives up old backups before this is reached.* | yes |
 | `CreativeForAll` | True | While bShowCreativeMode is on, every survivor who joins has the admin role without the password, as enablecheats gives it, and so has cheats from the moment it is in the world. A server open to strangers sets this False, or bShowCreativeMode False. Switched on while the server runs, those already in get it too; switched off, those with no other reason for it lose it at once, with whatever a cheat left running. *Ours. ARK has no key; off is its behaviour, and was ours until D956 made it on unless set. It gives the role in the game only: the admin pages still ask for the password. Each grant is told to modules as session.admin, and who shows it.* | yes |
 | `HeadMultipliers` | True | Where a hit lands matters: a head counts for more. Off, every part counts once. *Ours. ARK has no key; this is its behaviour.* | yes |
 | `SelfDamageMultiplier` | 1 | What a survivor's own blast does to them. *Ours. ARK has no key; 1 is its behaviour.* | yes |
@@ -160,6 +162,7 @@ the admin's settings page may change a setting without a restart.
 | `CastModelKey` | none | The OpenRouter key Cast's planner uses; empty takes OPENROUTER_API_KEY from the environment. *Ours.* | yes |
 | `CastCallsPerHour` | 90 | Calls Cast's planner may make an hour at most. *Ours. About $0.0006 a call with Claude Haiku 5.5.* | yes |
 | `CastHourlyBatch` | 50 | Featured people the planner's hourly pass looks in on. *Ours.* | yes |
+| `CastLogMegabytes` | 256 | The most disk the log of Cast's decisions may take, in megabytes: a line for each answer its planner gave, in a folder beside the save, a file a day, the oldest day dropped first. 0 keeps none. *Ours. The lines are written every few seconds off the tick, and a disk that cannot keep up loses lines, not ticks.* | yes |
 | `WorldLootEnabled` | True | Loot lies in the world besides supply drops: in creatures' bodies, by the drop book's sources. Off, nothing of it is rolled. *Ours (planning/workstreams/loot.md).* | yes |
 | `BodyLootEnabled` | True | A wild creature's body holds loot, more for a bigger creature of a higher level. Off, a body holds only what the creature carried. *Ours.* | yes |
 | `VehicleLootEnabled` | True | A found car or boat holds loot, rolled when its hold is first opened, and dead wrecks and hulls are searched. Off, a found vehicle is empty and a wreck is only salvage. *Ours.* | yes |

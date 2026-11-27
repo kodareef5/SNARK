@@ -261,6 +261,8 @@ test("a played script raises every wired event of the server, its sessions, chat
   store.transaction = () => {
     throw Object.assign(new Error("database or disk is full"), { code: "SQLITE_FULL" });
   };
+  // A turn with nothing to save writes nothing, so there is something to save.
+  h.host.records.dirty.add(adaPid);
   h.run(1000);
   expect(last("server.saveFailed")).toMatchObject({ code: "SQLITE_FULL" });
   store.transaction = real;

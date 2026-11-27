@@ -109,8 +109,12 @@ export class VehicleSaver {
   private readonly saving = new Uint8Array(BASE_BYTES + ROTOR_FIELDS.length * 4 + 1);
   private readonly view = new DataView(this.saving.buffer);
 
-  /** Writes `b` as the vehicle component of `rec`. True if that changed what the record holds. */
-  write(rec: EntityRecord, b: Body, movement: VehicleDefinition["movement"]): boolean {
+  /**
+   * Writes `b` as the vehicle component of `rec`. True if that changed what the record holds. With a `hair`, a record
+   * whose every number is within it of the body's, and whose switches are the body's, is left as it is: a vehicle at
+   * rest shifts by less at each heartbeat, and that is not worth a save.
+   */
+  write(rec: EntityRecord, b: Body, movement: VehicleDefinition["movement"], hair = 0): boolean {
     const { version, extra } = formOf(movement);
     const bytes = this.saving.subarray(0, BASE_BYTES + extra.length * 4 + 1), view = this.view;
     bytes[0] = version;
@@ -122,7 +126,17 @@ export class VehicleSaver {
     }
     const old = rec.extra.get(VEHICLE_COMPONENT);
     if (old?.length === bytes.length && bytes.every((v, i) => old[i] === v)) return false;
+    if (hair > 0 && old?.length === bytes.length && this.near(old, bytes, extra.length, hair)) return false;
     rec.extra.set(VEHICLE_COMPONENT, bytes.slice());
+    return true;
+  }
+
+  /** Whether two components of one form hold the same switches and numbers no more than `hair` apart. */
+  private near(old: Uint8Array, bytes: Uint8Array, extras: number, hair: number): boolean {
+    if (old[0] !== bytes[0] || old[BASE_BYTES - 1] !== bytes[BASE_BYTES - 1] || old[old.length - 1] !== bytes[bytes.length - 1]) return false;
+    const was = new DataView(old.buffer, old.byteOffset, old.byteLength), view = this.view;
+    for (let i = 0; i < VEHICLE_FIELDS.length; i++) if (!(Math.abs(was.getFloat32(1 + i * 4, true) - view.getFloat32(1 + i * 4, true)) <= hair)) return false;
+    for (let i = 0; i < extras; i++) if (!(Math.abs(was.getFloat32(BASE_BYTES + i * 4, true) - view.getFloat32(BASE_BYTES + i * 4, true)) <= hair)) return false;
     return true;
   }
 }

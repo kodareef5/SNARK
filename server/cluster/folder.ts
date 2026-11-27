@@ -169,6 +169,12 @@ export class ClusterFolder {
     return out;
   }
 
+  /** Transfer `id` as it lies sealed from world `from`, found by its name with no listing. Null once it is taken, or if it never lay there. */
+  sealed(id: string, from: number): ParcelPlace | null {
+    const file = `${id}-${from}.sealed`;
+    return existsSync(join(this.parcels, file)) ? { id, from, by: 0, key: "", file } : null;
+  }
+
   /** Where transfer `id` is, or null if no file of it is in the folder. */
   place(id: string): ParcelPlace | null {
     return this.places().find((p) => p.id === id) ?? null;
