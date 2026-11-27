@@ -31,4 +31,6 @@ https://github.com/user-attachments/assets/582fb3e4-0e42-49d7-86a2-3eadeb4f3789
 
 [![A mounted Pteranodon crosses Biscayne Bay at sunset beside a map of SNARK’s 266.3 km² Miami, with four smaller areas drawn at the same scale](docs/media/map-size.webp)](docs/media/map-size.webp)
 
+[![A Meridian rider crosses Flagler Street on a saddled Rex between downtown Miami towers, with the landscape phone controls visible](docs/media/rex-on-flagler.webp)](docs/media/rex-on-flagler.webp)
+
 [![Two survivors in Meridian armor flee a Rex beneath the blue rings of the Tide Eye on Virginia Key](docs/media/tide-chase.webp)](docs/media/tide-chase.webp)
