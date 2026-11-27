@@ -26,6 +26,7 @@ import { Beds, type Place } from "./beds.ts";
 import { CastHost } from "./cast/host.ts";
 import { Decide } from "./decide/decide.ts";
 import { LineLog } from "./decide/log.ts";
+import { addNav } from "./decide/nav.ts";
 import type { CastSettings } from "../shared/cast/state.ts";
 import { Taming } from "./taming.ts";
 import { Riding } from "./riding.ts";
@@ -1952,6 +1953,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     log: opts.dbPath ? new LineLog(join(dirname(resolve(opts.dbPath)), "decide"), `decide-w${records.worldId}`) : null,
   });
   decide.sinks.push(castHost.log.lines);
+  // The stuck ladder's points (server/decide/nav.ts): movers that are snagged or stuck get out.
+  creatures.mind.decide = decide;
+  addNav(decide, world, creatures.mind, game.players.blocking);
   // A car door held open strikes whoever stands where it swings (server/urban.ts doorStrikes): a blow by the car's
   // driver, by its speed, told to everyone near as a car's (EVENT_IMPACT), and a creature it kills tumbles.
   // A survivor knocked off their feet (Knockdowns) goes limp as its ragdoll, thrown as the blow left it moving, and gets

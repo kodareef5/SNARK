@@ -84,6 +84,8 @@ export class Creatures {
   private cursor = -1;
   /** Players keeping each chunk awake. */
   private readonly chunkRefs: Uint16Array;
+  /** Players within a chunk of each chunk: its movers are up close to someone (server/decide). */
+  private readonly closeRefs: Uint16Array;
   readonly mind: Behavior;
   /** Called when a creature's bite strikes. The handler finds what it hit. */
   onStrike: ((e: number) => void) | null = null;
@@ -116,7 +118,9 @@ export class Creatures {
       this.wet = wider(this.wet, cap);
     });
     this.chunkRefs = new Uint16Array(chunkCount(world.dims));
+    this.closeRefs = new Uint16Array(chunkCount(world.dims));
     this.mind = new Behavior(world, game, seed + 7);
+    this.mind.close = this.closeRefs;
     this.blocking = game.players.blocking;
     this.lane = game.lane;
     this.mind.herd = this;
@@ -311,6 +315,16 @@ export class Creatures {
     // Add the new neighbourhood before removing the old, so shared chunks never dip to zero.
     if (to >= 0) this.adjust(to, 1, woke);
     if (from >= 0) this.adjust(from, -1);
+    if (to >= 0) this.closeBy(to, 1);
+    if (from >= 0) this.closeBy(from, -1);
+  }
+
+  /** The 3 by 3 chunks round a player's: its movers are close to that player. */
+  private closeBy(center: number, delta: number): void {
+    const dims = this.world.dims, cx = chunkCx(dims, center), cz = chunkCz(dims, center);
+    for (let z = Math.max(0, cz - 1); z <= Math.min(dims.chunksZ - 1, cz + 1); z++) {
+      for (let x = Math.max(0, cx - 1); x <= Math.min(dims.chunksX - 1, cx + 1); x++) this.closeRefs[z * dims.chunksX + x]! += delta;
+    }
   }
 
   /** `e` was set somewhere else. It wakes or sleeps as the chunk it is now in does. */
