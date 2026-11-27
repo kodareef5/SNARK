@@ -30,6 +30,8 @@ export const HOLD_CARRY = 7;
 /** How a rifle's hold is posed, by its item (Registry.holdPose): as a rifle, or a tube on the shoulder. Not in the body's act: every client knows what is held. */
 export const POSE_PLAIN = 0;
 export const POSE_LAUNCHER = 1;
+/** A gun with a muzzle on its model keeps the raised barrel steady as the hips move. */
+export const POSE_SIGHTED = 2;
 /** Added to a hold given to a pose: its swing is a pick's blow, not a chop (shared/anim/strikes.ts). */
 export const HOLD_PICK = 8;
 

@@ -3,7 +3,7 @@
 
 import { TICK_RATE } from "../../coords.ts";
 import { DAMAGE_TYPES } from "../../sim/damage.ts";
-import { HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_SPEAR, HOLD_THROW, HOLD_TOOL, POSE_LAUNCHER, POSE_PLAIN, SWING_TICKS, W_BOW, W_GUN, W_MELEE, W_THROWN, type WeaponParams } from "../../sim/weapon.ts";
+import { HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_SPEAR, HOLD_THROW, HOLD_TOOL, POSE_LAUNCHER, POSE_PLAIN, POSE_SIGHTED, SWING_TICKS, W_BOW, W_GUN, W_MELEE, W_THROWN, type WeaponParams } from "../../sim/weapon.ts";
 import type { Content } from "../defs.ts";
 import { f, f32, f64, list, paletteIndex, u16, u32, u8, type Checking, type Fields, type Kind } from "../kind.ts";
 import type { Registry } from "../registry.ts";
@@ -410,7 +410,7 @@ export const weapons: Kind<ItemDef, ReturnType<typeof columns>> = {
       reg.structureMul[i] = d.weapon.structures ?? 1;
       reg.weaponPellets[i] = d.weapon.pellets ?? 0;
       if (d.weapon.cloud) reg.cloudTicks[i] = Math.max(1, Math.round(d.weapon.cloud.seconds * TICK_RATE));
-      reg.holdPose[i] = d.weapon.pose === "launcher" ? POSE_LAUNCHER : POSE_PLAIN;
+      reg.holdPose[i] = d.weapon.pose === "launcher" ? POSE_LAUNCHER : d.weapon.muzzle ? POSE_SIGHTED : POSE_PLAIN;
       if (d.weapon.kick) {
         reg.kickAngle[i] = (d.weapon.kick.degrees * Math.PI) / 180;
         reg.kickTicks[i] = Math.max(1, Math.round(d.weapon.kick.seconds * TICK_RATE));

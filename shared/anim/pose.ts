@@ -3,7 +3,7 @@
 // may also give it a Gait, which puts the legs where the ground the body covered says (shared/anim/gait.ts).
 
 import { PI, TAU, clamp, detAtan2, detCos, detSin } from "../math/scalar.ts";
-import { quatAxis, quatIdentity, quatMul, quatMulConj, quatNlerp, quatRotate } from "../math/quat.ts";
+import { quatAxis, quatIdentity, quatMul, quatMulConj, quatNlerp, quatRotate, quatUnrotate } from "../math/quat.ts";
 import { Pose, blendPose, sampleClip, type Clip, type ClipSet } from "./clip.ts";
 import { FlightJoints, footStart, gaitClip, gaitShares, playGaits, tickPhase, type Gait, type GaitClip } from "./gait.ts";
 import { B_FINGERS_R, B_FINGERTIPS_L, B_FINGERTIPS_R, B_PROP_L, B_PROP_R, B_FOOT_R, B_UPPER_ARM_L, B_UPPER_ARM_R, B_LOWER_ARM_L, B_LOWER_ARM_R, B_CHEST, B_HAND_L, B_HAND_R, B_FINGERS_L, B_FOOT_L, B_HEAD, B_HIPS, B_LOWER_LEG_L, B_LOWER_LEG_R, B_NECK, B_SHOULDER_L, B_SHOULDER_R, B_SPINE, B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES } from "./human.ts";
@@ -11,7 +11,8 @@ import { Solved } from "./skeleton.ts";
 
 import { TICK_RATE } from "../coords.ts";
 import { bootThrust, GLIDE_DIVING, GLIDE_FLARED, GLIDE_TRIM, JET_DASH, JET_FIST, JET_UP, JET_HOVER, JET_LIFT, MODE_FLYER, MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../sim/character.ts";
-import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, EQUIP_TICKS, HOLD_BOW, HOLD_CARRY, HOLD_HANDS, HOLD_PICK, HOLD_PISTOL, HOLD_RIFLE, HOLD_THROW, HOLD_TOOL, POSE_LAUNCHER, POSE_PLAIN, SWING_TICKS } from "../sim/weapon.ts";
+import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, EQUIP_TICKS, HOLD_BOW, HOLD_CARRY, HOLD_HANDS, HOLD_PICK, HOLD_PISTOL, HOLD_RIFLE, HOLD_THROW, HOLD_TOOL, POSE_LAUNCHER, POSE_PLAIN, POSE_SIGHTED, SWING_TICKS } from "../sim/weapon.ts";
+import { toward } from "./ik.ts";
 import { cradle } from "./hold.ts";
 import { emotePose } from "./emote.ts";
 import { EMOTES, emoteClipId } from "./emotes.ts";
@@ -676,6 +677,24 @@ function blendHeld(from: Pose, to: Pose, t: number): void {
   }
 }
 
+const barrel = new Float64Array(3), sight = new Float64Array(3);
+
+/** Turns the upper chest and both grips together to put the barrel on the sight. */
+function sightBarrel(p: Pose, pitch: number, raised: number): void {
+  barrel[0] = 0; barrel[1] = 0; barrel[2] = 1;
+  for (let bone = B_PROP_R; bone !== B_CHEST; bone = HUMAN.parent[bone]!) {
+    quatRotate(p.rot, bone * 4, barrel[0]!, barrel[1]!, barrel[2]!, barrel, 0);
+  }
+  sight[0] = 0; sight[1] = detSin(pitch); sight[2] = detCos(pitch);
+  for (let bone = B_HIPS; bone <= B_CHEST; bone++) {
+    quatUnrotate(p.rot, bone * 4, sight[0]!, sight[1]!, sight[2]!, sight, 0);
+  }
+  toward(q, 0, barrel[0]!, barrel[1]!, barrel[2]!, sight[0]!, sight[1]!, sight[2]!);
+  const chest = B_UPPER_CHEST * 4;
+  quatMul(q, 0, q, 0, p.rot, chest);
+  quatNlerp(p.rot, chest, p.rot, chest, q, 0, raised);
+}
+
 /** How far through its reload a launcher is at `e` ticks into it, 0 to 1. */
 export function launcherReloadShare(st: AnimState, e: number): number {
   const ticks = st.reloadTicks > 0 ? st.reloadTicks : 1;
@@ -1025,6 +1044,7 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
     turn(out, B_SHOULDER_L, 1, 0, 0, -lift);
     turn(out, B_SHOULDER_R, 1, 0, 0, -lift);
   }
+  if (st.wields === POSE_SIGHTED && raised > 0 && act !== ACT_SWING) sightBarrel(out, pitch + kick, raised);
   if (shove !== 0) {
     // The right shoulder goes back with the tube and the back goes over a little.
     turn(out, B_UPPER_CHEST, 0, 1, 0, -shove * SHOVE_TURN);

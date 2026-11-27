@@ -2247,6 +2247,7 @@ export class Characters {
       if (old < 0 && this.noteFrame[k]! < this.frame - 1) old = k;
     }
     if (n < 0) n = old >= 0 ? old : this.notes < HELD_NOTES ? this.notes++ : -1;
+    if (n < 0 && id === this.ownBodyId) n = HELD_NOTES - 1;
     const m = (first + h.bone) * BONE_FLOATS, r = h.bone * 3;
     if (n >= 0) {
       this.noteId[n] = id;
@@ -2342,6 +2343,7 @@ export class Characters {
       if (this.noteFrame[k]! < this.frame - 1 || (this.noteHas[k]! & (1 << which)) === 0) continue;
       if (ammo && this.noteAmmo[k] !== ammo) continue;
       if (mine !== undefined && (this.noteId[k] === this.ownBodyId) !== mine) continue;
+      if (mine) return k;
       const o = k * NOTE_FLOATS, dx = at[o]! - x, dy = y - at[o + 1]!, dz = at[o + 2]! - z, d = dx * dx + dz * dz;
       if (d < near && dy > -0.5 && dy < SHOOTER_TALL) { near = d; best = k; }
     }
