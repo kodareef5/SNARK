@@ -254,7 +254,7 @@ function layerFieldsHtml(l: Layer | undefined): string {
     return field("text", "Text", l.text, `maxlength="${TEXT_MAX}" autocomplete="off"`, "wide") + `<label>Font<select data-lf="font">${fonts}</select></label>` + field("size", "Size", num(l.size), `type="range" min="0.03" max="0.6" step="0.005"`) + field("colour", "Colour", l.colour, `type="color"`) + `<label><span><input type="checkbox" data-lf="bold"${l.bold ? " checked" : ""}> Bold</span></label>` + at;
   }
   if (l.kind === "shape") return field("colour", "Colour", l.colour, `type="color"`) + field("w", "Width", num(l.w), `type="range" min="0.02" max="1.5" step="0.005"`) + field("h", "Height", num(l.h), `type="range" min="0.02" max="1.5" step="0.005"`) + at;
-  return field("w", "Width", num(l.w), `type="range" min="0.02" max="2" step="0.005"`) + at + `<p class="faint wide">${esc(l.name)}, held at ${l.width} × ${l.height}.</p>`;
+  return field("w", "Width", num(l.w), `type="range" min="0.02" max="2" step="0.005"`) + at + `<p class="faint wide">${esc(l.name)}, ${l.loading ? "loading" : `held at ${l.width} × ${l.height}`}.</p>`;
 }
 
 function placeFieldsHtml(d: Draft): string {
