@@ -897,6 +897,8 @@ export class Behavior {
    * wanders walks it; one with a goal deep in trouble also asks for a way.
    */
   hold(e: number, yaw: number, until: number, tick: number): void {
+    // Asked while on a way, it was stuck there: the way did not hold.
+    if (this.way[e] === WAY_ON) this.way[e] = WAY_STRAIGHT;
     this.look[e] = yaw;
     this.pinned[e] = 0;
     this.stuck[e] = 0;
@@ -2113,7 +2115,8 @@ export class Behavior {
       this.ask(e, tick, ASK_NOW);
       return;
     }
-    const follows = this.mind[e] !== MIND_HUNT && this.mind[e] !== MIND_FLEE;
+    // One already stuck does not follow a way that ends short: it leads back into the dead end.
+    const follows = this.mind[e] !== MIND_HUNT && this.mind[e] !== MIND_FLEE && this.rung[e]! < 2;
     if (f.count >= 2 && (status === PATH_FOUND || status === PATH_LEG || (status === PATH_SHORT && follows))) {
       r.growing = this.searchGrowing; r.radius = f.body.radius; r.top = f.body.height + f.body.stepUp;
       this.askAfter[e] = tick + ASK_TICKS;

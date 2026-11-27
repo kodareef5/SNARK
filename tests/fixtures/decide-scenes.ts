@@ -169,7 +169,58 @@ export function flight(seed = 1): Scene {
   return { w, movers: [e], ticks: 20 * TICK_RATE };
 }
 
-export const SCENES: Record<string, (seed?: number) => Scene> = { pen, pastWall, deadEnd, woodGoals, woodWander, hunt, flight };
+/**
+ * A raptor in a pen walled on three sides and open to the south, where water too deep for its search (but swum) fills the
+ * mouth and runs past the walls' ends. Its goal is behind the north wall: the only way out is through the water.
+ */
+export function wet(seed = 1): Scene {
+  const w = lab(pondMap(4, 96, 106, 160, 121, 1.2), seed);
+  wallX(w, 120, 136, 136);
+  wallZ(w, 120, 112, 136);
+  wallZ(w, 136, 112, 136);
+  const e = w.host.spawnCreature("core:raptor", 128, 128, 1);
+  const mind = w.host.creatures.mind;
+  mind.stay(e, w.world.tick + 300 * TICK_RATE);
+  w.world.ents.yaw[e] = mind.look[e] = 0;
+  const goal = { x: 128, z: 146 };
+  mind.goTo(e, goal.x, goal.z, GOAL_WALK);
+  return { w, movers: [e], ticks: 90 * TICK_RATE, goal };
+}
+
+/** A raptor sent north with a trike standing in its way, which walks off east after three seconds. */
+export function blocker(seed = 1): Scene {
+  const w = lab(flatMap(4), seed);
+  const mind = w.host.creatures.mind, ents = w.world.ents;
+  const e = w.host.spawnCreature("core:raptor", 128, 110, 1);
+  const trike = w.host.spawnCreature("core:trike", 128, 116, 1);
+  mind.stay(e, w.world.tick + 300 * TICK_RATE);
+  mind.stay(trike, w.world.tick + 300 * TICK_RATE);
+  ents.yaw[e] = mind.look[e] = 0;
+  ents.yaw[trike] = mind.look[trike] = QUARTER;
+  const goal = { x: 128, z: 132 };
+  mind.goTo(e, goal.x, goal.z, GOAL_WALK);
+  return { w, movers: [e, trike], ticks: 30 * TICK_RATE, goal, prey: trike };
+}
+
+/** Sends the trike of `blocker` off east: call it three seconds in. */
+export function blockerLeaves(s: Scene): void {
+  s.w.host.creatures.mind.goTo(s.prey!, 150, 116, GOAL_WALK);
+}
+
+/** A raptor just south of a wall's east end, its goal north-west behind the wall: it must round the corner. */
+export function corner(seed = 1): Scene {
+  const w = lab(flatMap(4), seed);
+  wallX(w, 100, 130, 120);
+  const e = w.host.spawnCreature("core:raptor", 127, 117, 1);
+  const mind = w.host.creatures.mind;
+  mind.stay(e, w.world.tick + 300 * TICK_RATE);
+  w.world.ents.yaw[e] = mind.look[e] = QUARTER;
+  const goal = { x: 118, z: 128 };
+  mind.goTo(e, goal.x, goal.z, GOAL_WALK);
+  return { w, movers: [e], ticks: 20 * TICK_RATE, goal };
+}
+
+export const SCENES: Record<string, (seed?: number) => Scene> = { pen, pastWall, deadEnd, woodGoals, woodWander, hunt, flight, wet, blocker, corner };
 
 /** Runs `s` for its ticks, calling `each` after every tick; returns the hash of the world every 30 ticks, the last at its end. */
 export function hashes(s: Scene, each?: (tick: number) => void): number[] {

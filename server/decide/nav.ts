@@ -78,6 +78,8 @@ export class Nav implements Ladder {
   private readonly lastX: Float32Array;
   private readonly lastZ: Float32Array;
   private readonly lastD: Float32Array;
+  /** The nearest it has been to its goal since it came on the ladder. */
+  private readonly best: Float32Array;
   private readonly lastAt: Int32Array;
   private readonly calmFrom: Int32Array;
   private readonly snagTable = tableFor(SNAG, 1);
@@ -116,6 +118,7 @@ export class Nav implements Ladder {
     this.lastX = new Float32Array(n);
     this.lastZ = new Float32Array(n);
     this.lastD = new Float32Array(n);
+    this.best = new Float32Array(n);
     this.lastAt = new Int32Array(n);
     this.calmFrom = new Int32Array(n);
     const nav = this;
@@ -155,6 +158,19 @@ export class Nav implements Ladder {
     this.rise(e, s, r < 2 ? 2 : r > 3 ? 3 : r, tick);
     this.decide.put(this.ring, e, this.rungOf[s]!, this.mind.back(e));
     return true;
+  }
+
+  /** Puts `e` on `rung` at once, as its own trouble would: the lab and tests start a scene there. */
+  enter(e: number, tick: number, rung: number): void {
+    let s = this.slot(e);
+    if (s < 0) s = this.take(e, tick);
+    this.rise(e, s, rung, tick);
+  }
+
+  /** The tick the far ring of `e` was last filled, or NEVER. */
+  farFilled(e: number): number {
+    const s = this.slot(e);
+    return s < 0 ? NEVER : this.rings.farAt[s]!;
   }
 
   drop(e: number): void {
@@ -210,7 +226,7 @@ export class Nav implements Ladder {
     const mode = mind.wants(e);
     this.lastX[s] = ents.x[e]!;
     this.lastZ[s] = ents.z[e]!;
-    this.lastD[s] = mode !== 0 ? Math.hypot(mind.want.x - ents.x[e]!, mind.want.z - ents.z[e]!) : 0;
+    this.lastD[s] = this.best[s] = mode !== 0 ? Math.hypot(mind.want.x - ents.x[e]!, mind.want.z - ents.z[e]!) : 0;
     this.lastAt[s] = this.calmFrom[s] = this.world.tick;
     this.rings.clear(s, ents.x[e]!, ents.z[e]!);
   };
@@ -363,13 +379,16 @@ export class Nav implements Ladder {
     const ents = this.world.ents, mind = this.mind;
     const mode = mind.wants(e), want = mind.want;
     const x = ents.x[e]!, z = ents.z[e]!;
-    this.rings.trace(s, x, z, tick);
+    // The trail is the way it came in: kept until it is stuck, and not while it casts about.
+    if (this.rungOf[s]! < 2) this.rings.trace(s, x, z, tick);
     const dt = tick - this.lastAt[s]!;
     if (dt >= NEAR_TICKS) {
       const d = mode !== 0 ? Math.hypot(want.x - x, want.z - z) : 0;
-      const gain = mode !== 0 ? this.lastD[s]! - d : Math.hypot(x - this.lastX[s]!, z - this.lastZ[s]!);
+      // Toward a goal, only ground never won before counts: walking back into the dead end it left is no progress.
+      const gain = mode !== 0 ? (d < this.best[s]! ? this.lastD[s]! - d : 0) : Math.hypot(x - this.lastX[s]!, z - this.lastZ[s]!);
       const pace = want.speed > want.walk * 0.5 ? want.speed : want.walk * 0.5;
       if (gain < (PROGRESS * pace * dt) / TICK_RATE || mind.pinned[e] !== 0 || mind.stuck[e]! >= STUCK_TICKS) this.calmFrom[s] = tick;
+      if (mode !== 0 && d < this.best[s]!) this.best[s] = d;
       this.lastX[s] = x;
       this.lastZ[s] = z;
       this.lastD[s] = d;
