@@ -36,6 +36,7 @@ import { Trims, borderBit, type TrimLayout } from "../trims.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "../rooms.ts";
 import type { RenderWorld } from "../scene.ts";
 import type { StreetReflections } from "../street-reflections.ts";
+import { shimmerSwell } from "../shimmer-glsl.ts";
 
 const NEAR = 1 << PASS_NEAR;
 const FAR = 1 << PASS_FAR;
@@ -492,7 +493,7 @@ export class NearStore implements Pass {
       const ref = shine.refs[k]!, t = store.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff, kind = t.kind[slot]!;
       const glow = this.put.glow;
       // Its strength, how far its sweep has come, and its foot and height for the band that climbs it (shimmer-glsl.ts).
-      glow[0] = Math.sin(Math.PI * shine.phase[k]!);
+      glow[0] = shimmerSwell(shine.phase[k]!);
       glow[1] = shine.phase[k]!;
       glow[2] = t.y[slot]! + store.low[kind]! - cam.y;
       glow[3] = Math.max(0.5, store.top[kind]! - store.low[kind]!);

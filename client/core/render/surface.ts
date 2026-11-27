@@ -1225,7 +1225,7 @@ ${hair ? `  radiance += fSunColor.rgb * (keyShade(shade).x * hairBand(n, v)) * (
   if (reflected >= 0.0) radiance = mix(radiance,mirror*open,min(1.0,2.0*reflected));
   // A working lamp's lens gives up its glow far off (glowAt), where its glow card shows it.
   float glow = uEmissive >= 0.0 ? uEmissive : -uEmissive * (1.0 - smoothstep(${f(LENS_FROM)}, ${f(LENS_TO)}, length(vRel)));
-  o = vec4(shown(radiance + through(albedo, mro, n, uSheet, shade) + albedo * glow + shimmer(n, v, vRel), vRel), cover);
+  o = vec4(shown(shimmer(radiance + through(albedo, mro, n, uSheet, shade) + albedo * glow, n, v, vRel, max(fSunColor.w, 1e-6)), vRel), cover);
 }`;
 }
 

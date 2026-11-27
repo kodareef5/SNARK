@@ -61,7 +61,7 @@ void main() {
 }`;
 
 /** The flat program's fragment for meshes, where a body may shimmer (shimmer-glsl.ts); the ground's and the skyline's are the plain one. */
-export const FLAT_BODY_FRAGMENT = FLAT_FRAGMENT.replace("out vec4 o;\nvoid main() {\n", `${SHIMMER_GLSL}out vec4 o;\nvoid main() {\n`).replace("vColor * light * shade,", "vColor * light * shade + shimmer(n, -normalize(vRel), vRel),");
+export const FLAT_BODY_FRAGMENT = FLAT_FRAGMENT.replace("out vec4 o;\nvoid main() {\n", `${SHIMMER_GLSL}out vec4 o;\nvoid main() {\n`).replace("vColor * light * shade,", "shimmer(vColor * light * shade, n, -normalize(vRel), vRel, 1.0),");
 
 /**
  * Palette geometry on textured tiers: world-projected finishes share SURFACE's lighting. Its vertex text gives the colour
