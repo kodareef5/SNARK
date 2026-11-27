@@ -121,6 +121,7 @@ export class CastHost {
     this.planner = new Planner(this.cast, this.gate, this.log, () => Date.now());
     this.planner.model = settings.model;
     this.planner.views = () => this.views();
+    this.planner.onChange = () => { this.saved.dirty = true; };
     // A blow on one of Cast's people is an attack it answers. Any blow, shot, blast or death that a survivor or one of
     // Cast's people is in is trouble to everyone near it (the creatures' own fights far from anyone are not).
     const nameOf = (pid: unknown) => (typeof pid === "number" && pid !== 0 ? ctx.records.byPid.get(pid)?.name || null : null);

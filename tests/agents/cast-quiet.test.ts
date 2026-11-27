@@ -41,3 +41,63 @@ test("Cast off is never saved; turned off, its last state is saved once its peop
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a queued scene and its retirement survive restarts while Cast is off", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cast-queue-"));
+  const start = () => new Harness({}, 2, 30, {
+    dbPath: join(dir, "world.db"), cast: { enabled: false, maxBodies: 0 },
+  });
+  let h = start();
+  try {
+    h.join("Ana");
+    h.run(6000);
+    expect(castAct(h.host, { op: "spawn", scene: "cast:meet_friend" })).toContain("no room");
+    const [story] = h.host.cast.cast.stories.values();
+    expect(story.phase).toBe("planned");
+    h.host.shutdown();
+    h = start();
+    expect(h.host.cast.cast.stories.get(story.id)?.phase).toBe("planned");
+    expect(castAct(h.host, { op: "retire", story: story.id })).toBe("");
+    h.host.shutdown();
+    h = start();
+    expect(h.host.cast.cast.stories.has(story.id)).toBe(false);
+  } finally {
+    h.host.shutdown();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a planner reply received after Cast stops survives a restart", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "cast-late-"));
+  const start = () => new Harness({}, 2, 30, { dbPath: join(dir, "world.db") });
+  let h = start();
+  try {
+    h.join("Ana");
+    h.host.setSetting("CastMaxBodies", "0");
+    h.host.setSetting("CastModel", "");
+    h.host.setSetting("CastEnabled", "true");
+    h.run(6000);
+    expect(castAct(h.host, { op: "spawn", scene: "cast:meet_friend" })).toContain("no room");
+    const ch = h.host.cast;
+    const id = [...ch.cast.stories.values()].find((s) => s.history.includes("asked for on the admin page"))!.id;
+    const reply = Promise.withResolvers<void>();
+    ch.gate.ask = async () => {
+      await reply.promise;
+      return { text: JSON.stringify({ stories: [{ id, choices: { mood: "awkward" } }] }), tokens: { in: 1, out: 1 }, cost: 0, ms: 1 };
+    };
+    const pending = ch.planner.minute(h.world.tick);
+    h.host.setSetting("CastEnabled", "false");
+    h.run(70_000);
+    expect([ch.cast.settings.enabled, ch.saved.dirty]).toEqual([false, false]);
+    reply.resolve();
+    await pending;
+    expect(ch.cast.stories.get(id)?.choices.mood).toBe("awkward");
+    h.run(65_000);
+    h.host.shutdown();
+    h = start();
+    expect(h.host.cast.cast.stories.get(id)?.choices.mood).toBe("awkward");
+  } finally {
+    h.host.shutdown();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
