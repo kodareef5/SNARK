@@ -96,7 +96,7 @@ test("a kind out of range, a dead survivor and a pin too many at once are refuse
   // PIN_BURST at once, then one more is too fast; one PIN_EVERY later, one more may come.
   const burst = answers(h, ada!, () => {
     for (let i = 0; i <= PIN_BURST; i++) pinAt(ada!, i, i, 0, true, "");
-  }, 100);
+  });
   expect(burst).toEqual([...Array(PIN_BURST).fill(RESULT_OK), RESULT_RATE]);
   expect(pins.of(team).length).toBe(PIN_BURST);
   h.run((PIN_EVERY / 30) * 1000);
