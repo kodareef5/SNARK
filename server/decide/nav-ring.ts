@@ -66,6 +66,9 @@ export class Rings {
   private readonly trailZ: Float32Array;
   private readonly trailAt: Int32Array;
   private readonly trailN: Uint8Array;
+  /** 1 once it has backed out to the oldest point of its trail, and the way behind it when it came on the ladder. */
+  private readonly spent: Uint8Array;
+  private readonly backYaw: Uint16Array;
   private readonly world: ServerWorld;
   private readonly mind: Behavior;
   private readonly blocking: BodyBlocking;
@@ -107,17 +110,21 @@ export class Rings {
     this.trailZ = new Float32Array(n * TRAIL);
     this.trailAt = new Int32Array(n).fill(NEVER);
     this.trailN = new Uint8Array(n);
+    this.spent = new Uint8Array(n);
+    this.backYaw = new Uint16Array(n);
     this.knee = new Float64Array(k);
     this.fan = new Fan(world);
   }
 
-  /** Empties slot `s` for a mover standing at (x, z). */
-  clear(s: number, x: number, z: number): void {
+  /** Empties slot `s` for a mover standing at (x, z) and facing `yaw`, in 65536ths of a turn, at `tick`. */
+  clear(s: number, x: number, z: number, yaw: number, tick: number): void {
     this.farAt[s] = this.midAt[s] = this.nearAt[s] = NEVER;
     this.close[s] = 0;
     this.trailN[s] = 0;
     this.trailAt[s] = NEVER;
-    this.trace(s, x, z, NEVER + 1);
+    this.spent[s] = 0;
+    this.backYaw[s] = (yaw + 32768) & 0xffff;
+    this.trace(s, x, z, tick);
   }
 
   /** Copies what slot `from` holds into slot `to`. */
@@ -181,15 +188,27 @@ export class Rings {
       pz = gz + ents.vz[want.prey]! * lead;
       pd = Math.hypot(px, pz);
     }
-    // Back the way it came: the oldest point of its trail far enough off.
+    // Back the way it came, to the oldest point of its trail. A newer point leads back into the trouble, so once there it
+    // keeps on the way it backed out: from where it was stuck, through that point. With no trail, behind it is the way.
     let tx = 0, tz = 0, td = 0;
-    if (this.deep >= 3) {
-      for (let i = this.trailN[s]! - 1; i >= 0 && td === 0; i--) {
-        tx = this.trailX[s * TRAIL + i]! - x;
-        tz = this.trailZ[s * TRAIL + i]! - z;
-        const d = Math.hypot(tx, tz);
-        if (d >= TRAIL_AWAY) td = d;
+    const n = this.trailN[s]!, at = s * TRAIL;
+    if (this.deep >= 3 && n >= 2) {
+      const ox = this.trailX[at + n - 1]!, oz = this.trailZ[at + n - 1]!;
+      tx = ox - x;
+      tz = oz - z;
+      td = Math.hypot(tx, tz);
+      if (this.spent[s] !== 0 || td < TRAIL_AWAY) {
+        this.spent[s] = 1;
+        tx = ox - this.trailX[at]!;
+        tz = oz - this.trailZ[at]!;
+        td = Math.hypot(tx, tz);
       }
+    }
+    if (this.deep >= 3 && td < 0.1) {
+      const a = (this.backYaw[s]! / 65536) * Math.PI * 2;
+      tx = Math.sin(a);
+      tz = Math.cos(a);
+      td = 1;
     }
     if (gd > 0) {
       gx /= gd;

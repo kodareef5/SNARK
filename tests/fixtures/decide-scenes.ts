@@ -138,6 +138,17 @@ export function woodWander(seed = 1, count = 12): Scene {
   return { w, movers, ticks: 60 * TICK_RATE };
 }
 
+/** Wanderers of two kinds loose in a thick wood as `woodWander`, each a survivor's tame told to wander. */
+export function ownedWander(seed = 1, count = 12): Scene {
+  const s = woodWander(seed, count), ents = s.w.world.ents, mind = s.w.host.creatures.mind;
+  for (const e of s.movers) {
+    ents.team[e] = 1;
+    s.w.host.creatures.claimed(e);
+    mind.wander(e);
+  }
+  return s;
+}
+
 /**
  * A raptor ordered on a dodo standing inside a pen of walls whose only gap is too narrow for the raptor: no way it finds
  * reaches the dodo, and the nearest it can get is round the pen's side.
@@ -220,7 +231,7 @@ export function corner(seed = 1): Scene {
   return { w, movers: [e], ticks: 20 * TICK_RATE, goal };
 }
 
-export const SCENES: Record<string, (seed?: number) => Scene> = { pen, pastWall, deadEnd, woodGoals, woodWander, hunt, flight, wet, blocker, corner };
+export const SCENES: Record<string, (seed?: number) => Scene> = { pen, pastWall, deadEnd, woodGoals, woodWander, ownedWander, hunt, flight, wet, blocker, corner };
 
 /** Runs `s` for its ticks, calling `each` after every tick; returns the hash of the world every 30 ticks, the last at its end. */
 export function hashes(s: Scene, each?: (tick: number) => void): number[] {

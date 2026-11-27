@@ -335,6 +335,8 @@ export interface Ladder {
   held(e: number, tick: number): number;
   /** Whether `e`'s next question of which way to go is due. */
   due(e: number, tick: number): boolean;
+  /** Whether `e` has meant to turn and has not, for a while: a long body caught in a corner. */
+  wedged(e: number, tick: number): boolean;
   /** `e` would be told there is no way, or would give its hunt up: true where the ladder takes it on instead. */
   climb(e: number, tick: number): boolean;
   /** `e` leaves the ladder: what it heads for changed. */
@@ -868,10 +870,15 @@ export class Behavior {
     if (ladder.due(e, tick)) this.decide?.put(this.ringPoint, e, this.rung[e]!, this.back(e));
     const yaw = ladder.held(e, tick);
     if (yaw < 0) return false;
+    const facing = this.world.ents.yaw[e]!;
     this.look[e] = yaw;
     // Facing well off it, it turns where it stands first: a long body pressed into a corner cannot swing round walking.
-    if (Math.abs(((this.world.ents.yaw[e]! - yaw + 32768) & 0xffff) - 32768) > TURN_FIRST) this.move[e] = 0;
-    else if (this.move[e] === 0 && this.mind[e] === MIND_WANDER) this.move[e] = 127;
+    // One that cannot turn at all backs out the way it faces.
+    if (Math.abs(((facing - yaw + 32768) & 0xffff) - 32768) > TURN_FIRST) {
+      const wedged = ladder.wedged(e, tick);
+      this.move[e] = wedged ? -127 : 0;
+      if (wedged) this.look[e] = facing;
+    } else if (this.move[e] === 0 && this.mind[e] === MIND_WANDER) this.move[e] = 127;
     return true;
   }
 
@@ -1265,7 +1272,10 @@ export class Behavior {
         if (prey >= 0) return this.hunt(e, prey, tick);
       }
       if (flyer) return this.wanders[e] !== 0 ? this.roam(e, tick, turn, heading) : this.attend(e, tick, turn, heading);
-      if (this.wanders[e] !== 0) return this.amble(e, tick);
+      if (this.wanders[e] !== 0) {
+        if (this.rung[e] !== 0 && this.holding(e, tick)) return;
+        return this.amble(e, tick);
+      }
       if (heading) this.go(e, tick, turn);
       return;
     }

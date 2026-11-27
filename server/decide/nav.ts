@@ -43,6 +43,9 @@ const PROGRESS = 0.35;
 /** Ticks a held heading runs before it is judged, and over which the mark of one that led nowhere fades. */
 const JUDGE_TICKS = 8;
 const TRIED_TICKS = 4 * TICK_RATE;
+/** A body that has turned no more than this (65536ths of a turn) in this many ticks, meaning to, is wedged and backs out. */
+const WEDGE_TURN = 1820;
+const WEDGE_TICKS = 12;
 /** Metres the goal may move before the far ring is filled again. */
 const GOAL_MOVED = 2;
 /** Seconds to the goal at which `goalSoon` is a half. */
@@ -82,6 +85,9 @@ export class Nav implements Ladder {
   private readonly best: Float32Array;
   private readonly lastAt: Int32Array;
   private readonly calmFrom: Int32Array;
+  /** The way it faced when it last turned, and since when. */
+  private readonly faceAt: Uint16Array;
+  private readonly faceSince: Int32Array;
   private readonly snagTable = tableFor(SNAG, 1);
   private readonly far = tableFor(RING_FAR, 16);
   private readonly mid = tableFor(RING_MID, 16);
@@ -119,6 +125,8 @@ export class Nav implements Ladder {
     this.best = new Float32Array(n);
     this.lastAt = new Int32Array(n);
     this.calmFrom = new Int32Array(n);
+    this.faceAt = new Uint16Array(n);
+    this.faceSince = new Int32Array(n);
     const nav = this;
     this.snagPoint = {
       name: "nav.snag", cost: COST_YES, horizon: 0, tables: [{ profile: SNAG, table: this.snagTable }],
@@ -139,6 +147,17 @@ export class Nav implements Ladder {
     const s = this.slot(e);
     if (s < 0 || this.holdK[s]! < 0 || tick >= this.holdUntil[s]! || this.mind.pinned[e]! >= PINNED_TICKS) return -1;
     return this.yawOf(this.holdK[s]!);
+  }
+
+  wedged(e: number, tick: number): boolean {
+    const s = this.slot(e);
+    if (s < 0) return false;
+    const yaw = this.world.ents.yaw[e]!;
+    if (Math.abs(((yaw - this.faceAt[s]! + 32768) & 0xffff) - 32768) > WEDGE_TURN) {
+      this.faceAt[s] = yaw;
+      this.faceSince[s] = tick;
+    }
+    return tick - this.faceSince[s]! >= WEDGE_TICKS;
   }
 
   due(e: number, tick: number): boolean {
@@ -212,8 +231,9 @@ export class Nav implements Ladder {
     this.lastX[s] = ents.x[e]!;
     this.lastZ[s] = ents.z[e]!;
     this.lastD[s] = this.best[s] = mode !== 0 ? Math.hypot(mind.want.x - ents.x[e]!, mind.want.z - ents.z[e]!) : 0;
-    this.lastAt[s] = this.calmFrom[s] = this.world.tick;
-    this.rings.clear(s, ents.x[e]!, ents.z[e]!);
+    this.lastAt[s] = this.calmFrom[s] = this.faceSince[s] = this.world.tick;
+    this.faceAt[s] = ents.yaw[e]!;
+    this.rings.clear(s, ents.x[e]!, ents.z[e]!, ents.yaw[e]!, this.world.tick);
   };
 
   private take(e: number, tick: number): number {
