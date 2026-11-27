@@ -3,20 +3,20 @@
 // does the same work on the calling thread.
 
 import { Database } from "bun:sqlite";
-import { takeBackup, type BackupReport } from "./backup.ts";
+import { takeBackup, type BackupKeep, type BackupReport } from "./backup.ts";
 
 export interface Keeper {
   /** Copies committed pages from the write-ahead log into the file. Never waits for a reader. */
   checkpoint(): void;
-  /** Starts a backup. `onBackup` is called with what came of it. */
-  backup(): void;
+  /** Starts a backup, after which the backups `keep` no longer holds are removed. `onBackup` is called with what came of it. */
+  backup(keep: BackupKeep): void;
   close(): void;
   onBackup: ((r: BackupReport) => void) | null;
   /** Milliseconds the last checkpoint took, and the pages still in the log after it. */
   readonly last: { ms: number; pages: number };
 }
 
-export type KeeperRequest = { op: "open"; path: string; closed: Int32Array } | { op: "checkpoint" } | { op: "backup" } | { op: "close" };
+export type KeeperRequest = { op: "open"; path: string; closed: Int32Array } | { op: "checkpoint" } | { op: "backup"; keep: BackupKeep } | { op: "close" };
 export type KeeperReply = { op: "checkpoint"; ms: number; pages: number } | { op: "backup"; report: BackupReport };
 
 /** One checkpoint on `db`. Returns the pages left in the log. */
@@ -35,8 +35,8 @@ export function inlineKeeper(db: Database, path: string): Keeper {
       keeper.last.pages = checkpoint(db);
       keeper.last.ms = performance.now() - t0;
     },
-    backup() {
-      keeper.onBackup?.(takeBackup(db, path, new Date()));
+    backup(keep) {
+      keeper.onBackup?.(takeBackup(db, path, new Date(), keep));
     },
     close() {},
   };
@@ -53,7 +53,7 @@ export function workerKeeper(path: string): Keeper {
     onBackup: null,
     last: { ms: 0, pages: 0 },
     checkpoint: () => send({ op: "checkpoint" }),
-    backup: () => send({ op: "backup" }),
+    backup: (keep) => send({ op: "backup", keep }),
     close() {
       send({ op: "close" });
       Atomics.wait(closed, 0, 0, 5000);

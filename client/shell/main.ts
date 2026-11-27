@@ -1,4 +1,5 @@
 import { logTo } from "./early-log.ts";
+import type { ReportBuild } from "../../shared/report.ts";
 import { launchKey, readLaunch } from "../core/entry-state.ts";
 import { SETTLED_MS, backAddress, readComeback, readReady, waitKey, waitOut, type Comeback } from "../core/waiting.ts";
 import type { Ready } from "../../shared/ready.ts";
@@ -36,6 +37,7 @@ import { probeProgress } from "../core/diagnostics.ts";
 import { installSkin, SKIN_URL, skinPixels } from "../core/ui/skin.ts";
 
 declare const __CONTENT_FILE__: string;
+declare const __PAGE_BUILD__: ReportBuild;
 const params = new URLSearchParams(location.search);
 const selfcheck = params.has("selfcheck");
 // The self-check's code comes only to a page told ?selfcheck (D873).
@@ -194,7 +196,8 @@ async function boot(): Promise<void> {
   // The data utility's record of each frame comes as its own file, which the first frame does not wait for (D899).
   void import("../core/assets/frames.ts").then((m) => (app.frames = new m.FrameRing()));
   // The debug bar's part that needs the browser, fetched once the bar is first on; it takes the page's log from then.
-  app.debugPort = () => import("../debug/debug-port.ts").then((m) => m.debugPort(canvas, renderer, PassClock, logTo));
+  const pageBuild = typeof __PAGE_BUILD__ === "object" ? __PAGE_BUILD__ : undefined;
+  app.debugPort = () => import("../debug/debug-port.ts").then((m) => m.debugPort(canvas, renderer, PassClock, logTo, pageBuild));
   const previous=session.onResult;
   session.onResult=(seq,result)=>{previous?.(seq,result);if(createSeq && seq===createSeq && result!==RESULT_OK)createFailed=true;};
   if (params.has("trip")) void import("../core/trip.ts").then(({ TripProbe }) => TripProbe.watch(app, head.counts, globalThis as unknown as Record<string, unknown>, (go) => void requestAnimationFrame(go)));

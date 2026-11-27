@@ -156,7 +156,7 @@ function showStats(): void {
     tile("Bodies", b.count.toLocaleString("en"), `of ${room.toLocaleString("en")}${b.refused > 0 ? `, ${b.refused} refused` : ""}`, b.count >= room * 0.9 ? "warn" : ""),
     tile("Memory", bytesText(s.memory.rss), `heap ${bytesText(s.memory.heapUsed)} of ${bytesText(s.memory.heapTotal)}`),
     save ? tile("Save", save.failing ? "failing" : "saving", save.failing ? `${esc(save.failing.code)} for ${spanText(save.failing.seconds * 1000)}` : `${save.commits.toLocaleString("en")} commits, ${bytesText(save.bytes)}`, save.failing ? "bad" : "") : tile("Save", "none", "no --db: nothing is kept", "warn"),
-    tile("Backup", latest ? agoText(latest.at, s.at) : save ? "none yet" : "none", save ? `${counted(save.backups.length, "kept", "kept")}, ${bytesText(save.backups.reduce((n, x) => n + x.bytes, 0))}` : "with no save, none"),
+    tile("Backup", latest ? agoText(latest.at, s.at) : save ? "none yet" : "none", save ? `${counted(save.backups.length, "kept", "kept")}, ${bytesText(save.backups.reduce((n, x) => n + x.bytes, 0))}${latest && save.unchanged ? ", unchanged since" : ""}` : "with no save, none"),
     tile("Survivor log", log.from !== null && log.to !== null ? spanText(log.to - log.from) : log.on ? "empty" : "off", log.on || log.from !== null ? `${bytesText(log.bytes)} of ${bytesText(log.cap)}` : esc(log.why), log.on ? "" : "warn"),
     tile("Up", spanText(s.at - s.world.startedAt), `since ${clockText(s.world.startedAt, offset)}, tick ${s.world.tick.toLocaleString("en")}`),
   ].join("");

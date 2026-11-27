@@ -43,6 +43,8 @@ export class Planner {
   private readonly now: () => number;
   /** The players as the planner sees them (the host's). */
   views: () => readonly PlayerView[] = () => [];
+  /** A model reply can change a story or a person after Cast has switched off. */
+  onChange?: () => void;
   model = "";
   private lastMinute = -Infinity;
   private lastHour = -Infinity;
@@ -100,6 +102,7 @@ export class Planner {
       s.planned = tick;
       this.cast.wakes.delete(s.id);
     }
+    this.onChange?.();
     const views = this.views();
     const user = JSON.stringify({
       hour: Math.floor(this.cast.world.hour()),
@@ -121,6 +124,7 @@ export class Planner {
       if (applied) {
         this.counts.applied++;
         s.history.push(`planned: ${JSON.stringify(s.choices) === JSON.stringify(before) ? "kept" : JSON.stringify(s.choices)}`);
+        this.onChange?.();
       } else this.counts.dropped++;
     }
   }
@@ -179,6 +183,7 @@ export class Planner {
     for (let i = 0; i < people.length; i += PEOPLE_PER_CALL) {
       const batch = people.slice(i, i + PEOPLE_PER_CALL);
       for (const c of batch) c.touched = tick;
+      this.onChange?.();
       const user = JSON.stringify({ people: batch.map((c) => ({ id: c.id, name: c.name, kind: this.cast.people.archetype(c.archetype)?.name, traits: c.traits, want: c.want, struggle: c.struggle, hope: c.hope, facts: c.facts.slice(-6).map((f) => f.text), knows: Object.fromEntries(Object.entries(c.relations).map(([n, r]) => [n, { stance: Math.round(r.stance * 100) / 100, notes: r.notes.slice(-2) }])) })) });
       const reply = await this.gate.call(KEEPER, user, 1200, this.now());
       if (!reply) return;
@@ -193,6 +198,7 @@ export class Planner {
         if (struggle) c.struggle = struggle;
         if (hope) c.hope = hope;
         if (fact) this.cast.people.remember(c, fact, tick);
+        if (want || struggle || hope || fact) this.onChange?.();
         this.log.write({ t: tick, point: "person.life", candidates: [], state: { id: c.id, name: c.name }, choice: JSON.stringify({ want, struggle, hope, fact }), why: "an hour passed", policy: this.model || "model", ms: reply.ms, cost: reply.cost / batch.length });
       }
     }

@@ -9,7 +9,7 @@ import { TICK_RATE } from "../../shared/coords.ts";
 import { F_ALIVE, F_PLAYER, F_PROP } from "../../shared/sim/entities.ts";
 import { mapLabel } from "../cluster/cluster.ts";
 import type { Host } from "../host.ts";
-import { backupsFolder } from "../persist/backup.ts";
+import { backupAt, backupsFolder } from "../persist/backup.ts";
 import { changedSettings } from "../settings/rules.ts";
 import { SECONDS_KEPT, TICK_MS, type Gauges, type TickMeter } from "./meter.ts";
 
@@ -46,8 +46,6 @@ export function bodiesOf(host: Host): Bodies {
   return { count: ents.count, max: ents.max, reserve: ents.reserve, refused: ents.refused, groups, kinds };
 }
 
-const BACKUP = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})Z-t(\d+)$/;
-
 /** The backups beside a save, newest first, read again only when their folder changed. */
 export class BackupList {
   private stamp = -1;
@@ -60,10 +58,10 @@ export class BackupList {
     this.stamp = stamp;
     this.list = [];
     for (const name of stamp === 0 ? [] : readdirSync(folder)) {
-      const m = BACKUP.exec(name);
+      const made = backupAt(name);
       const file = join(folder, name, "world.db");
-      if (!m || !existsSync(file)) continue;
-      this.list.push({ name, at: Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`), tick: Number(m[5]), bytes: statSync(file).size });
+      if (!made || !existsSync(file)) continue;
+      this.list.push({ name, at: made.at, tick: made.tick, bytes: statSync(file).size });
     }
     this.list.sort((a, b) => b.at - a.at);
     return this.list;
@@ -86,6 +84,7 @@ export function saveOf(host: Host, backups: BackupList): SaveState | null {
     failing: f ? { seconds: (host.world.tick - f.since) / TICK_RATE, tries: f.tries, code: f.code, error: f.error } : null,
     checkpoint: { ms: p.keeper.last.ms, pages: p.keeper.last.pages },
     backups: backups.read(path),
+    unchanged: p.unchanged,
   };
 }
 

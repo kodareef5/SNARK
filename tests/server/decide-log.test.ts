@@ -1,9 +1,8 @@
-// The line log (server/decide/log.ts) and Cast's decisions on it (server/cast/decide.ts).
+// The decider's line log (server/decide/log.ts).
 import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DecisionLog } from "../../server/cast/decide.ts";
 import { LineLog } from "../../server/decide/log.ts";
 
 function folder<T>(run: (dir: string) => Promise<T>): Promise<T> {
@@ -51,14 +50,3 @@ test("with no folder nothing is kept or written", async () => {
   await log.flush();
   expect([log.written, log.dropped, log.bytes]).toEqual([0, 0, 0]);
 });
-
-test("Cast's decisions keep the last five hundred in memory and go to a file named for the world", () =>
-  folder(async (dir) => {
-    const log = new DecisionLog(dir, "decisions-w7");
-    for (let t = 0; t < 502; t++) log.write({ t, point: "story.plan", candidates: ["a", "b"], state: {}, choice: "a", policy: "rules" });
-    expect([log.kept.length, log.kept[0]!.t]).toEqual([500, 2]);
-    await log.lines.flush();
-    const lines = read(dir);
-    expect(readdirSync(dir)[0]).toStartWith("decisions-w7-");
-    expect([lines.length, JSON.parse(lines[501]!).t]).toEqual([502, 501]);
-  }));

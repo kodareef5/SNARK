@@ -69,9 +69,8 @@ export interface CastHostContext {
   settings?: Partial<CastSettings>;
   /** The planner's model, when there is a key: an OpenRouter key (or a stand-in for tests). None keeps Cast on rules. */
   ask?: Ask | null;
-  /** Folder of the decision log, and its files' name before the day; no folder keeps it in memory. */
+  /** Folder of the decision log; none keeps it in memory. */
   logDir?: string | null;
-  logName?: string;
   /** The cluster's people store: admin populations, outfits and named people. None draws everyone from the content. */
   people?: PeopleStore | null;
 }
@@ -118,10 +117,11 @@ export class CastHost {
     const settings = this.cast.settings;
     this.gate = new ModelGate(null, { callsPerHour: settings.callsPerHour, tokensPerHour: settings.callsPerHour * 6000 });
     this.modelFor(settings);
-    this.log = new DecisionLog(ctx.logDir ?? null, ctx.logName);
+    this.log = new DecisionLog(ctx.logDir ?? null);
     this.planner = new Planner(this.cast, this.gate, this.log, () => Date.now());
     this.planner.model = settings.model;
     this.planner.views = () => this.views();
+    this.planner.onChange = () => { this.saved.dirty = true; };
     // A blow on one of Cast's people is an attack it answers. Any blow, shot, blast or death that a survivor or one of
     // Cast's people is in is trouble to everyone near it (the creatures' own fights far from anyone are not).
     const nameOf = (pid: unknown) => (typeof pid === "number" && pid !== 0 ? ctx.records.byPid.get(pid)?.name || null : null);
@@ -217,14 +217,23 @@ export class CastHost {
     this.planner.model = s.model;
     this.gate.budget = { callsPerHour: s.callsPerHour, tokensPerHour: s.callsPerHour * 6000 };
     this.modelFor(s);
+    this.log.cap = (this.ctx.rules?.num("CastLogMegabytes") ?? 256) * 2 ** 20;
     if (was && !s.enabled) for (const st of [...this.cast.stories.values()]) if (st.phase !== "planned") this.cast.finish(st, this.ctx.world.tick);
   }
+
+  /** Cast was on, or its people were still walking off, at the last look. */
+  private live = false;
 
   step(): void {
     if (this.ctx.world.tick % (5 * TICK_RATE) === 0) {
       this.retune();
-      this.saved.dirty = true;
+      // Off with nobody left, nothing changes, so nothing is saved. The look after it stops keeps the last change.
+      const live = this.cast.settings.enabled || this.stage.count > 0;
+      if (live || this.live) this.saved.dirty = true;
+      this.live = live;
       this.forgetSaid();
+      // The decisions made since the last look go to the disk, which the tick does not wait for.
+      void this.log.flush();
     }
     if (!this.cast.settings.enabled) {
       // Turned off: the people still about walk off where no one sees, then nothing more happens.

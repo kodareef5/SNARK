@@ -35,5 +35,5 @@ self.onmessage = (e) => {
       // The next one will do it.
     }
     self.postMessage({ op: "checkpoint", ms: performance.now() - t0, pages });
-  } else if (m.op === "backup") self.postMessage({ op: "backup", report: takeBackup(db, path, new Date()) });
+  } else if (m.op === "backup") self.postMessage({ op: "backup", report: takeBackup(db, path, new Date(), m.keep) });
 };

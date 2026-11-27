@@ -77,6 +77,7 @@ export function castAct(host: Host, body: unknown, by: Actor = PAGE_ACTOR): stri
     if (!s) return "no such story";
     if (s.phase === "done") return "";
     cast.finish(s, host.world.tick);
+    ch.saved.dirty = true;
     host.acts.write(by, `retired Cast's story ${s.id} (${cast.scenes.get(s.scene)?.name ?? s.scene})`);
     return "";
   }
@@ -143,6 +144,7 @@ export function castAct(host: Host, body: unknown, by: Actor = PAGE_ACTOR): stri
     const story: Story = { id: `a${host.world.tick}`, scene: sc.id, spot, x: at.x, z: at.z, region, phase: "planned", parts: [], choices, slots: {}, for: [], engaged: [], importance: 0.5, made: host.world.tick, since: host.world.tick, planned: -Infinity, history: ["asked for on the admin page"] };
     cast.stories.set(story.id, story);
     cast.wake(story, host.world.tick, cast.world.players());
+    ch.saved.dirty = true;
     // A story with no room yet stays planned, and may start later.
     const waits = story.phase === "planned";
     host.acts.write(by, `${waits ? "planned" : "started"} Cast's scene ${sc.name} near ${p.name} (story ${story.id})${waits ? ", to start when there is room" : ""}`);

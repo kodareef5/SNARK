@@ -166,7 +166,8 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   writeFileSync(join(dist, contentName), content);
   // The page says hello with the wire version of the source it is built from (shared/net/wire.ts), and build.json keeps it.
   const wire = sourceWire(root)!;
-  const define = { __MOBILE_ART__: JSON.stringify(mobileName), __HUD_ATLAS_URL__: JSON.stringify(ui.atlas), __FIELD_ART__: JSON.stringify(ui.field), __TOUCH_ATLAS_URL__: JSON.stringify(ui.touch), __SKY_FILE__: JSON.stringify(skyName), __CONTENT_FILE__: JSON.stringify(contentName), __WIRE__: String(wire) };
+  const pageBuild = { ...checkoutBuild(root), wire };
+  const define = { __PAGE_BUILD__: JSON.stringify(pageBuild), __MOBILE_ART__: JSON.stringify(mobileName), __HUD_ATLAS_URL__: JSON.stringify(ui.atlas), __FIELD_ART__: JSON.stringify(ui.field), __TOUCH_ATLAS_URL__: JSON.stringify(ui.touch), __SKY_FILE__: JSON.stringify(skyName), __CONTENT_FILE__: JSON.stringify(contentName), __WIRE__: String(wire) };
   // The page's script is main.js and page.js, and each file it fetches later takes what it shares with them from
   // page.js (tools/page-script.ts). Workers and worklets run in their own threads, so each is bundled as a separate file.
   const workers = await Bun.build({ entrypoints: ["client/voice/voice-worker.ts", "client/voice/voice-capture.ts", "client/voice/voice-playback.ts", "client/assets/assets-worker.ts", "client/sound/decode-worker.ts", "client/city/city-worker.ts", "client/debug/shot-worker.ts"].map((f) => join(root, f)), outdir: dist, naming: "[name].[ext]", target: "browser", minify: true, sourcemap: "linked", define });
@@ -281,7 +282,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   }
   await buildEntry(dist);
   // The commit the client was built from and whether the tree had changes, which a bug report names (server/reports.ts).
-  writeFileSync(join(dist, "build.json"), JSON.stringify({ ...checkoutBuild(root), at: new Date().toISOString(), wire }) + "\n");
+  writeFileSync(join(dist, "build.json"), JSON.stringify({ ...pageBuild, at: new Date().toISOString() }) + "\n");
   // What the first frame waits for, part by part and the script by module, beside the last build's (tools/first-frame.ts).
   writeFirstFrame(dist, opts.quick ?? false);
   return { jsBytes: ["main.js", ...pieces].reduce((sum, f) => sum + statSync(join(dist, f)).size, 0), packBytes: packBytes + landmarks };

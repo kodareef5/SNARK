@@ -4,7 +4,7 @@ import type { DebugBar } from "./debug.ts";
 import type { Draw } from "./draw.ts";
 
 /** Actions of the bar itself. A tab's own start at TAB_ACT. */
-export const ACT_TAB = 1, ACT_SAVE = 2, ACT_CLOSE = 3, ACT_PICTURES = 4, ACT_DRAWER = 5, ACT_OPEN = 6;
+export const ACT_TAB = 1, ACT_SAVE = 2, ACT_CLOSE = 3, ACT_PICTURES = 4, ACT_DRAWER = 5, ACT_OPEN = 6, ACT_ZIP = 7;
 export const TAB_ACT = 100;
 
 /** Where a press or the pointer fell in a node: its action and argument, and how far across and down it, 0 to 1. */

@@ -8,7 +8,7 @@ import { MODE_FLYER } from "../../shared/sim/character.ts";
 import { F_ALIVE } from "../../shared/sim/entities.ts";
 import type { EntityRecord, Records } from "../records.ts";
 import type { ServerWorld } from "../world.ts";
-import type { BackupReport } from "./backup.ts";
+import { KEEP, type BackupKeep, type BackupReport } from "./backup.ts";
 import { inlineKeeper, type Keeper } from "./keeper.ts";
 import { sqliteCode, sqliteIs, type TransferRow, type WorldStore } from "./store.ts";
 
@@ -21,6 +21,11 @@ export interface PersistenceOptions {
    * volume is what sets how often SQLite stops the tick to checkpoint, so this is a minute and not a second.
    */
   positionTicks: number;
+  /**
+   * Ticks between two writes of the clock where nothing else is written: a minute. A turn with nothing to save writes
+   * nothing, so a crash can set the clock of a world in which nothing happened back this far.
+   */
+  clockTicks: number;
   /** Journal entries kept. Older ones are deleted. */
   journalKeep: number;
   /** Journal ops counted on their own, each keeping its own latest `journalKeep`: an admin's acts, which no other entry may push out. */
@@ -79,6 +84,8 @@ export class Persistence {
   /** WorldStore.saveId of the file the world was loaded from. A world saved elsewhere keeps it. */
   readonly saveId: string;
   commits = 0;
+  /** Commits that wrote more than the clock: what a backup made now would differ by. */
+  changes = 0;
   /** Sequence number of the newest journal entry, durable or not. */
   journalSeq = 0;
   durableSeq = 0;
@@ -101,6 +108,14 @@ export class Persistence {
   keeper: Keeper;
   /** Called with what came of each backup. */
   onBackup: ((r: BackupReport) => void) | null = null;
+  /** How long backups are kept and how much disk they may take, given with each one asked for. */
+  backupKeep: BackupKeep = KEEP;
+  /** A backup has been asked for and has not been answered. */
+  backingUp = false;
+  private backupQueued = false;
+  /** `changes` as it was when the last backup that was made was asked for, and as the one being made was: -1 for none. */
+  private backedUp = -1;
+  private asked = -1;
   private keep: (store: WorldStore) => Keeper = (store) => inlineKeeper(store.db, store.path);
 
   private readonly world: ServerWorld;
@@ -123,15 +138,20 @@ export class Persistence {
   private positionRemainder = 0;
   private checkpointAt = 0;
   private checkpointed = 0;
+  /** The tick the clock was last written at. */
+  private clockAt = -Infinity;
+  /** The other meta values as the file holds them, so one that has not changed is not written again. */
+  private readonly metaAt = new Map<string, string | number>();
+  private readonly metaNew: [string, string | number][] = [];
 
   constructor(world: ServerWorld, records: Records, store: WorldStore, opts: Partial<PersistenceOptions> = {}) {
     this.world = world;
     this.records = records;
     this.store = store;
     this.saveId = store.saveId;
-    this.opts = { positionTicks: 1800, journalKeep: 100_000, journalApart: [], ...opts };
+    this.opts = { positionTicks: 1800, clockTicks: 60 * TICK_RATE, journalKeep: 100_000, journalApart: [], ...opts };
     this.keeper = this.keep(store);
-    this.keeper.onBackup = (r) => this.onBackup?.(r);
+    this.keeper.onBackup = (r) => this.answered(r);
     world.structs.onChunkChanged = (chunk, healthOnly) => (healthOnly ? this.hurtChunks : this.dirtyChunks).add(chunk);
   }
 
@@ -189,15 +209,53 @@ export class Persistence {
   }
 
   private rekeep(): void {
-    this.keeper.close();
+    this.closeKeeper();
     this.keeper = this.keep(this.store);
-    this.keeper.onBackup = (r) => this.onBackup?.(r);
+    this.keeper.onBackup = (r) => this.answered(r);
+    // Another file has no backups, and a keeper that was closed answers nothing.
+    this.backingUp = false;
+    this.backedUp = this.asked = -1;
+  }
+
+  /** Starts a backup. A request during a copy queues one more and returns false. */
+  backup(): boolean {
+    if (this.backingUp) {
+      this.backupQueued = true;
+      return false;
+    }
+    this.backingUp = true;
+    this.asked = this.changes;
+    this.keeper.backup(this.backupKeep);
+    return true;
+  }
+
+  /** Whether a backup made now would hold what the last one made holds, the clock aside. */
+  get unchanged(): boolean {
+    return this.changes === this.backedUp;
+  }
+
+  private answered(r: BackupReport): void {
+    this.backingUp = false;
+    if (r.path !== "") this.backedUp = this.asked;
+    this.onBackup?.(r);
+    if (this.backupQueued) {
+      this.backupQueued = false;
+      this.backup();
+    }
   }
 
   /** Stops the keeper, then closes the save without a commit. A server stopping commits first (Host.shutdown). */
   close(): void {
-    this.keeper.close();
+    this.closeKeeper();
     this.store.close();
+  }
+
+  private closeKeeper(): void {
+    this.keeper.onBackup = null;
+    // The worker processes requests in order even when the host is shutting down.
+    if (this.backupQueued) this.keeper.backup(this.backupKeep);
+    this.backupQueued = false;
+    this.keeper.close();
   }
 
   /** The entry is written in the same transaction as the state it produced. */
@@ -256,15 +314,16 @@ export class Persistence {
   }
 
   /**
-   * Call every tick. Commits when one is due, every `every` ticks. A commit SQLite refused is tried again after 6 ticks,
-   * then 12, up to five seconds apart, and the world runs on meanwhile with nothing lost. An error of our own is thrown:
-   * it would fail the same way every time, and stopping on the last good commit loses less than running on unsaved.
-   * Returns false while commits are failing.
+   * Call every tick. Commits when one is due, every `every` ticks, if there is anything to write: a turn with nothing to
+   * save writes nothing. A commit SQLite refused is tried again after 6 ticks, then 12, up to five seconds apart, and the
+   * world runs on meanwhile with nothing lost. An error of our own is thrown: it would fail the same way every time, and
+   * stopping on the last good commit loses less than running on unsaved. Returns false while commits are failing.
    */
   tryCommit(every: number): boolean {
     const tick = this.world.tick;
     const f = this.failing;
     if (f ? tick < f.retryAt : tick % every !== 0) return f === null;
+    if (!f && !this.due()) return true;
     try {
       this.commit();
     } catch (err) {
@@ -284,6 +343,33 @@ export class Persistence {
       this.onFailing?.(null);
     }
     return true;
+  }
+
+  /**
+   * Whether a commit now would write more than a clock written under `clockTicks` ago. When it would not, the bodies
+   * still earn the turn's share of their position writes, so each is saved once in `positionTicks` whatever was skipped.
+   */
+  private due(): boolean {
+    const world = this.world;
+    const records = this.records;
+    const tick = world.tick;
+    const positionWork = this.positionRemainder + world.history.rows * Math.min(TICK_RATE, tick - this.savedAt);
+    if (
+      this.commits === 0 || tick - this.clockAt >= this.opts.clockTicks || positionWork >= this.opts.positionTicks ||
+      this.callbacks.length > 0 || this.dirtyChunks.size > 0 || records.dirty.size > 0 || records.deleted.length > 0 ||
+      this.pending.length > 0 || this.newSurvivors.length > 0 || this.transfers.length > 0 || (this.plans?.dirty.size ?? 0) > 0
+    ) return true;
+    for (const chunk of this.hurtChunks) if (tick - (this.chunkAt.get(chunk) ?? -HEALTH_TICKS) >= HEALTH_TICKS) return true;
+    for (const b of this.blobs) if (b.dirty.size > 0) return true;
+    for (const s of this.sidecars) if (s.of.dirty && tick - s.at >= s.every) return true;
+    const at = this.metaAt;
+    if (
+      at.get("day_offset") !== world.dayOffset || at.get("next_seq") !== records.nextSeq || at.get("next_team") !== records.nextTeam ||
+      at.get("next_survivor") !== records.nextSurvivor || at.get("frame_next") !== world.structs.frames.next
+    ) return true;
+    this.positionRemainder = positionWork;
+    this.savedAt = tick;
+    return false;
   }
 
   private rescue(tick: number): boolean {
@@ -323,6 +409,8 @@ export class Persistence {
     for (const [name, pid] of this.survivors) this.newSurvivors.push([name, pid]);
     this.transfers.length = 0;
     this.transfers.push(...this.transferRows);
+    // Another file holds none of the values this one was given.
+    this.metaAt.clear();
     try {
       this.commit(true);
     } catch (err) {
@@ -342,7 +430,10 @@ export class Persistence {
     }
   }
 
-  /** `last` writes every dirty sidecar whatever its interval, as a shutdown does. */
+  /**
+   * Writes everything that changed, and the clock, in one transaction, whether or not anything did: tryCommit is what
+   * skips a turn with nothing to save. `last` writes every dirty sidecar whatever its interval, as a shutdown does.
+   */
   commit(last = false): void {
     const store = this.store;
     const world = this.world;
@@ -356,6 +447,14 @@ export class Persistence {
     const positionWork = this.positionRemainder + history.rows * elapsed;
     const positions = Math.floor(positionWork / this.opts.positionTicks);
     let cursor = this.cursor;
+    let moved = 0;
+    this.metaNew.length = 0;
+    // A value the file already holds is not written again.
+    const put = (key: string, value: string | number): void => {
+      if (this.metaAt.get(key) === value) return;
+      store.setMeta(key, value);
+      this.metaNew.push([key, value]);
+    };
     try {
       store.transaction(() => {
         // A chunk's row is what differs from the map, and a chunk that stands as placed again loses its row.
@@ -384,6 +483,7 @@ export class Persistence {
           if (!rec) continue;
           this.capture(rec, ent);
           store.saveEntity(rec);
+          moved++;
         }
         for (const b of this.blobs) for (const chunk of b.dirty) store.saveBlob(chunk, b.tag, b.encode(chunk));
         if (this.plans) {
@@ -404,21 +504,30 @@ export class Persistence {
         for (const [name, pid] of this.newSurvivors) store.saveSurvivor(name, pid);
         for (const t of this.transfers) store.saveTransfer(t);
         store.setMeta("tick", world.tick);
-        store.setMeta("day_offset", world.dayOffset);
-        store.setMeta("next_seq", records.nextSeq);
-        store.setMeta("next_team", records.nextTeam);
-        store.setMeta("next_survivor", records.nextSurvivor);
-        store.setMeta("frame_next", world.structs.frames.next);
-        store.setMeta("world_id", records.worldId);
-        store.setMeta("save_id", this.saveId);
-        store.setMeta("map_id", world.mapId);
-        store.setMeta("map_hash", world.mapHash);
+        put("day_offset", world.dayOffset);
+        put("next_seq", records.nextSeq);
+        put("next_team", records.nextTeam);
+        put("next_survivor", records.nextSurvivor);
+        put("frame_next", world.structs.frames.next);
+        put("world_id", records.worldId);
+        put("save_id", this.saveId);
+        put("map_id", world.mapId);
+        put("map_hash", world.mapHash);
       });
     } catch (err) {
-      // Nothing was written. Keep the callbacks so a later commit can release them.
+      // Nothing was written. Keep the callbacks so a later commit can release them, and trust no value as written.
       this.callbacks = callbacks.concat(this.callbacks);
+      this.metaAt.clear();
       throw err;
     }
+
+    for (const [key, value] of this.metaNew) this.metaAt.set(key, value);
+    this.clockAt = world.tick;
+    if (
+      moved > 0 || this.metaNew.length > 0 || this.written.length > 0 || this.hurtWritten.length > 0 || this.dirtyChunks.size > 0 ||
+      records.dirty.size > 0 || records.deleted.length > 0 || this.pending.length > 0 || this.newSurvivors.length > 0 ||
+      this.transfers.length > 0 || (this.plans?.dirty.size ?? 0) > 0 || this.blobs.some((b) => b.dirty.size > 0)
+    ) this.changes++;
 
     this.cursor = cursor;
     this.positionRemainder = positionWork % this.opts.positionTicks;

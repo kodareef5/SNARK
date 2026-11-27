@@ -188,8 +188,6 @@ export class Decide {
   /** What each trained scorer's file says of itself (its lab scores), by profile, for a page. */
   readonly abouts = new Map<string, Record<string, unknown>>();
   readonly refused: string[] = [];
-  /** Other logs flushed with this one's, so no log of the server's writes inside a tick (Cast's). */
-  readonly sinks: LineLog[] = [];
   overflow = 0;
   /**
    * The lab's two hooks (tools/decide), never set in a game. `force` may name the candidate to act on in place of the one
@@ -343,10 +341,9 @@ export class Decide {
     this.lookUntil = tick + ticks;
   }
 
-  /** Writes what the logs hold; a server's shutdown and a test await it. */
+  /** Writes what the log holds; a server's shutdown and a test await it. */
   async flush(): Promise<void> {
     await this.ctx.log?.flush();
-    for (const s of this.sinks) await s.flush();
   }
 
   private tune(): void {
@@ -361,7 +358,7 @@ export class Decide {
       if (this.ctx.log) this.ctx.log.cap = s.megabytes * 1024 * 1024;
     }
     // Only with something to write: a promise made every five seconds for nothing would hold a world a lab has done with.
-    if (this.ctx.log?.busy || this.sinks.some((s) => s.busy)) void this.flush();
+    if (this.ctx.log?.busy) void this.flush();
   }
 
   private answerAll(q: Asked, tick: number, back: number): void {
