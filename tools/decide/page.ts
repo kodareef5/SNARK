@@ -28,8 +28,11 @@ const U = { x: 256, north: 300, wide: 54, deep: 66 };
 /** The pen: a closed square, and how many stand in it. */
 const PEN = { x0: 120, z0: 120, x1: 144, z1: 144, herd: 14 };
 
-/** Puts the walls and the movers into `host`, and keeps the movers at it: each is sent across the wall again on arriving. */
-function trouble(host: Host): { stop: () => void } {
+/**
+ * Puts the walls and the movers into `host`, and keeps the movers at it: each of `runners`, three kinds, is sent across
+ * the U's closed end again on arriving. The world's middle, where a flat map's survivor wakes, is inside the U.
+ */
+export function trouble(host: Host, kinds: readonly string[] = ["core:raptor", "core:parasaur", "core:raptor"]): { runners: number[]; stop: () => void } {
   const w = { host, world: host.world, tick: () => {} };
   const mind = host.creatures.mind, dims = host.world.dims;
   // Every chunk is held awake, as if a player stood in each: no client is in this world.
@@ -38,7 +41,7 @@ function trouble(host: Host): { stop: () => void } {
   wallZ(w, U.x - U.wide / 2, U.north - U.deep, U.north);
   wallZ(w, U.x + U.wide / 2, U.north - U.deep, U.north);
   const sides = [{ x: U.x, z: U.north - 4 }, { x: U.x, z: U.north + 8 }];
-  const runners = [-12, 0, 12].map((dx, i) => ({ e: host.spawnCreature(i === 1 ? "core:parasaur" : "core:raptor", U.x + dx, U.north - 4, 1), dx, at: 1 }));
+  const runners = [-12, 0, 12].map((dx, i) => ({ e: host.spawnCreature(kinds[i]!, U.x + dx, U.north - 4, 1), dx, at: 1 }));
   for (const r of runners) mind.goTo(r.e, sides[1]!.x + r.dx, sides[1]!.z, GOAL_WALK);
   // The pen has a gap one piece wide in its south wall, and the one sent out starts at the far side of the herd.
   wallX(w, PEN.x0, PEN.x1, PEN.z1);
@@ -59,7 +62,7 @@ function trouble(host: Host): { stop: () => void } {
     }
     if (mind.arrived(out)) mind.goTo(out, ends[(end = 1 - end)]!.x, ends[end]!.z, GOAL_WALK);
   }, 500);
-  return { stop: () => clearInterval(again) };
+  return { runners: runners.map((r) => r.e), stop: () => clearInterval(again) };
 }
 
 const q = (selector: string): string => `document.querySelector(${JSON.stringify(selector)})`;
