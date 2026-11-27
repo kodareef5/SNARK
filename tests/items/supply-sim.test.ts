@@ -48,8 +48,8 @@ test("the capsule's place is one unbroken path from the sender to the ground, an
   const a = newPose();
   const b = newPose();
   const at = (tick: number, out = a) => supplyPose(d, tick, R, out);
-  // Coming: nothing has left, and the shaft is up within two seconds of the call.
-  expect([at(d.called).state, at(d.called).shaft, at(d.called + 2 * R).shaft, at(d.release - 1).state]).toEqual([POSE_COMING, 0, 1, POSE_COMING]);
+  // The landing site is dark while the capsule is on its way.
+  expect([at(d.called).state, at(d.called).shaft, at(d.called + 2 * R).shaft, at(d.release - 1).state]).toEqual([POSE_COMING, 0, 0, POSE_COMING]);
   // It leaves from the sender, level, and arrives over the landing, straight down.
   const first = at(d.release);
   expect([first.state, first.x, first.y, first.z, first.along]).toEqual([POSE_FLYING, d.ox, d.oy, d.oz, 0]);
@@ -82,9 +82,41 @@ test("the capsule's place is one unbroken path from the sender to the ground, an
   expect([last.legs, last.speed < 1e-3, Math.abs(last.y - d.y) < 1e-6, last.thrust > 0.5]).toEqual([1, true, true, true]);
   const down = { ...at(d.land) };
   expect([down.state, down.x, down.y, down.z, down.speed, down.shutters, down.since]).toEqual([POSE_LANDED, d.x, d.y, d.z, 0, 0, 0]);
-  // Landed: the jets cut, the shutters open in their time, the pulses turn to standing.
+  d.landed = true;
   const open = { ...at(d.land + 6 * R) };
-  expect([open.thrust, open.shutters, open.standing, open.legs, open.shaft]).toEqual([0, 1, 1, 1, 1]);
+  expect([open.thrust, open.shutters, open.shaftHeight, open.legs, open.shaft]).toEqual([0, 1, 1, 1, 1]);
+});
+
+test("the beam rises only after the server confirms touchdown", () => {
+  const d = row();
+  const p = newPose();
+  const beam = (tick: number) => {
+    supplyPose(d, tick, R, p);
+    return [p.shaftHeight, p.shaft];
+  };
+  expect(beam(d.land + 3 * R)).toEqual([0, 0]);
+  d.landed = true;
+  for (const tick of [d.called, d.release, d.land - d.brake, d.land - 0.01]) {
+    expect(beam(tick)).toEqual([0, 0]);
+  }
+  expect(beam(d.land)).toEqual([0, 0.35]);
+  expect(beam(d.land + R)[0]).toBe(0.5);
+  expect(beam(d.land + 2 * R)).toEqual([1, 1]);
+  expect(beam(d.land + 30 * R)).toEqual([1, 1]);
+});
+
+test("an emptied capsule fades its beam at the height it reached", () => {
+  const d = row({ landed: true });
+  const p = newPose();
+  const tick = d.land + R / 2;
+  const before = { ...supplyPose(d, tick, R, p) };
+  d.left = tick;
+  const leaving = supplyPose(d, tick, R, p);
+  expect([leaving.shaftHeight, leaving.shaft]).toEqual([before.shaftHeight, before.shaft]);
+  supplyPose(d, tick + R, R, p);
+  expect(p.shaftHeight).toBe(before.shaftHeight);
+  expect(p.shaft).toBeLessThan(before.shaft);
+  expect(supplyPose(d, tick + 3 * R, R, p).shaft).toBe(0);
 });
 
 test("a capsule that leaves shuts, lifts on its jets and is gone in twelve seconds, its shaft fading as it goes; nothing of it runs back", () => {

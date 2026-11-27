@@ -45,11 +45,11 @@ test("a drop heard from its call to its going: each sound at its moment and once
   const d = row();
   const l = list(d);
   const jets = d.land - d.brake;
-  // Told of it as it is called: the call, and the shaft's hum where it stands, level with the ear.
+  // The call sounds before the beacon turns on.
   step(l, d.called + 2);
   expect([heard, [...loops].map(([id, v]) => [id - SUPPLY_LOOPS, v.key, v.at])]).toEqual([["call"], []]);
   step(l, d.called + 3 * R);
-  expect([...loops].map(([id, v]) => [id - SUPPLY_LOOPS - d.id * 2, v.key, v.at, v.level > 0.8])).toEqual([[0, "shaft", [900, 6, 700], true]]);
+  expect(loops.size).toBe(0);
   for (let tick = d.called + 3 * R; tick < d.release; tick += 7) step(l, tick);
   expect(heard).toEqual(["call"]);
   // The cast leaves: the strike is heard as late as the knot is far.
@@ -71,6 +71,7 @@ test("a drop heard from its call to its going: each sound at its moment and once
   const jet = loops.get(SUPPLY_LOOPS + d.id * 2 + 1)!;
   supplyPose(d, jets + 30, R, pose);
   expect([heard.slice(3), jet.key, jet.at, jet.level > 0.8]).toEqual([["ignite"], "jet", [pose.x, pose.y, pose.z], true]);
+  d.landed = true;
   for (let tick = jets + 31; tick <= d.land + 2 * R; tick++) step(l, tick);
   const first = SHUTTERS_AFTER + SHUTTERS_TAKE / 2;
   expect(heard.slice(4)).toEqual(["cut", "land", `settle@${SHUTTERS_AFTER.toFixed(2)}`, `count@${first.toFixed(2)}`, `count@${(first + COUNT_EVERY).toFixed(2)}`, `count@${(first + 2 * COUNT_EVERY).toFixed(2)}`]);
@@ -94,12 +95,14 @@ test("a client told of a drop that is already under way hears what it does from 
   // Told while it brakes: no call, no strike, no pass, no ignition. Its jets, and then its landing.
   const late = listener();
   late.step(list(d), jets + 60);
-  expect([late.heard, [...late.loops.values()].map((v) => v.key).sort()]).toEqual([[], ["jet", "shaft"]]);
+  expect([late.heard, [...late.loops.values()].map((v) => v.key).sort()]).toEqual([[], ["jet"]]);
   for (let tick = jets + 61; tick <= d.land + 1; tick++) late.step(list(d), tick);
   expect(late.heard.slice(0, 2)).toEqual(["cut", "land"]);
   // Told once it stands, opened already: only its hum.
   const after = listener();
   const stood = row({ landed: true, opened: true });
+  after.step(list(stood), stood.land + R, [905, 900, 700]);
+  expect(after.loops.get(SUPPLY_LOOPS + stood.id * 2)!.at).toEqual([900, 306.16, 700]);
   after.step(list(stood), stood.land + 60 * R);
   after.step(list(stood), stood.land + 61 * R);
   expect([after.heard, [...after.loops.values()].map((v) => v.key)]).toEqual([[], ["shaft"]]);
@@ -107,5 +110,15 @@ test("a client told of a drop that is already under way hears what it does from 
   after.step(list(stood), stood.land + 62 * R, [905, 150, 700]);
   expect(after.loops.get(SUPPLY_LOOPS + stood.id * 2)!.at).toEqual([900, 150, 700]);
   after.step(list(stood), stood.land + 63 * R, [905, 900, 700]);
-  expect(after.loops.get(SUPPLY_LOOPS + stood.id * 2)!.at).toEqual([900, 404, 700]);
+  expect(after.loops.get(SUPPLY_LOOPS + stood.id * 2)!.at).toEqual([900, 606.16, 700]);
+});
+
+test("a cancelled inbound drop leaves the landing site silent", () => {
+  const d = row();
+  const ear = listener();
+  ear.step(list(d), d.land - 1);
+  expect([...ear.loops.values()].map((v) => v.key)).toEqual(["jet"]);
+  ear.step(list(), d.land + R);
+  expect(ear.loops.size).toBe(0);
+  expect(ear.heard).toEqual([]);
 });
