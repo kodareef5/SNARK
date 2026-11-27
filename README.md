@@ -21,7 +21,7 @@ ARK-style dinosaur survival and GTA-style vehicles in a persistent multiplayer b
 
 [![The cluster admin’s map replay, supply drops and Vegas ball screens](docs/media/admin-views.webp)](docs/media/admin-views.webp)
 
-https://github.com/user-attachments/assets/dd66a6e2-3d90-46d9-89e4-ec1469549d84
+https://github.com/user-attachments/assets/582fb3e4-0e42-49d7-86a2-3eadeb4f3789
 
 [![A Wraith banks over the Vegas ball as its screen changes from lava to ocean at sunset](docs/media/vegas-jet.webp)](docs/media/vegas-jet.webp)
 
@@ -29,6 +29,8 @@ https://github.com/user-attachments/assets/dd66a6e2-3d90-46d9-89e4-ec1469549d84
 
 [![Five building tiers line the Miami shore, from a thatch hut to a glowing Tek base behind the stone lookout and metal tower](docs/media/beach-buildings.webp)](docs/media/beach-buildings.webp)
 
-[![Two survivors in Meridian armor flee a Rex beneath the blue rings of the Tide Eye on Virginia Key](docs/media/tide-chase.webp)](docs/media/tide-chase.webp)
-
 [![A mounted Pteranodon crosses Biscayne Bay at sunset beside a map of SNARK’s 266.3 km² Miami, with four smaller areas drawn at the same scale](docs/media/map-size.webp)](docs/media/map-size.webp)
+
+[![A Meridian rider crosses Flagler Street on a saddled Rex between downtown Miami towers, with the landscape phone controls visible](docs/media/rex-on-flagler.webp)](docs/media/rex-on-flagler.webp)
+
+[![Two Meridian-armored survivors sprint across Virginia Key as a Rex gives chase beneath the blue Tide Eye at sunset](docs/media/tide-chase.webp)](docs/media/tide-chase.webp)
