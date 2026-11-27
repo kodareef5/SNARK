@@ -118,7 +118,7 @@ test("each cost has its own cap, and what is over it is cut and keeps today's be
 
 test("movers a player is close to are answered before the background, and the deepest in trouble first", () => {
   const { d } = decider();
-  const p = new Probe("ring", COST_RING);
+  const p = new Probe("ring", COST_PROBE);
   const id = d.add(p);
   d.set("ring=rule");
   d.put(id, 10, 3, true);
