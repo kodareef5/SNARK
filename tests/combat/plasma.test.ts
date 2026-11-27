@@ -239,10 +239,16 @@ for (const latencyMs of [40, 150]) {
     let drawn = false;
     app.controls.mouseButton(0, true);
     run(400, () => {
-      // A bolt's flash points the way its shot left: north, and up as the rifle looks.
-      for (const f of [...eve.shots.flashes, ...app.shots.flashes]) {
-        expect(Math.abs(f.dy - Math.sin(0.3))).toBeLessThan(0.05);
-        expect(f.dz).toBeGreaterThan(0.9);
+      for (const viewer of [app, eve]) for (const f of viewer.shots.flashes) {
+        const b = f.bore!;
+        expect(Math.abs(b.by - Math.sin(0.3))).toBeLessThan(0.05);
+        expect(b.bz).toBeGreaterThan(0.9);
+        if (b.posed) {
+          const muzzle: number[] = [], axis: number[] = [];
+          expect(viewer.scene!.characters.plasmaBore(b.x, b.y, b.z, b.ammo, b.mine, muzzle, axis, b.shooter)).toBe(true);
+          expect([f.x, f.y, f.z]).toEqual(muzzle);
+          expect([f.dx, f.dy, f.dz]).toEqual(axis);
+        }
       }
       if (eve.shots.flashes.length > 0) flashed = true;
       if (apart >= 0 || eve.shots.flying.length === 0 || shots.flyingCount === 0) return;
