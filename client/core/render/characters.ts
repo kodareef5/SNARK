@@ -2326,8 +2326,8 @@ export class Characters {
   }
 
   /** World-space barrel tip and unit forward axis from the same hand transform as the visible plasma gun. */
-  plasmaBore(x: number, y: number, z: number, ammo: number, mine: boolean, muzzle: number[] | Float64Array, axis: number[] | Float64Array): boolean {
-    const n = this.nearestGun(x, y, z, HELD_MUZZLE, ammo, mine);
+  plasmaBore(x: number, y: number, z: number, ammo: number, mine: boolean, muzzle: number[] | Float64Array, axis: number[] | Float64Array, shooter?: number): boolean {
+    const n = this.nearestGun(x, y, z, HELD_MUZZLE, ammo, mine, shooter);
     if (n < 0 || !this.noted(n, HELD_MUZZLE, muzzle)) return false;
     const o = n * NOTE_FLOATS + NOTE_AXIS, at = this.noteAt;
     const length = Math.hypot(at[o]!, at[o + 1]!, at[o + 2]!);
@@ -2336,13 +2336,14 @@ export class Characters {
     return true;
   }
 
-  private nearestGun(x: number, y: number, z: number, which: number, ammo: number, mine?: boolean): number {
+  private nearestGun(x: number, y: number, z: number, which: number, ammo: number, mine?: boolean, shooter?: number): number {
     let best = -1, near = SHOOTER_NEAR * SHOOTER_NEAR;
     const at = this.noteAt;
     for (let k = 0; k < this.notes; k++) {
       if (this.noteFrame[k]! < this.frame - 1 || (this.noteHas[k]! & (1 << which)) === 0) continue;
       if (ammo && this.noteAmmo[k] !== ammo) continue;
       if (mine !== undefined && (this.noteId[k] === this.ownBodyId) !== mine) continue;
+      if (shooter !== undefined && this.noteId[k] !== shooter) continue;
       if (mine) return k;
       const o = k * NOTE_FLOATS, dx = at[o]! - x, dy = y - at[o + 1]!, dz = at[o + 2]! - z, d = dx * dx + dz * dz;
       if (d < near && dy > -0.5 && dy < SHOOTER_TALL) { near = d; best = k; }

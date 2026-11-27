@@ -28,17 +28,18 @@ function cast(firstPerson: boolean, yaw: number, pitch: number, gun: string, hol
     state: st, gear, look: null, colors: new Uint8Array(6) };
   scene.own = own;
   const rem = new RemoteSample();
-  rem.count = 1;
+  rem.count = 2;
   rem.tick = 100;
-  rem.id[0] = 9;
-  rem.kind[0] = own.kind;
-  rem.flags[0] = 1;
-  rem.x[0] = 100.4;
-  rem.y[0] = 0;
-  rem.z[0] = 100.9;
-  rem.yaw[0] = yaw;
-  rem.anim[0] = st.pack();
-  rem.gear[GEAR_HELD] = gear[GEAR_HELD]!;
+  for (let i = 0; i < rem.count; i++) {
+    rem.id[i] = i === 0 ? 9 : 0;
+    rem.kind[i] = own.kind;
+    rem.flags[i] = 1;
+    rem.x[i] = 100.4 + i * .2;
+    rem.z[i] = 100.9;
+    rem.yaw[i] = yaw;
+    rem.anim[i] = st.pack();
+    rem.gear[i * GEAR_COUNT + GEAR_HELD] = gear[GEAR_HELD]!;
+  }
   const packet = scene.build(cam, rem);
   return { ch: scene.characters, packet };
 }
@@ -80,6 +81,10 @@ test("a passing player's plasma round selects the correct nearby gun and body", 
   expect(ch.plasmaBore(100, 1.62, 100, item("plasma_cell"), false, tip, dir)).toBe(true);
   expect(ch.heldPoint(9, HELD_MUZZLE, other)).toBe(true);
   expect(tip).toEqual(other);
+  expect(ch.plasmaBore(100, 1.62, 100, item("plasma_cell"), false, tip, dir, 0)).toBe(true);
+  expect(ch.heldPoint(0, HELD_MUZZLE, other)).toBe(true);
+  expect(tip).toEqual(other);
+  expect(ch.plasmaBore(100, 1.62, 100, item("plasma_cell"), false, tip, dir, 37)).toBe(false);
   expect(ch.plasmaBore(100, 1.62, 100, item("plasma_charge"), false, tip, dir)).toBe(false);
   expect(ch.heldNear(100, 1.62, 100, HELD_MUZZLE, tip, item("rocket"))).toBe(false);
   expect(ch.plasmaBore(114, 1.62, 100, item("plasma_cell"), false, tip, dir)).toBe(false);
