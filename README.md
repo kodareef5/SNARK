@@ -27,6 +27,8 @@ https://github.com/user-attachments/assets/dd66a6e2-3d90-46d9-89e4-ec1469549d84
 
 [![At the Lookout, a plasma bolt leaves a survivor’s rifle as a damage number hangs over a red-lit raptor](docs/media/lookout.webp)](docs/media/lookout.webp)
 
+[![Five building tiers line the Miami shore, from a thatch hut to a glowing Tek base behind the stone lookout and metal tower](docs/media/beach-buildings.webp)](docs/media/beach-buildings.webp)
+
 [![Two survivors in Meridian armor flee a Rex beneath the blue rings of the Tide Eye on Virginia Key](docs/media/tide-chase.webp)](docs/media/tide-chase.webp)
 
 [![One SNARK city compared with Miami, GTA V, GTA VI and The Island at the same scale](docs/media/map-size.webp)](docs/media/map-size.webp)
