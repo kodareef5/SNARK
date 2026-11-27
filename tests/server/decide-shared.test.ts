@@ -5,7 +5,7 @@ import { afterAll, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DecideAdmin } from "../../server/admin/decide.ts";
-import { COPY_FILE, copyOf, readCopy } from "../../server/decide/shared.ts";
+import { COPY_FILE, readCopy } from "../../server/decide/shared.ts";
 import { TestCluster, type Server } from "../fixtures/cluster.ts";
 import { Harness } from "../fixtures/net.ts";
 
@@ -16,12 +16,12 @@ const clock = { ms: Date.now() };
 /** Five seconds of ticks on each world, the reads they started let finish, then the tick that takes what was read. */
 async function beat(...servers: Server[]): Promise<void> {
   for (const s of servers) s.h.run(5000);
-  for (const s of servers) await copyOf(s.h.host.decide)!.idle();
+  for (const s of servers) await s.h.host.decideCopy!.idle();
   for (const s of servers) s.h.server.tick();
 }
 
 const policy = (s: Server): string => s.h.host.rules.text("DecidePolicy");
-const copied = (s: Server): number => copyOf(s.h.host.decide)!.rev;
+const copied = (s: Server): number => s.h.host.decideCopy!.rev;
 const fileOf = (s: Server): string => join(s.h.host.cluster!.folder.root, COPY_FILE);
 const write = (s: Server, rev: number, DecidePolicy: string, from = 9): void =>
   writeFileSync(fileOf(s), JSON.stringify({ rev, from, at: clock.ms, settings: { DecidePolicy, DecideSample: "256", DecideLogMegabytes: "64" } }));
@@ -107,6 +107,6 @@ test("a broken or half-written copy is left and read again", async () => {
 
 test("a world alone has no copy to take part in and refuses to make one", async () => {
   const h = new Harness({}, 1, 30, { dev: true, wild: false });
-  expect(copyOf(h.host.decide)).toBeNull();
+  expect(h.host.decideCopy).toBeNull();
   expect(await new DecideAdmin(h.host).act({ op: "clone" })).toBe("this world is in no cluster, so there is no other world to copy to");
 });

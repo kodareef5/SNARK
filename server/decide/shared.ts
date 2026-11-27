@@ -2,7 +2,7 @@
 // there, decide.json, written whole by a rename. Every world of the cluster, the writer too, reads it every five seconds,
 // off the tick's thread, and takes a copy newer than the last it took through the admin page's own setting path, so the
 // settings are live, kept beside its save and in its admin log. The save keeps which copy it took, so a restart does not
-// take an old copy again over what was set by hand since.
+// take an old copy again over what was set by hand since. Its row in the tick follows the decider's own (server/host.ts).
 
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -10,7 +10,6 @@ import { DECIDE_SETTINGS, type DecideSettingName } from "../../shared/admin-deci
 import { TICK_RATE } from "../../shared/coords.ts";
 import { OPERATOR, type Actor } from "../acts.ts";
 import type { Sidecar } from "../persist/persistence.ts";
-import type { Decide } from "./decide.ts";
 
 export const COPY_FILE = "decide.json";
 /** Ticks between two reads of the copy. */
@@ -147,23 +146,4 @@ export class DecideCopy {
     this.saved.dirty = true;
     this.ctx.keep?.();
   }
-}
-
-const copies = new WeakMap<Decide, DecideCopy>();
-
-/** The cluster's copy that `decide`'s world takes part in, or null for a world alone. */
-export function copyOf(decide: Decide): DecideCopy | null {
-  return copies.get(decide) ?? null;
-}
-
-/** Makes `decide`'s world take part in its cluster's copy, stepped right after the decider's own row. */
-export function shareDecide(decide: Decide, ctx: CopyCtx): DecideCopy {
-  const copy = new DecideCopy(ctx);
-  copies.set(decide, copy);
-  const own = decide.step.bind(decide);
-  decide.step = (tick: number): void => {
-    own(tick);
-    copy.step(tick);
-  };
-  return copy;
 }

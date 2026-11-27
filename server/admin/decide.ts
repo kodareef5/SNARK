@@ -11,7 +11,7 @@
 //
 // Every file here is read off the tick's thread: the handlers share it.
 
-import { readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DECIDE_SETTINGS, POLICY_NAMES, STAR, withPolicy, type DecideJson, type ProfileJson } from "../../shared/admin-decide.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
@@ -20,7 +20,7 @@ import type { Profile } from "../../shared/decide/profile.ts";
 import { PROFILES } from "../../shared/decide/profiles.ts";
 import type { LabStatus, Scoreboard } from "../../shared/decide/scoreboard.ts";
 import { PAGE_ACTOR, type Actor } from "../acts.ts";
-import { copyOf, settingsOf } from "../decide/shared.ts";
+import { settingsOf } from "../decide/shared.ts";
 import type { Host } from "../host.ts";
 import { originAllowed } from "../origin.ts";
 import { rowOf } from "../settings/catalog.ts";
@@ -29,17 +29,14 @@ import { PART } from "./parts.ts";
 
 /** Ticks a look keeps answers for. */
 export const LOOK_TICKS = 10 * TICK_RATE;
-/** Wall ms a read of the lab's files and of the weights' `about` stands. */
+/** Wall ms a read of the lab's files stands. */
 const FILES_MS = 5000;
 const LAB = join(import.meta.dir, "../../.cache/decide");
-const WEIGHTS = join(import.meta.dir, "../decide/weights");
 const JSON_HEADERS = { "cache-control": "no-store", "content-type": "application/json" };
 
 export interface DecideAdminOptions {
   /** The lab's folder: .cache/decide in this checkout where not given. */
   lab?: string;
-  /** The trained weights' folder, read for each file's `about`: the decider's own where not given. */
-  weights?: string;
   /** Wall ms. */
   now?: () => number;
 }
@@ -58,9 +55,6 @@ class Lately<T> {
       this.at = now;
     }
     return this.value;
-  }
-  forget(): void {
-    this.value = null;
   }
 }
 
@@ -87,21 +81,16 @@ function ruleOf(p: Profile, m: Model | undefined): ProfileJson["rule"] {
 export class DecideAdmin {
   private readonly host: Host;
   private readonly now: () => number;
-  private readonly weights: string;
-  private lookUntil = -1;
   private readonly lab: Lately<DecideJson["lab"]>;
-  private readonly abouts: Lately<Map<string, Record<string, unknown> | null>>;
 
   constructor(host: Host, o: DecideAdminOptions = {}) {
     this.host = host;
     this.now = o.now ?? Date.now;
-    this.weights = o.weights ?? WEIGHTS;
     const lab = o.lab ?? LAB;
     this.lab = new Lately(async () => {
       const [scoreboard, status] = await Promise.all([jsonOf<Scoreboard>(join(lab, "scoreboard.json")), jsonOf<LabStatus>(join(lab, "status.json"))]);
       return { scoreboard, status };
     });
-    this.abouts = new Lately(() => this.readAbouts());
   }
 
   /** The answer to `at`, or null where it is not this page's. */
@@ -128,17 +117,14 @@ export class DecideAdmin {
   /** The page's JSON. `look` keeps the answers of the next ten seconds; without a look they are let go once it ends. */
   async json(look: boolean): Promise<string> {
     const host = this.host, d = host.decide, tick = host.world.tick, now = this.now();
-    if (look) {
-      d.look(tick, LOOK_TICKS);
-      this.lookUntil = tick + LOOK_TICKS;
-    } else if (tick >= this.lookUntil) d.recent.length = 0;
-    const [lab, abouts] = await Promise.all([this.lab.get(now), this.abouts.get(now)]);
+    if (look) d.look(tick, LOOK_TICKS);
+    const lab = await this.lab.get(now);
     const r = d.report(), parts = host.game.parts, rules = host.rules;
     const profiles: ProfileJson[] = PROFILES.map((p) => {
       const m = d.trained.get(p.name);
       return {
         name: p.name, kind: p.kind, ring: p.ring, state: [...p.state], columns: [...p.columns], rule: ruleOf(p, d.rules.get(p.name)),
-        trained: m ? { hidden: m.hidden, temperature: m.temperature, about: abouts.get(p.name) ?? null } : null,
+        trained: m ? { hidden: m.hidden, temperature: m.temperature, about: d.abouts.get(p.name) ?? null } : null,
       };
     });
     const json: DecideJson = {
@@ -150,7 +136,7 @@ export class DecideAdmin {
       recent: d.recent,
       lab,
       world: host.cluster?.world ?? 0,
-      copied: copyOf(d)?.rev ?? 0,
+      copied: host.decideCopy?.rev ?? 0,
     };
     return JSON.stringify(json);
   }
@@ -175,33 +161,16 @@ export class DecideAdmin {
     }
     if (b.op === "reload") {
       d.reload();
-      this.abouts.forget();
       host.acts.write(by, `read the decider's weights again: ${d.trained.size} loaded, ${d.refused.length} refused`);
       return "";
     }
     if (b.op === "clone") {
-      const copy = copyOf(d);
+      const copy = host.decideCopy;
       if (!copy) return "this world is in no cluster, so there is no other world to copy to";
       const { why, rev } = await copy.clone();
       if (why === "") host.acts.write(by, `copied the Decide settings to every world of the cluster (copy ${rev})`);
       return why;
     }
     return "unknown op";
-  }
-
-  /** Each trained file's `about` by its profile, the last file of a profile in name order as the decider loads them. */
-  private async readAbouts(): Promise<Map<string, Record<string, unknown> | null>> {
-    const out = new Map<string, Record<string, unknown> | null>();
-    let names: string[];
-    try {
-      names = (await readdir(this.weights)).filter((n) => n.endsWith(".json")).sort();
-    } catch {
-      return out;
-    }
-    for (const name of names) {
-      const f = await jsonOf<{ profile?: unknown; about?: unknown }>(join(this.weights, name));
-      if (f && typeof f.profile === "string") out.set(f.profile, f.about && typeof f.about === "object" ? (f.about as Record<string, unknown>) : null);
-    }
-    return out;
   }
 }

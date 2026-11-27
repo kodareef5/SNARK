@@ -169,7 +169,7 @@ test("weights written after the start are read again when asked, with their scor
   // A host whose decider reads weights from a folder of the test's.
   const d = new Decide({ world: h.world, lane: h.host.game.lane, weights });
   const host = Object.create(h.host, { decide: { value: d } }) as Host;
-  const admin = new DecideAdmin(host, { weights, lab: folder() });
+  const admin = new DecideAdmin(host, { lab: folder() });
   const mid = async () => (JSON.parse(await admin.json(false)) as DecideJson).profiles.find((p) => p.name === "ring.mid")!;
   expect((await mid()).trained).toBeNull();
   const score = { name: "mid-1", kind: "linear", gate: { pass: false, why: ["regret over 0.9 of the rule's"] }, regretRatio: 0.95, ece: 0.04 } as Partial<Score>;
