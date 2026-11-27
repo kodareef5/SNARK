@@ -111,7 +111,10 @@ test("the first press after landing respects the driver's flip cooldown", () => 
     let secondPress = 0, launches = 0, lifting = false;
     for (let t = 0; t < 160; t++) {
       const ready = t > 0 && !secondPress && car.grounded && thrustAxis(car.thrust!) === 0;
-      if (ready) secondPress = t;
+      if (ready) {
+        secondPress = t;
+        expect(flipCooling(car.thrustCool!)).toBe(Math.max(0, setup.thrusters!.flipCooldownTicks - (t - 1)));
+      }
       stepVehicle(car, { ...coast, burst: t === 0 || ready }, setup, world);
       const fired = (car.thrust! & FIRED_LIFT) !== 0;
       if (fired && !lifting) launches++;
