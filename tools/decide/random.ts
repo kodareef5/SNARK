@@ -68,7 +68,7 @@ const PIECE = 3;
 /** A wall piece's thickness. */
 const WALL = 0.2;
 /** A scene's horizon is at least this many times the straight way at the mover's pace. */
-const HORIZON_LINES = 3;
+export const HORIZON_LINES = 3;
 /** The map's side, in metres: the lab's flat ground is four chunks a side. */
 export const FLAT_SIDE = 4 * CHUNK_SIZE;
 /** The Miami slice's side. */

@@ -25,7 +25,7 @@ import { flatMap } from "../../tests/fixtures/map.ts";
 import { GAME_CATALOG, NAV_POINTS } from "./catalog.ts";
 import { READINGS, type Final } from "./dataset.ts";
 import { ALONE, type Answer, type Replay, type Replayer } from "./label.ts";
-import { MIAMI_SIDE, bodyOf, type Pair, type Scene } from "./random.ts";
+import { HORIZON_LINES, MIAMI_SIDE, bodyOf, type Pair, type Scene } from "./random.ts";
 import type { EpisodeResult } from "./rate.ts";
 import { STANDIN, StandIn } from "./standin.ts";
 import { lab, stateHash, type Lab } from "./world.ts";
@@ -125,6 +125,9 @@ export function clearYaw(b: Lab, p: MoveParams, x: number, z: number, yaw: numbe
   }
   return -1;
 }
+
+/** Whether a scene's horizon is HORIZON_LINES times the oracle's way at real pace where that is longer than the horizon drawn (from the straight line at walking pace). */
+const HORIZON_BY_ORACLE = true;
 
 /** Cells the oracle's search may expand: the whole of its grid. */
 const ORACLE_CELLS = (2 * PATH_REACH + 1) ** 2;
@@ -277,12 +280,13 @@ function place(w: Lab, s: Scene, body: { radius: number; height: number; pace: n
 }
 
 /** A scene on its own lab world, its mover making for its goal; `at` puts it down there in place of where `place` would. */
-export function build(s: Scene, at0?: Placed | null): Built {
-  const w = lab(mapFor(s), s.seed);
+export function build(s0: Scene, at0?: Placed | null): Built {
+  const w = lab(mapFor(s0), s0.seed);
   const reg = w.world.reg, wall = reg.index.get("core:wall_stone")!;
-  for (const p of s.pieces) for (let y = 0; y < p.storeys; y++) w.world.structs.add(wall, p.x, w.world.hf.heightAt(p.x, p.z) + 1.5 + 3 * y, p.z, p.quarter * 16384, 0, 10000);
-  const body = bodyOf(s.kind), mind = w.host.creatures.mind, arrive = Math.max(1.5, body.radius + 0.5);
-  const at = at0 !== undefined ? at0 : place(w, s, body, arrive);
+  for (const p of s0.pieces) for (let y = 0; y < p.storeys; y++) w.world.structs.add(wall, p.x, w.world.hf.heightAt(p.x, p.z) + 1.5 + 3 * y, p.z, p.quarter * 16384, 0, 10000);
+  const body = bodyOf(s0.kind), mind = w.host.creatures.mind, arrive = Math.max(1.5, body.radius + 0.5);
+  const at = at0 !== undefined ? at0 : place(w, s0, body, arrive);
+  const s = HORIZON_BY_ORACLE && at?.oracle && Number.isFinite(at.oracle.seconds) ? { ...s0, horizon: Math.max(s0.horizon, Math.ceil(HORIZON_LINES * at.oracle.seconds) * TICK_RATE) } : s0;
   const move = reg.move[reg.index.get(s.kind)!]!;
   const start = at?.start ?? freeNear(w, s.start.x, s.start.z, body.radius, body.height, (x, z) => clearYaw(w, move, x, z, s.start.yaw) >= 0), goal = at?.goal ?? s.goal;
   const standers: Built["standers"] = [];
@@ -540,9 +544,9 @@ export function gameReplayer(point: string, under: Under): Replayer<Scene> {
           return force;
         },
         stop: (tick) => {
-          if (from < 0) return tick >= s.horizon;
+          if (from < 0) return tick >= b.scene.horizon;
           while (costs.length < READ_AT.length && tick - from >= READ_AT[costs.length]!) costs.push(costNow(b, from, health0, cells0, false));
-          return tick - from >= s.horizon;
+          return tick - from >= b.scene.horizon;
         },
       }, Infinity);
       if (from < 0) {
