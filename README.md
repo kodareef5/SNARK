@@ -1,10 +1,10 @@
-![An armoured survivor rides a pteranodon over Miami at sunrise while the red obelisk fires its beam](docs/media/hero.webp)
+![A rider flies over Biscayne Bay at twilight beneath the blue Tide Eye, with the live desktop HUD visible](docs/media/hero.webp)
 
 # SNARK · Miami Devolved
 
 ARK-style dinosaur survival and GTA-style vehicles in a persistent multiplayer browser game. [Changelog](CHANGELOG.txt)
 
-- **Any city** · A procedural map pipeline turns public data into a playable city, with room for agents to add to it. Launching with Miami and four more real cities: Tampa, Las Vegas, Los Angeles, San Francisco. About 66 km² each.
+- **Any city** · A procedural map pipeline turns public data into a playable city, with room for agents to add to it. Launching with Miami and four more real cities: Tampa, Las Vegas, Los Angeles, San Francisco. Each map spans roughly 16 km by 16 km.
 - **Survival** · Form tribes, unlock engrams, craft gear, snap bases together. Knock out, tame, breed and ride dinosaurs.
 - **Vehicles** · Cars, trucks and a bus, boats from jet skis to yachts, and helicopters. Passengers, cargo, fuel and persistent parking.
 - **Multiplayer** · Client-predicted movement, lag-compensated hits, crash-safe survivor and gear transfers between servers.
@@ -13,18 +13,20 @@ ARK-style dinosaur survival and GTA-style vehicles in a persistent multiplayer b
 
 **Run locally** `bun install --frozen-lockfile && bun run dev` → `localhost:8787`
 
-<p align="center">
-  <img src="docs/media/roster.webp" width="32%" alt="The ten creatures on South Beach with a survivor for scale">
-  <img src="docs/media/rex.webp" width="32%" alt="A survivor rides a Tyrannosaurus through Bayfront Park">
-  <img src="docs/media/herd.webp" width="32%" alt="Triceratops, Stegosaurus and Parasaurolophus on a Wynwood street">
-  <img src="docs/media/boats.webp" width="32%" alt="Eleven boats on the bay off downtown">
-  <img src="docs/media/cars.webp" width="32%" alt="Fourteen road vehicles under the downtown towers">
-  <img src="docs/media/cruise.webp" width="32%" alt="The cruise ship at the port">
-  <img src="docs/media/koru.webp" width="32%" alt="The sailing yacht moored off downtown">
-  <img src="docs/media/obelisk.webp" width="32%" alt="The blue obelisk at dusk">
-  <img src="docs/media/sunset.webp" width="32%" alt="The pteranodon and the red obelisk at sunset">
-</p>
-
-All pictures are frames from the game's own renderer.
-
 [Map pipeline](tools/maps/README.md) · [Art & downloads](distribution/README.md) · [Agent setup](agent/README.md#run-it) · [Benchmarks](planning/quality/performance.md) · [Code license](LICENSE)
+
+[![Six mobile gameplay screens surrounding the SNARK emblem on the Miami waterfront](docs/media/mobile.webp)](docs/media/mobile.webp)
+
+[![The wiki’s Rex dossier, item index and home page with three mounted flyers at daybreak](docs/media/wiki.webp)](docs/media/wiki.webp)
+
+[![The cluster admin’s map replay, supply drops and Vegas ball screens](docs/media/admin-views.webp)](docs/media/admin-views.webp)
+
+https://github.com/user-attachments/assets/dd66a6e2-3d90-46d9-89e4-ec1469549d84
+
+[![A Wraith banks over the Vegas ball as its screen changes from lava to ocean at sunset](docs/media/vegas-jet.webp)](docs/media/vegas-jet.webp)
+
+[![At the Lookout, a plasma bolt leaves a survivor’s rifle as a damage number hangs over a red-lit raptor](docs/media/lookout.webp)](docs/media/lookout.webp)
+
+[![Two survivors in Meridian armor flee a Rex beneath the blue rings of the Tide Eye on Virginia Key](docs/media/tide-chase.webp)](docs/media/tide-chase.webp)
+
+[![One SNARK city compared with Miami, GTA V, GTA VI and The Island at the same scale](docs/media/map-size.webp)](docs/media/map-size.webp)

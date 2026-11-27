@@ -23,6 +23,7 @@ import type { Blasts } from "./render/blasts.ts";
 import type { Camera } from "./render/camera.ts";
 import type { Characters } from "./render/characters.ts";
 import type { FramePacket } from "./render/packet.ts";
+import { PLASMA_LEAVE, plasmaSegment, type PlasmaBore } from "./plasma-flight.ts";
 import type { ShotEnd } from "./occasions.ts";
 import type { ClientSession, RemoteSample } from "./session.ts";
 import { MAX_VIEW } from "../../shared/net/view.ts";
@@ -77,6 +78,7 @@ const UNTOLD_TICKS = 30;
 const ROLL = 0.6;
 
 interface Flying extends Flight {
+  bore: PlasmaBore | null;
   gravity: number;
   mesh: number;
   ammo: number;
@@ -145,6 +147,8 @@ function nearSquare(cx: number, cz: number): number {
 /** Shot ends kept for small details, which find what a shot struck (client/core/occasions.ts). */
 const ENDS = 32;
 
+interface Flash { x: number; y: number; z: number; dx: number; dy: number; dz: number; born: number; until: number; mesh: number; size: number; bore?: PlasmaBore; row: number }
+
 export class Shots {
   /** Where shots lately ended, newest last: where the last piece began, its way, and when, in milliseconds. */
   readonly ends: ShotEnd[] = [];
@@ -154,7 +158,7 @@ export class Shots {
   /** A tame going into a soul ball or coming out of one (EVENT_BALL): the middle of its body and its size. */
   readonly balls: { x: number; y: number; z: number; size: number; into: boolean; born: number }[] = [];
   /** Muzzle flashes of rounds from guns with no silencer: the blast's cube, or a bolt's own mesh at its size. */
-  readonly flashes: { x: number; y: number; z: number; dx: number; dy: number; dz: number; born: number; until: number; mesh: number; size: number }[] = [];
+  readonly flashes: Flash[] = [];
   /** Where a bolt of light ended on something: its burst's mesh and size. */
   readonly bursts: { x: number; y: number; z: number; born: number; mesh: number; size: number }[] = [];
   private flashOfAmmo: Int32Array = new Int32Array(0);
@@ -188,7 +192,13 @@ export class Shots {
   /** The bodies as last drawn, for where a gun's muzzle is. `draw` keeps the one it is given. */
   private drawn: Characters | null = null;
   private readonly dir = [0, 0, 0];
-  private readonly muzzle = [0, 0, 0];
+  private readonly muzzle: [number, number, number] = [0, 0, 0];
+  private readonly boreAxis: [number, number, number] = [0, 0, 0];
+  private readonly boltHead = [0, 0, 0];
+  private readonly boltTail = [0, 0, 0];
+  private readonly launchesToPose: Flying[] = [];
+  private readonly flashesToPose: Flash[] = [];
+  private readonly closing: { flight: Flying; distance: number; until: number }[] = [];
   private readonly vent = [0, 0, 0];
   /** Rounds kept that have met something and wait for their blast. */
   private waiting = 0;
@@ -269,7 +279,8 @@ export class Shots {
         const speed = launchSpeed(full, s.draw);
         const wet = reg.weapon[s.weapon]?.wet ?? false;
         // A round that goes off flies its true path from the eye, and is drawn from the muzzle onto it.
-        if (reg.ammoBlast[s.ammo]! > 0) this.fly(world, s.x, s.y, s.z, d[0]! * speed, d[1]! * speed, d[2]! * speed, s.ammo, -1, silenced, nowMs, 0, wet, true, true);
+        const rocket = reg.ammoBlast[s.ammo]! > 0;
+        if (rocket || reg.ammoBoltSize[s.ammo]! > 0) this.fly(world, s.x, s.y, s.z, d[0]! * speed, d[1]! * speed, d[2]! * speed, s.ammo, -1, silenced, nowMs, 0, wet, true, rocket);
         else this.fly(world, s.x + d[0]! * AHEAD, s.y - BELOW + d[1]! * AHEAD, s.z + d[2]! * AHEAD, d[0]! * speed, d[1]! * speed, d[2]! * speed, s.ammo, -1, silenced, nowMs, 0, wet, true);
       }
     }
@@ -302,7 +313,7 @@ export class Shots {
         events[kept++] = ev;
         continue;
       }
-      if (ev.flies) this.fly(world, ev.x, ev.y, ev.z, ev.vx, ev.vy, ev.vz, ev.item, ev.back, ev.silenced, nowMs, ev.far, ev.wet ?? false, ev.mine ?? false);
+      if (ev.flies) this.fly(world, ev.x, ev.y, ev.z, ev.vx, ev.vy, ev.vz, ev.item, ev.back, ev.silenced, nowMs, ev.far, ev.wet ?? false, ev.mine ?? false, false, 0, ev.shooter);
       else if (ev.rays > 1) {
         // The first ray's way stands for the muzzle's, as a silencer hides the flash of any shot.
         if (!ev.silenced) {
@@ -356,9 +367,9 @@ export class Shots {
   }
 
   /** A flash at (x, y, z). The blast's cube looks the same every way; a bolt's own points along (dx, dy, dz), the way its shot left. */
-  private flash(x: number, y: number, z: number, nowMs: number, mesh = this.blastMesh, size = FLASH_SIZE, ms = FLASH_MS, dx = 0, dy = 0, dz = 1): void {
+  private flash(x: number, y: number, z: number, nowMs: number, mesh = this.blastMesh, size = FLASH_SIZE, ms = FLASH_MS, dx = 0, dy = 0, dz = 1, bore?: PlasmaBore): void {
     if (this.flashes.length >= MAX_TRACERS) this.flashes.shift();
-    this.flashes.push({ x, y, z, dx, dy, dz, born: nowMs, until: nowMs + ms, mesh, size });
+    this.flashes.push({ x, y, z, dx, dy, dz, born: nowMs, until: nowMs + ms, mesh, size, bore, row: -1 });
   }
 
   /**
@@ -429,20 +440,25 @@ export class Shots {
    * the number `id`, 0 where none is told yet, starts at its shooter's eye whoever shot it, and is drawn from the muzzle
    * of the gun that is drawn there.
    */
-  private fly(world: CollisionWorld, x: number, y: number, z: number, vx: number, vy: number, vz: number, ammo: number, back: number, silenced: boolean, nowMs: number, ended = 0, wet = false, mine = false, rocket = false, id = 0): void {
+  private fly(world: CollisionWorld, x: number, y: number, z: number, vx: number, vy: number, vz: number, ammo: number, back: number, silenced: boolean, nowMs: number, ended = 0, wet = false, mine = false, rocket = false, id = 0, shooter?: number): void {
     const mesh = this.meshOfAmmo[ammo] ?? -1;
     if (mesh < 0) return;
     const reg = this.reg;
     const size = reg.ammoBoltSize[ammo]!;
     const lit = this.flashOfAmmo[ammo]!;
     const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
-    if (lit >= 0 && !silenced && speed > 0) {
-      // Another's leaves its eye, as the server said, so its flash is put ahead of that as its own shot's start is.
-      const ahead = back >= 0 ? AHEAD / speed : 0;
-      this.flash(x + vx * ahead, y + vy * ahead - (back >= 0 ? BELOW : 0), z + vz * ahead, nowMs, lit, BOLT_FLASH * size, BOLT_FLASH_MS, vx / speed, vy / speed, vz / speed);
+    let bore: PlasmaBore | null = null;
+    if (size > 0 && speed > 0) {
+      const dx = vx / speed, dy = vy / speed, dz = vz / speed;
+      bore = { x, y, z, dx, dy, dz, mx: x + dx * AHEAD, my: y + dy * AHEAD - BELOW, mz: z + dz * AHEAD,
+        bx: dx, by: dy, bz: dz, speed, born: nowMs, ammo, mine, shooter, posed: false, row: -1, end: PLASMA_LEAVE };
+      if (this.drawn) this.poseLaunch(this.drawn, bore);
+    }
+    if (lit >= 0 && !silenced && bore) {
+      this.flash(bore.mx, bore.my, bore.mz, nowMs, lit, BOLT_FLASH * size, BOLT_FLASH_MS, bore.bx, bore.by, bore.bz, bore);
     }
     const f: Flying = {
-      x, y, z, vx, vy, vz, gravity: reg.ammoGravity[ammo]!, mesh, ammo, left: FLIGHT_TICKS, age: 0, flown: 0, reach: reg.ammoReach[ammo]!, sx: x, sz: z,
+      x, y, z, vx, vy, vz, bore, gravity: reg.ammoGravity[ammo]!, mesh, ammo, left: FLIGHT_TICKS, age: 0, flown: 0, reach: reg.ammoReach[ammo]!, sx: x, sz: z,
       own: mine, wet, under: y < world.hf.waterAt(x, z), clear: 0, lead: 0, met: false, gone: false, splash: false, fresh: !rocket,
       fieldRef: -1, fieldNx: 0, fieldNz: 0, rocket, id, key: id, lit: false, ox: 0, oy: 0, oz: 0, waits: 0,
     };
@@ -452,13 +468,13 @@ export class Shots {
       if (back < LEFT_NOW) {
         // Seen to leave: from its gun's muzzle where that is drawn, else from ahead of the eye as every shot was.
         const dx = vx / speed, dy = vy / speed, dz = vz / speed, m = this.muzzle, v = this.vent;
-        const drawn = this.drawn !== null && this.drawn.heldNear(x, y, z, HELD_MUZZLE, m);
+        const drawn = this.drawn !== null && this.drawn.heldNear(x, y, z, HELD_MUZZLE, m, ammo);
         if (!drawn) {
           m[0] = x + dx * AHEAD;
           m[1] = y + dy * AHEAD - BELOW;
           m[2] = z + dz * AHEAD;
         }
-        if (!drawn || !this.drawn!.heldNear(x, y, z, HELD_VENT, v)) {
+        if (!drawn || !this.drawn!.heldNear(x, y, z, HELD_VENT, v, ammo)) {
           v[0] = x - dx * VENT_BEHIND;
           v[1] = y - dy * VENT_BEHIND - BELOW;
           v[2] = z - dz * VENT_BEHIND;
@@ -509,6 +525,15 @@ export class Shots {
     const burst = this.burstOfAmmo[f.ammo]!;
     if (burst < 0) return;
     if (this.bursts.length >= MAX_BURSTS) this.bursts.shift();
+    if (f.bore?.posed) {
+      const distance = f.flown + length;
+      const until = f.bore.born + Math.min(distance, PLASMA_LEAVE) * 1000 / f.bore.speed;
+      if (until > nowMs) {
+        if (this.closing.length >= MAX_BURSTS) this.closing.shift();
+        this.closing.push({ flight: f, distance, until });
+        nowMs = until;
+      }
+    }
     this.bursts.push({ x: x + dx * length, y: y + dy * length, z: z + dz * length, born: nowMs, mesh: burst, size: BOLT_BURST * this.reg.ammoBoltSize[f.ammo]! });
   }
 
@@ -728,7 +753,8 @@ export class Shots {
     while (this.balls.length > 0 && nowMs >= this.balls[0]!.born + BALL_MS) this.balls.shift();
     // The flashes are not all as long, so the first out is found among them.
     for (let i = this.flashes.length - 1; i >= 0; i--) if (nowMs >= this.flashes[i]!.until) this.flashes.splice(i, 1);
-    while (this.bursts.length > 0 && nowMs >= this.bursts[0]!.born + BOLT_BURST_MS) this.bursts.shift();
+    for (let i = this.closing.length - 1; i >= 0; i--) if (nowMs >= this.closing[i]!.until) this.closing.splice(i, 1);
+    for (let i = this.bursts.length - 1; i >= 0; i--) if (nowMs >= this.bursts[i]!.born + BOLT_BURST_MS) this.bursts.splice(i, 1);
     this.now = nowMs;
     const whole = Math.floor(tick);
     // After a clock jump, do not catch up tick by tick.
@@ -763,9 +789,62 @@ export class Shots {
     this.ends.push({ x, y, z, dx, dy, dz, at });
   }
 
+  private socket(ch: Characters, b: PlasmaBore): boolean {
+    return ch.plasmaBore?.(b.x, b.y, b.z, b.ammo, b.mine, this.muzzle, this.boreAxis, b.shooter) ?? false;
+  }
+
+  private poseLaunch(ch: Characters, b: PlasmaBore): void {
+    if (!this.socket(ch, b)) return;
+    [b.mx, b.my, b.mz] = this.muzzle;
+    [b.bx, b.by, b.bz] = this.boreAxis;
+    b.posed = true;
+  }
+
+  private drawPlasma(ch: Characters, p: FramePacket, cam: Camera, f: Flying, travelled: number, end: number, row = -1): boolean {
+    const size = this.reg.ammoBoltSize[f.ammo]!, head = this.boltHead, tail = this.boltTail;
+    plasmaSegment(f.bore!, travelled, end, BOLT_TAIL * size, this.now, head, tail);
+    const x = head[0]! - cam.x, y = head[1]! - cam.y, z = head[2]! - cam.z;
+    if (!cam.boxVisible(x - 1, y - 1, z - 1, x + 1, y + 1, z + 1)) return true;
+    const dx = head[0]! - tail[0]!, dy = head[1]! - tail[1]!, dz = head[2]! - tail[2]!;
+    const length = Math.hypot(dx, dy, dz);
+    if (length < 0.001) return true;
+    if (row >= 0) {
+      ch.poseLoose(p, row, x, y, z, dx / length, dy / length, dz / length, length, size);
+      return true;
+    }
+    const first = p.boneCount;
+    if (!ch.loose(p, f.mesh, x, y, z, dx / length, dy / length, dz / length, length, size)) return false;
+    this.keepLaunch(f, first, end);
+    return true;
+  }
+
+  private keepLaunch(f: Flying, row: number, end: number): void {
+    if (!f.bore || f.bore.born !== this.now) return;
+    f.bore.row = row;
+    f.bore.end = end;
+    this.launchesToPose.push(f);
+  }
+
+  /** Effects keep their bone slots while the scene poses the guns which carry them. */
+  posePlasma(ch: Characters, p: FramePacket, cam: Camera): void {
+    for (const f of this.launchesToPose) {
+      const b = f.bore!;
+      this.poseLaunch(ch, b);
+      if (b.posed) this.drawPlasma(ch, p, cam, f, 0, b.end, b.row);
+    }
+    for (const f of this.flashesToPose) {
+      if (!this.socket(ch, f.bore!)) continue;
+      [f.x, f.y, f.z] = this.muzzle;
+      [f.dx, f.dy, f.dz] = this.boreAxis;
+      ch.poseLoose(p, f.row, f.x - cam.x, f.y - cam.y, f.z - cam.z, f.dx, f.dy, f.dz, f.size, f.size);
+    }
+  }
+
   /** `tick` may be fractional. A flight is drawn that far along its next piece. */
   draw(ch: Characters, p: FramePacket, cam: Camera, tick: number): void {
     this.drawn = ch;
+    this.launchesToPose.length = 0;
+    this.flashesToPose.length = 0;
     ch.ownRounds = this.ownRounds;
     // Asked for every frame as a draw asks, shot or no shot, so that each mesh is on the card with its surface and its
     // materials before the first shot needs them: a surface is not sent for until its level is there.
@@ -789,6 +868,11 @@ export class Shots {
       // Between ticks it is drawn along its next piece, and no further than that was found free: not past a wall, the
       // water or its reach, which the next tick ends it at.
       const along = Math.min(speed * ahead, f.lead) / speed;
+      if (f.bore && f.bore.born === this.now) this.poseLaunch(ch, f.bore);
+      if (f.bore?.posed) {
+        if (room) room = this.drawPlasma(ch, p, cam, f, f.flown + speed * along, f.met || f.gone ? f.flown + f.clear : PLASMA_LEAVE);
+        continue;
+      }
       let x = f.x + f.vx * along;
       let y = f.y + f.vy * along;
       let z = f.z + f.vz * along;
@@ -815,9 +899,16 @@ export class Shots {
       // A bolt of light is its head with a tail behind it, no longer than it has flown.
       const size = this.reg.ammoBoltSize[f.ammo]!;
       const tail = size > 0 ? Math.max(0.2 * size, Math.min(BOLT_TAIL * size, f.flown + speed * along)) : 1;
+      const first = p.boneCount;
       room = ch.loose(p, f.mesh, x, y, z, f.vx / speed, f.vy / speed, f.vz / speed, tail, size > 0 ? size : 1, 0, roll);
+      if (room && f.bore) this.keepLaunch(f, first, f.met || f.gone ? f.flown + f.clear : PLASMA_LEAVE);
     }
     if (!room) return;
+    for (const b of this.closing) {
+      const bore = b.flight.bore!;
+      if (bore.born === this.now) this.poseLaunch(ch, bore);
+      if (!this.drawPlasma(ch, p, cam, b.flight, b.distance, b.distance)) return;
+    }
     // A blast is a flash that swells from a quarter of its reach to most of it.
     for (const b of this.blasts) {
       const size = b.radius * (0.25 + 0.75 * Math.min(1, (this.now - b.born) / BLAST_MS)) * 0.9;
@@ -831,9 +922,19 @@ export class Shots {
       const a = (t * Math.PI) / 2;
       if (this.ballMesh >= 0 && size > 0.01 && !ch.loose(p, this.ballMesh, b.x - cam.x, b.y - cam.y, b.z - cam.z, Math.sin(a), 0, Math.cos(a), size, size)) return;
     }
-    for (const f of this.flashes) if (f.mesh >= 0 && !ch.loose(p, f.mesh, f.x - cam.x, f.y - cam.y, f.z - cam.z, f.dx, f.dy, f.dz, f.size, f.size)) return;
+    for (const f of this.flashes) {
+      if (f.bore && this.socket(ch, f.bore)) {
+        [f.x, f.y, f.z] = this.muzzle;
+        [f.dx, f.dy, f.dz] = this.boreAxis;
+      }
+      if (f.mesh < 0) continue;
+      f.row = p.boneCount;
+      if (!ch.loose(p, f.mesh, f.x - cam.x, f.y - cam.y, f.z - cam.z, f.dx, f.dy, f.dz, f.size, f.size)) return;
+      if (f.bore) this.flashesToPose.push(f);
+    }
     // A burst swells from a third of its size to all of it, turning a quarter turn.
     for (const b of this.bursts) {
+      if (this.now < b.born) continue;
       const t = Math.min(1, (this.now - b.born) / BOLT_BURST_MS);
       const size = b.size * (0.35 + 0.65 * t);
       const a = (t * Math.PI) / 2;

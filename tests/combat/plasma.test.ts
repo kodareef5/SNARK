@@ -8,7 +8,7 @@ import type { Characters } from "../../client/core/render/characters.ts";
 import { RemoteSample, type ClientSession, type CombatEvent } from "../../client/core/session.ts";
 import { Shots } from "../../client/core/shots.ts";
 import "../../client/core/render/city-late.ts";
-import { DRAW_SKINNED, DRAW_TEXTURED, type FramePacket } from "../../client/core/render/packet.ts";
+import { BONE_FLOATS, DRAW_SKINNED, DRAW_TEXTURED, type FramePacket } from "../../client/core/render/packet.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -132,7 +132,7 @@ test("energy burns thatch, chars wood and leaves stone and metal whole", () => {
   expect([takes("mat_thatch"), takes("mat_wood"), takes("mat_stone"), takes("mat_metal")]).toEqual([1, 0.25, 0, 0]);
 });
 
-test("a bolt is told in a hundred and three bits: its start to 2 cm, its way to a twentieth of a degree", () => {
+test("a batched bolt preserves its start, direction and speed", () => {
   const w = new BitWriter(96);
   const packed = new Uint32Array(10);
   const way = [Math.sin(2.1) * Math.cos(-0.4), Math.sin(-0.4), Math.cos(2.1) * Math.cos(-0.4)] as const;
@@ -142,13 +142,13 @@ test("a bolt is told in a hundred and three bits: its start to 2 cm, its way to 
   const first = w.pos;
   writeBolt(w, packed, 5, id("plasma_cell"), 99, BOLT_SILENCED | BOLT_MINE, id("plasma_cell"));
   // The first of a message names its ammunition, and each after it of the same says so in a bit.
-  expect(first).toBe(119);
-  expect(w.pos - first).toBe(103);
+  expect(first).toBe(120);
+  expect(w.pos - first).toBe(104);
   // One that had ended when it was told says how far it had gone, in 13 bits more; one that left slower than its
   // ammunition flies, a bow's half drawn, says at what share in 8. The ticks since it left are whole, and never one more.
   const second = w.pos;
   writeBolt(w, packed, 0, id("plasma_cell"), 3.9, BOLT_WET, id("plasma_cell"), 19.6, 0.75);
-  expect(w.pos - second).toBe(124);
+  expect(w.pos - second).toBe(125);
   const r = new BitReader();
   r.reset(w.bytes());
   readBolt(r, 0);
@@ -165,6 +165,35 @@ test("a bolt is told in a hundred and three bits: its start to 2 cm, its way to 
   expect(Math.abs(bolt.speed - 0.75)).toBeLessThan(1 / 255);
   expect([bolt.back, bolt.wet, bolt.mine]).toEqual([3, true, false]);
   expect(r.overflow).toBe(false);
+});
+
+test("a batch identifies each plasma shooter and clears the ID on other rounds", () => {
+  const w = new BitWriter(128);
+  const packed = new Uint32Array(5);
+  const shooters = [0, 2026, -1, 31];
+  for (const shooter of shooters) writeBolt(w, packed, 0, 1, 0, 0, 1, 0, 1, shooter);
+  const r = new BitReader();
+  r.reset(w.bytes());
+  for (const shooter of shooters) {
+    readBolt(r, 1);
+    expect(bolt.shooter).toBe(shooter);
+    expect(r.overflow).toBe(false);
+  }
+});
+
+test("the observer receives the entity that fired a plasma round", () => {
+  const { h, s, pilot, at } = armed("rifle_plasma", 0.3);
+  const observer = h.join("observer");
+  h.run(500);
+  h.say(observer, "enablecheats");
+  h.say(observer, `tp ${at.x + 3} ${at.z + 8}`);
+  h.run(300);
+  pilot.buttons |= BTN_PRIMARY;
+  h.run(TICK_MS * 2);
+  pilot.buttons &= ~BTN_PRIMARY;
+  h.run(300);
+  const shot = observer.events.find((ev) => ev.kind === EVENT_SHOT && ev.flies);
+  expect(shot?.shooter).toBe(h.ent(s));
 });
 
 for (const latencyMs of [40, 150]) {
@@ -202,18 +231,39 @@ for (const latencyMs of [40, 150]) {
     // Up and north, into the open: the bolt flies its whole reach.
     app.controls.yaw = 0;
     app.controls.pitch = 0.3;
+    eve.controls.yaw = Math.atan2(-8, -10);
     run(300);
     const shots = h.host.projectiles;
     const speed = reg.ammoSpeed[id("plasma_cell")]!;
     let apart = -1;
     let flashed = false;
     let drawn = false;
+    const checked = new Set<object>(), posedViewers = new Set<App>();
     app.controls.mouseButton(0, true);
     run(400, () => {
-      // A bolt's flash points the way its shot left: north, and up as the rifle looks.
-      for (const f of [...eve.shots.flashes, ...app.shots.flashes]) {
-        expect(Math.abs(f.dy - Math.sin(0.3))).toBeLessThan(0.05);
-        expect(f.dz).toBeGreaterThan(0.9);
+      for (const viewer of [app, eve]) for (const f of viewer.shots.flashes) {
+        const b = f.bore!;
+        expect(Math.abs(b.dy - Math.sin(0.3))).toBeLessThan(0.05);
+        expect(b.dz).toBeGreaterThan(0.9);
+        if (b.posed) {
+          const muzzle: number[] = [], axis: number[] = [];
+          expect(viewer.scene!.characters.plasmaBore(b.x, b.y, b.z, b.ammo, b.mine, muzzle, axis, b.shooter)).toBe(true);
+          expect([f.x, f.y, f.z]).toEqual(muzzle);
+          expect([f.dx, f.dy, f.dz]).toEqual(axis);
+          const p = viewer.scene!.packet, origin = [p.camX, p.camY, p.camZ];
+          const bolt = b.row * BONE_FLOATS, flash = f.row * BONE_FLOATS;
+          for (let k = 0; k < 3; k++) {
+            const row = k * 4;
+            expect(p.bones[flash + row + 3]! + origin[k]!).toBeCloseTo(muzzle[k]!, 4);
+            if (!checked.has(b)) {
+              const shaft = p.bones[bolt + row + 2]!;
+              expect(shaft).toBeCloseTo(0.08 * axis[k]!, 5);
+              expect(p.bones[bolt + row + 3]! - shaft + origin[k]!).toBeCloseTo(muzzle[k]!, 4);
+            }
+          }
+          checked.add(b);
+          posedViewers.add(viewer);
+        }
       }
       if (eve.shots.flashes.length > 0) flashed = true;
       if (apart >= 0 || eve.shots.flying.length === 0 || shots.flyingCount === 0) return;
@@ -228,6 +278,7 @@ for (const latencyMs of [40, 150]) {
     // The message took the link's time to come, and the server's bolt flew on meanwhile: no further than that and a tick.
     expect(apart).toBeLessThanOrEqual((latencyMs / TICK_MS + 2) * speed * TICK_DT);
     expect(flashed).toBe(true);
+    expect(posedViewers.size).toBe(2);
     expect(drawn).toBe(true);
     expect(eve.session.events.some((ev) => ev.kind === EVENT_SHOT)).toBe(false);
     // Gone at its reach on every side, and nothing burst in the open air.
