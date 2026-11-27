@@ -3,7 +3,7 @@
 
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
-import { decideLines, moverText } from "../../client/core/debug/decide.ts";
+import { decideBrief, decideLines, moverText } from "../../client/core/debug/decide.ts";
 import type { DebugBar } from "../../client/core/debug/debug.ts";
 import { KEY_DEBUG } from "../../client/core/debug/draw.ts";
 import { TickMeter } from "../../server/admin/meter.ts";
@@ -90,6 +90,11 @@ test("the section says each point's counts since the last ask, and the mover", (
   expect(next[1]!.text).toBe("nav.ring rule · put 15, 0 background · answered 15 · cut 0");
   expect(next.at(-1)!.text).toBe("mover 7, 3.2 m off: rung 2, held 5");
   expect(moverText(null)).toBe("No mover near you that the decider can describe.");
+  // In short, for the drawer's foot: the time, every point on one line, the mover.
+  expect(decideBrief(state(25, 2, 6, 60, { e: 7, metres: 3.2, about: { rung: 2, held: 5 } }), null).map((l) => l.text.slice(0, 60))).toEqual([
+    "0.10 ms a tick since the start, worst 1.5 ms · caps 64 / 32 ", "nav.ring rule 23/25, 2 background, cut 2 · nav.snag off", "mover 7, 3.2 m off: rung 2, held 5",
+  ]);
+  expect(decideBrief({ ...state(1, 0, 1, 1), decide: undefined } as never, null)).toEqual([]);
   // A tick's cut over what the background gave up is a warning.
   expect(decideLines(state(10, 3, 3, 30), null)[1]!.tone).toBe(0);
   expect(decideLines({ ...state(10, 3, 3, 30), decide: { ...state(10, 3, 3, 30).decide!, points: [{ name: "a", policy: "rule", put: 4, answered: 1, cut: 3, backPut: 0, backCut: 0 }] } }, null)[1]!.tone).toBe(2);
@@ -139,7 +144,12 @@ test("the Server tab asks for the decider while shown and lays it out in the dra
     run(40);
     const f = app.ui.frame, ours = f.nodes.slice(0, f.count).filter((n) => n.key >= KEY_DEBUG && n.key < KEY_DEBUG + 4000), drawer = ours[0]!;
     const texts = ours.map((n) => n.text);
-    if (ht >= 720) expect(texts, `${w}x${ht}`).toContain("DECIDE");
+    if (ht >= 720) {
+      // The whole section shows at the windows players have: its heading, every point and the mover.
+      expect(texts, `${w}x${ht}`).toContain("DECIDE");
+      expect(texts.some((t) => t?.startsWith("nav.ring rule 8/10")), `${w}x${ht}: the points`).toBe(true);
+      expect(texts.some((t) => t?.startsWith("mover 7, 3.2 m off")), `${w}x${ht}: the mover`).toBe(true);
+    }
     for (const n of ours.slice(1).filter((n) => n.y < drawer.y + drawer.h - 0.5)) {
       expect(n.x >= -0.01 && n.x + n.w <= f.width + 0.01 && n.y >= drawer.y - 0.01 && n.y + n.h <= drawer.y + drawer.h + 0.5, `${w}x${ht}: "${n.text}" at ${n.x},${n.y} ${n.w}x${n.h}`).toBe(true);
       if (n.text && n.kind === 1) expect(textWidth(n.text, n.style)).toBeLessThanOrEqual(n.w + 0.01);

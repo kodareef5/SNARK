@@ -7,7 +7,7 @@ import { ORDER_ALL, PIN_LABEL_BYTES, RESULT_FAR, RESULT_NOT_YOURS, RESULT_OK, RE
 import { goPins, orderMove, orderPatrol } from "../courses.ts";
 import { PIN_TINT, PIN_WORDS, mayUnpin, pinAge, unpin, type PinView } from "../pins.ts";
 import type { ClientSession } from "../session.ts";
-import { K_BUTTON, K_INPUT, K_PANEL, fitText, type UiFrame } from "./nodes.ts";
+import { K_BUTTON, K_INPUT, K_PANEL, fitText, textWidth, type UiFrame } from "./nodes.ts";
 import { S_BUTTON, S_HUD_KEY, S_INPUT, S_KEY_SMALL, S_MARK_SELF, S_PANEL } from "./style.ts";
 
 export const KEY_PIN_PANEL = 4600;
@@ -98,10 +98,14 @@ export function buildPins(f: UiFrame, session: ClientSession, p: PinChoice, x: n
   patrol.interactive = p.go.length > 0;
   patrol.alpha = patrol.interactive ? 1 : .4;
   top += 18;
-  const each = Math.floor(inner / PIN_WORDS.length);
-  for (let k = 0; k < PIN_WORDS.length; k++) {
-    const b = f.add(KEY_PIN_KIND + k, K_BUTTON, x + PAD + k * each, top, each - 2, 22, S_BUTTON);
-    b.text = fitText(PIN_WORDS[k]!, each - 6, S_BUTTON);
+  // Each kind's button is as wide as its word, with what is left shared out, so no word is cut short.
+  const words = PIN_WORDS.map((word) => textWidth(word, S_BUTTON));
+  const spare = Math.max(0, inner - words.reduce((sum, v) => sum + v, 0)) / PIN_WORDS.length;
+  for (let k = 0, at = x + PAD; k < PIN_WORDS.length; k++) {
+    const wide = words[k]! + spare;
+    const b = f.add(KEY_PIN_KIND + k, K_BUTTON, Math.round(at), top, Math.round(wide) - 2, 22, S_BUTTON);
+    at += wide;
+    b.text = fitText(PIN_WORDS[k]!, wide - 2, S_BUTTON);
     b.label = `Pin kind: ${PIN_WORDS[k]}`;
     b.tint = k === p.kind ? PIN_TINT[k]! : -1;
     b.alpha = k === p.kind ? 1 : .6;

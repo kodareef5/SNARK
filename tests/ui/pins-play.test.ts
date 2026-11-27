@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { App } from "../../client/core/app.ts";
-import { PIN_TINT } from "../../client/core/pins.ts";
+import { PIN_TINT, PIN_WORDS } from "../../client/core/pins.ts";
 import { KEY_COMPASS } from "../../client/core/ui/compass.ts";
 import { KEY_MARKER } from "../../client/core/ui/hud.ts";
 import type { UiNode } from "../../client/core/ui/nodes.ts";
@@ -66,6 +66,8 @@ test("a pin placed on the map reaches the tribe's map, minimap and compass, not 
   // Ada picks a kind, labels it, chooses a place off her own and saves it.
   openPins(p, ada);
   expect(p.at(ada, KEY_MAP_SAVE)?.interactive).toBe(false);
+  // Every kind's word is whole on its button.
+  expect(PIN_WORDS.map((_, k) => p.at(ada, KEY_PIN_KIND + k)?.text)).toEqual([...PIN_WORDS]);
   p.click(ada, KEY_PIN_KIND + DANGER);
   p.click(ada, KEY_PIN_LABEL);
   expect(ada.ui.captureKeyboard).toBe(true);

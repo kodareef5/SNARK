@@ -3,7 +3,7 @@
 // (decide.ts). The bar asks the server once a second while the tab shows (debug.ts poll).
 
 import { lineHeight } from "../ui/nodes.ts";
-import { DECIDE_LINE, decideLines, layDecide } from "./decide.ts";
+import { DECIDE_LINE, decideBrief, layDecide } from "./decide.ts";
 import type { DebugBar } from "./debug.ts";
 import type { Draw } from "./draw.ts";
 import { Paint } from "./paint.ts";
@@ -56,9 +56,9 @@ export class ServerTab implements Tab {
     const each = parts.names.map((name, i) => ({ name, i, ms: ticks > 0 ? (parts.all[i]! - (before?.parts.all[i] ?? 0)) / ticks : 0 })).filter((p) => p.ms >= 0.005).sort((a, b) => b.ms - a.ms);
     const inTick = each.filter((p) => between < 0 || p.i < between), outside = each.filter((p) => between >= 0 && p.i >= between && p.name !== "idle");
     const total = inTick.reduce((t, p) => t + p.ms, 0), barW = Math.round(half * 0.3), valueW = 110;
-    // The decider's lines stand at the foot of this column, in at most half of what is left of it.
-    const decide = decideLines(s, d.serverBefore), head = lineHeight(D_HEAD) + 2;
-    const rows = Math.min(decide.length, Math.floor(((y + h - at) / 2 - 6 - head) / DECIDE_LINE)), room = rows > 0 ? 6 + head + rows * DECIDE_LINE : 0;
+    // The decider's three lines stand at the drawer's foot across both columns, where two parts' rows are left above.
+    const decide = decideBrief(s, d.serverBefore), head = lineHeight(D_HEAD) + 2;
+    const rows = Math.max(0, Math.min(decide.length, Math.floor((y + h - at - 34 - 6 - head) / DECIDE_LINE))), room = rows > 0 ? 6 + head + rows * DECIDE_LINE : 0;
     for (const p of inTick) {
       if (at + 34 + room > y + h) break;
       const bw = Math.max(1, (p.ms / Math.max(total, 0.001)) * barW);
@@ -71,7 +71,7 @@ export class ServerTab implements Tab {
     if (outside.length > 0 && at + 17 + room <= y + h) draw.text(x, at, half, D_FAINT, `between ticks: ${outside.map((p) => `${p.name} ${ms(p.ms)}`).join(", ")}`);
     if (rows > 0) {
       const top = y + h - room + 6;
-      layDecide(draw, decide, x, top + draw.heading(x, top, half, "DECIDE"), half, rows);
+      layDecide(draw, decide, x, top + draw.heading(x, top, half, "DECIDE"), w, rows);
     }
 
     // Long ticks, newest first, then the world's bodies, memory and this connection.
@@ -79,7 +79,8 @@ export class ServerTab implements Tab {
     at = top + draw.heading(rx, top, half, `LONG TICKS, PAST ${ms(parts.limit)}`);
     const long = s.long;
     if (long.length === 0) at += draw.text(rx, at, half, D_FAINT, "None in the last two minutes.");
-    for (let i = long.length - 1, shown = 0; i >= 0 && shown < 5 && at + 17 <= y + h - 60; i--, shown++) {
+    const foot = y + h - room;
+    for (let i = long.length - 1, shown = 0; i >= 0 && shown < 5 && at + 17 <= foot - 60; i--, shown++) {
       const t = long[i]!;
       draw.text(rx, at, 70, D_MONO_DIM, ago(Date.parse(s.at) - t.at));
       // A tick is kept as long for its own time, or for how late the loop came to it.
@@ -90,9 +91,9 @@ export class ServerTab implements Tab {
     }
     at += 6;
     const groups = Object.entries(s.bodies.groups).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => `${v} ${k}`).join(", ");
-    if (at + 17 <= y + h) at += draw.pair(rx, at, half, "bodies", `${count(s.bodies.count)} of ${count(s.bodies.max)}${groups ? `: ${groups}` : ""}`);
-    if (at + 17 <= y + h) at += draw.pair(rx, at, half, "memory", `${bytes(s.memory.rss)} resident, heap ${bytes(s.memory.heapUsed)}`);
-    if (at + 17 <= y + h) draw.pair(rx, at, half, "this connection", `${bytes(s.connection.sent)} sent, ${count(s.connection.skipped)} skipped, ${bytes(s.connection.waiting)} waiting`, s.connection.skipped > 0 ? D_WARN : undefined);
+    if (at + 17 <= foot) at += draw.pair(rx, at, half, "bodies", `${count(s.bodies.count)} of ${count(s.bodies.max)}${groups ? `: ${groups}` : ""}`);
+    if (at + 17 <= foot) at += draw.pair(rx, at, half, "memory", `${bytes(s.memory.rss)} resident, heap ${bytes(s.memory.heapUsed)}`);
+    if (at + 17 <= foot) draw.pair(rx, at, half, "this connection", `${bytes(s.connection.sent)} sent, ${count(s.connection.skipped)} skipped, ${bytes(s.connection.waiting)} waiting`, s.connection.skipped > 0 ? D_WARN : undefined);
   }
 
   private paint(p50: readonly number[], worst: readonly number[], w: number, h: number): void {
