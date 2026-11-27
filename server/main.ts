@@ -482,7 +482,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   /** What a bug report is told of this server: the session a token names, and the server's state for its server.json. */
   const reportServer = { sender, facts: (c: unknown): Record<string, unknown> => ({ ...serverState(host, meter, c as Client) }) };
   /** What the debug bar is told of this server: its log, the session a token names, and the server's state. */
-  const debugServer: DebugServer = { log, sender, state: (c) => serverState(host, meter, c) };
+  const debugServer: DebugServer = { log, sender, state: (c, decide) => serverState(host, meter, c, Date.now(), decide) };
   if (opts.probeScene) {
     const ents = host.world.ents;
     // On a map with no ground at the probe's places, a cut of a city with sea there, they are left out.

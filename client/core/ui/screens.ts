@@ -1,10 +1,12 @@
 import { MARKER_DEATH } from "../../../shared/net/protocol.ts";
 import { latLonText, latOf, lonOf, mapU, mapV, xOfU, zOfV } from "../../../shared/world/coords.ts";
+import { pinAt } from "../pins.ts";
 import { MAX_MARKERS, type HudModel } from "../hud.ts";
 import type { ClientSession } from "../session.ts";
 import { ZOOMS, wholeMap } from "../tactical.ts";
 import { chartEdge } from "./field-finish.ts";
 import { glyph } from "./dock-visual.ts";
+import { KEY_PIN_LABEL, PIN_BAND, PIN_PANEL_W, PinChoice, buildPins, pressPins } from "./pins-panel.ts";
 import { IMAGE_ARROW, arrowSheet, placeArrow } from "./arrow.ts";
 import { IMAGE_MAP, KEY_MINIMAP, KEY_MINIMAP_TOGGLE, MARKER_STYLE, MARKER_TINT } from "./hud.ts";
 import { K_BUTTON, K_HOLD, K_IMAGE, K_PANEL, fitText, lineHeight, textWidth, type UiFrame } from "./nodes.ts";
@@ -23,8 +25,6 @@ export const KEY_MAP_CLOSE = 958;
 export const KEY_MAP_ATLAS = 959;
 export const KEY_MAP_PIN = 960;
 export const KEY_MAP_SURFACE = 977;
-export const KEY_MAP_PRIVATE = 978;
-export const KEY_MAP_REMOVE = 979;
 /** A line for each death, then one that says the zoom and the place pointed at. */
 export const KEY_MAP_LINE = 980;
 /** One mark for each marker but deaths and the reader, which have pins. */
@@ -56,8 +56,29 @@ export class MapScreen implements Screen {
   private picking = -1;
   pendingU = -1;
   pendingV = -1;
-  readonly bands = [{ from: KEY_MAP_PANEL, count: KEY_MAP_LINE + 17 - KEY_MAP_PANEL }, { from: KEY_MAP_MARK, count: MAX_MARKERS }];
+  /** The next pin's kind, sharing and label, and the list's page. */
+  readonly pins = new PinChoice();
+  readonly bands = [{ from: KEY_MAP_PANEL, count: KEY_MAP_LINE + 17 - KEY_MAP_PANEL }, { from: KEY_MAP_MARK, count: MAX_MARKERS }, PIN_BAND];
   open = false;
+
+  /** The pin's label field has the keyboard while a pin is placed. */
+  keyboard(): boolean {
+    return this.open && this.mode === "mark" && this.pins.typing;
+  }
+
+  typing(): boolean {
+    return this.keyboard();
+  }
+
+  text(key: number, value: string): boolean {
+    if (key !== KEY_PIN_LABEL) return false;
+    this.pins.edit(value);
+    return true;
+  }
+
+  result(seq: number, code: number): void {
+    this.pins.result(seq, code);
+  }
 
   isOpen(): boolean {
     return this.open;
@@ -78,6 +99,7 @@ export class MapScreen implements Screen {
   close(): void {
     this.open = false;
     this.cancel();
+    this.pins.reset();
   }
 
   cancelContact(): void {
@@ -88,6 +110,16 @@ export class MapScreen implements Screen {
   private cancel(): void {
     this.cancelContact();
     this.pendingU = this.pendingV = -1;
+    this.pins.typing = false;
+  }
+
+  /** Asks the server for a pin at the place chosen, as the panel has it. */
+  private save(c: ScreenCtx): void {
+    const hf = c.session?.world?.hf;
+    if (!hf || this.pendingU < 0) return;
+    this.pins.sent(pinAt(c.session!, xOfU(hf, this.pendingU), zOfV(hf, this.pendingV), this.pins.kind, this.pins.shared, this.pins.label));
+    this.pins.label = "";
+    this.cancel();
   }
 
   reset(): void { this.close(); }
@@ -100,7 +132,19 @@ export class MapScreen implements Screen {
     hit.interactive = true;
   }
 
-  key(code: string, down: boolean, repeat: boolean): boolean {
+  key(code: string, down: boolean, repeat: boolean, c: ScreenCtx): boolean {
+    if (this.keyboard()) {
+      // Enter saves the pin chosen and Escape leaves the field; every other key types.
+      if (code === "Enter" || code === "NumpadEnter") {
+        if (down && !repeat) this.pendingU >= 0 ? this.save(c) : (this.pins.typing = false);
+        return true;
+      }
+      if (code === "Escape") {
+        if (down && !repeat) this.pins.typing = false;
+        return true;
+      }
+      return false;
+    }
     if (!this.cornerOpen || !["Minus","Equal","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(code)) return false;
     if (this.mode === "mark") return true;
     if (down && !repeat) this.mode = "tools";
@@ -123,12 +167,9 @@ export class MapScreen implements Screen {
       if (key === KEY_MAP_TOOLS) { this.cancel(); this.mode = this.mode === "peek" ? "tools" : "peek"; return true; }
       if (key === KEY_MAP_ATLAS && this.mode === "tools") { this.cancel(); this.mode = "atlas"; return true; }
       if (key === KEY_MAP_MARK_TOOL && this.mode === "tools") { this.cancel(); this.mode = "mark"; return true; }
-      if (key === KEY_MAP_SAVE && this.mode === "mark" && this.pendingU >= 0) {
-        hud.privateU = this.pendingU; hud.privateV = this.pendingV; this.cancel(); this.mode = "tools"; return true;
-      }
-      if (key === KEY_MAP_REMOVE && this.mode === "mark") {
-        hud.privateU = hud.privateV = -1; this.cancel(); this.mode = "tools"; return true;
-      }
+      if (key === KEY_MAP_SAVE && this.mode === "mark" && this.pendingU >= 0) { this.save(c); return true; }
+      if (this.mode === "mark" && c.session && pressPins(key, c.session, this.pins)) return true;
+      this.pins.typing = false;
     }
     const surface = key === KEY_MAP_SURFACE || key === KEY_MAP_IMAGE;
     if (this.mode === "peek") return surface;
@@ -204,7 +245,7 @@ export function buildMap(f: UiFrame, session: ClientSession, hud: HudModel, corn
   // Creatures in view belong to the minimap. The most important marker is drawn last, so it is on top.
   for (let i = Math.min(hud.markers.length, MAX_MARKERS) - 1; i >= 0; i--) {
     const k = hud.markers[i]!;
-    if (k.kind !== "creature" && k.kind !== "death" && k.kind !== "self" && k.kind !== "dropPip") pin(KEY_MAP_MARK + i, k.u, k.v, k.kind === "drop" ? 4 : 3, MARKER_STYLE[k.kind], (k.tint ?? -1) >= 0 ? k.tint : MARKER_TINT[k.kind]);
+    if (k.kind !== "creature" && k.kind !== "death" && k.kind !== "self" && k.kind !== "dropPip") pin(KEY_MAP_MARK + i, k.u, k.v, k.kind === "drop" || k.kind === "pin" ? 4 : 3, MARKER_STYLE[k.kind], (k.tint ?? -1) >= 0 ? k.tint : MARKER_TINT[k.kind]);
   }
   const now = session.serverTick;
   for (let i = 0; i < deaths.length && i < 16; i++) {
@@ -243,12 +284,11 @@ export function buildMap(f: UiFrame, session: ClientSession, hud: HudModel, corn
       if (++labels === 2) break;
     }
   }
-  if (hud.privateU >= 0) pin(KEY_MAP_PRIVATE, hud.privateU, hud.privateV, 4, S_ICE, 0xeebd72);
   if (!corner) return;
   const side = Math.min(36, Math.floor(size / 5));
   const surface = f.add(KEY_MAP_SURFACE, K_HOLD, x, top + side, size, size - 2 * side, S_HUD_HIT);
   surface.interactive = true;
-  surface.label = corner.mode === "mark" ? "Choose private pin location" : "Corner chart";
+  surface.label = corner.mode === "mark" ? "Choose where to pin" : "Corner chart";
   if (corner.pendingU >= 0) pin(KEY_MAP_LINE + 15, corner.pendingU, corner.pendingV, 3, S_ICE, 0xffffff);
   const title = f.text(KEY_MAP_TITLE, x + 7, top + 4, size - 48, S_HUD_KEY, fitText((/^\d+$/.test(hud.chartName) ? "" : hud.chartName) || "MAP", size - 48, S_HUD_KEY));
   title.alpha = .94;
@@ -258,7 +298,7 @@ export function buildMap(f: UiFrame, session: ClientSession, hud: HudModel, corn
     shield.interactive = true; shield.label = "Chart frame";
   };
   shield(KEY_MAP_LINE + 10, x, top, size - side);
-  const count = corner.mode === "tools" ? 5 : corner.mode === "mark" ? (hud.privateU >= 0 ? 3 : 2) : 1;
+  const count = corner.mode === "tools" ? 5 : corner.mode === "mark" ? 2 : 1;
   shield(KEY_MAP_LINE + 11, x + count * side, top + size - side, size - count * side);
   const control = (key: number, n: number, name: string, symbol: string, label: string, enabled = true): void => {
     const upper = n < 0;
@@ -271,11 +311,13 @@ export function buildMap(f: UiFrame, session: ClientSession, hud: HudModel, corn
   if (corner.mode === "tools") {
     control(KEY_MAP_ZOOM, 1, "zoom-out", "−", "Zoom out", !!chart && chart.fullZoom > 0);
     control(KEY_MAP_ZOOM + 1, 2, "zoom-in", "+", "Zoom in", !!chart && chart.fullZoom < ZOOMS - 1);
-    control(KEY_MAP_MARK_TOOL, 3, "pin", "⌖", "Place private pin", !!chart);
+    control(KEY_MAP_MARK_TOOL, 3, "pin", "⌖", "Pins", !!chart);
     control(KEY_MAP_ATLAS, 4, "atlas", "⤢", "Open full map");
   } else if (corner.mode === "mark") {
-    control(KEY_MAP_SAVE, 1, "save", "✓", "Save private pin", corner.pendingU >= 0);
-    if (hud.privateU >= 0) control(KEY_MAP_REMOVE, 2, "unpin", "−", "Remove private pin");
+    control(KEY_MAP_SAVE, 1, "save", "✓", "Save the pin here", corner.pendingU >= 0);
+    // The panel stands left of the chart, or under it where the canvas has no room to its left.
+    const beside = x - PIN_PANEL_W - 8 >= f.left + 4;
+    buildPins(f, session, corner.pins, beside ? x - PIN_PANEL_W - 8 : Math.max(f.left + 4, x + size - PIN_PANEL_W), beside ? top : top + size + 8);
   } else if (chart) {
     const metres = Math.max(hf.sizeX * view.du, hf.sizeZ * view.dv);
     const label = metres >= 1000 ? `${(metres / 1000).toFixed(1)} km` : `${Math.round(metres)} m`;

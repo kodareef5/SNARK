@@ -1,8 +1,9 @@
 // A held glass, the spyglass (D1082): raised with the secondary button, it clicks between its optic's steps on the wheel,
 // shakes in the hand less crouched and least lying down, ranges what its middle is on with the primary, a second's
-// lasing, and marks for the tribe with N what the look is on.
+// lasing, and marks for the tribe with N what the look is on, or with no creature there pins the place.
 
-import type { KeyRow } from "./key-row.ts";
+import { G_WORLD, type KeyRow } from "./key-row.ts";
+import { pinLook } from "./pins.ts";
 import { CMD_MARK } from "../../shared/net/protocol.ts";
 import type { OpticFacet } from "../../shared/content/defs.ts";
 import { STANCE_CROUCH, STANCE_PRONE } from "../../shared/sim/character.ts";
@@ -73,17 +74,22 @@ export class Glass {
   }
 }
 
-// With a glass raised, N marks what the look is on for the tribe (D1082).
+/** The kind of pin N places through a glass: go (shared/world/course.ts WAYPOINT_KINDS). */
+export const GLASS_PIN_KIND = 0;
+
+// With a glass raised, N marks what the look is on for the tribe (D1082), or with no creature there pins the place for it.
 export const GLASS_KEYS: readonly KeyRow[] = [{
   name: "glass mark",
   keys: ["KeyN"],
   when: (c) => c.glass.up,
   press(c, _code, down, repeat) {
     const o = c.hud.overhead;
-    if (down && !repeat && o.lookedId >= 0) {
-      c.session.command(CMD_MARK, (w) => (w.u32(o.lookedId), w.u16(o.lookedGen)));
+    if (down && !repeat) {
+      if (o.lookedId >= 0) c.session.command(CMD_MARK, (w) => (w.u32(o.lookedId), w.u16(o.lookedGen)));
+      else pinLook(c.session, GLASS_PIN_KIND, true, "");
       c.glass.markedAt = c.nowMs;
     }
     return true;
   },
+  guide: [{ code: "KeyN", group: G_WORLD, title: "Modifier / mark", detail: "Used by movement and mount abilities. With a spyglass raised, marks the creature you look at for your tribe, or with none there, pins the place you look at for it." }],
 }];

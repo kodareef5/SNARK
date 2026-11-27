@@ -7,7 +7,7 @@
 // A handler never runs inside a shot or a blast. What happens to a part happens at once; its kind is told in this
 // system's own row of the tick, from a queue.
 
-import type { EventKindDef, EventMap, EventsApi, EventInfo, PartView, Plain, Striker } from "../api/event.ts";
+import type { EventKindDef, EventMap, EventsApi, EventInfo, PartView, Plain, Striker, WalkPoint, WalkerSpec } from "../api/event.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { hashString } from "../../shared/hash.ts";
 import { EVENT_MOST, MAPEVENT_MOST, eventBookFaults, inHours, kindOn, sheetFaults, starterEventBook, type EventBook, type KindSheet, type ScheduleDoc } from "../../shared/mapevent/book.ts";
@@ -27,7 +27,9 @@ import { tableKey } from "../../shared/supply/book.ts";
 import { catalogOf, type Catalog } from "../../shared/supply/catalog.ts";
 import { rollTable } from "../../shared/supply/compile.ts";
 import { HIT_NONE, castWorld, rayHit } from "../../shared/world/ray.ts";
+import { COURSE_BACK, COURSE_LOOP, COURSE_ONCE, course } from "../../shared/world/course.ts";
 import type { Combat, Source } from "../combat.ts";
+import type { CourseOwner, Courses } from "../courses.ts";
 import type { Containers } from "../containers.ts";
 import type { Death } from "../death.ts";
 import { event, type Bus } from "../events/bus.ts";
@@ -44,6 +46,8 @@ import { Run, type Preview, type RunHost } from "./run.ts";
 
 /** The key in a crate's record's `extra` under which it carries its event's id (two bytes, low first) and its part's id. */
 export const MAPEVENT_TAG = 0x657674;
+/** The key in a walker's record's `extra` under which it carries its event's id and its part's id, as a crate does. */
+export const WALKER_TAG = 0x776c6b;
 /** Added to the world's seed for the events' draws, as each system that rolls takes a number of its own. */
 const SEED = 113;
 /** A schedule's deadline carries this and its place in the order the schedules were first met. */
@@ -101,6 +105,17 @@ export interface EventSite {
   readonly lookKey: string;
 }
 
+/** A walker of an event: its record, and its walk as it stood when last saved, so that it walks on after a restart. */
+export interface EventWalker {
+  readonly id: number;
+  readonly pid: number;
+  points: { x: number; z: number; radius: number }[];
+  mode: number;
+  /** The point it makes for, -1 for none, and 1 or -1 the way it goes along them. */
+  at: number;
+  step: number;
+}
+
 /** An event as the engine keeps it. */
 export interface MapEvent {
   id: number;
@@ -129,6 +144,7 @@ export interface MapEvent {
   crafts: Craft[];
   crates: EventCrate[];
   sites: EventSite[];
+  walkers: EventWalker[];
   /** Crates its start asked for, made as it comes. */
   waiting: { id: number; spec: CrateSpec }[];
   /** The places the call asked it to be near, or null for where survivors stand. */
@@ -184,6 +200,10 @@ export interface MapEventContext {
   bus: Bus;
   seed: number;
   say: (line: string) => void;
+  /** Walkers: their walks, and their bodies placed, a body's entity or -1, and taken away with their records. */
+  courses: Courses;
+  place(kind: number, x: number, z: number): number;
+  unplace(pid: number): void;
   /** A clock for timing handlers, in milliseconds. Without it nothing is timed. */
   now?: () => number;
 }
@@ -364,6 +384,7 @@ export class MapEvents implements RunHost {
       crafts: [],
       crates: [],
       sites: [],
+      walkers: [],
       waiting: [],
       near: o.near ? o.near.slice(0, NEAR_MOST).map((p) => ({ x: p.x, z: p.z })) : null,
       told: [],
@@ -533,6 +554,8 @@ export class MapEvents implements RunHost {
       if (box) death.remove(box);
     }
     this.clearing = false;
+    for (const w of ev.walkers) this.ctx.unplace(w.pid);
+    ev.walkers = [];
     ev.waiting = [];
     ev.phases = [];
     if (ev.state === MAPEVENT_NOTICE) ev.start = Math.min(ev.start, world.tick);
@@ -591,6 +614,74 @@ export class MapEvents implements RunHost {
     return s.id;
   }
 
+  walker(ev: MapEvent, spec: WalkerSpec): number {
+    if (ev.state !== MAPEVENT_LIVE) throw new Error("a walker is placed once its event has come");
+    const { world, records } = this.ctx, reg = world.reg;
+    const kind = typeof spec?.species === "string" ? reg.index.get(spec.species) : undefined;
+    if (kind === undefined || reg.defs[kind]?.type !== "species" || reg.flies[kind] || reg.vehicle[kind]) throw new Error(`a walker: "${spec?.species}" is no species of the content that walks`);
+    if (!Number.isFinite(spec.x) || !Number.isFinite(spec.z)) throw new Error("a walker: its place is two numbers");
+    if (ev.walkers.length >= PARTS_MOST) throw new Error(`an event has ${PARTS_MOST} walkers at once at the most`);
+    const id = this.partId(ev), hf = world.hf;
+    const e = this.ctx.place(kind, Math.max(1, Math.min(hf.sizeX - 1, spec.x)), Math.max(1, Math.min(hf.sizeZ - 1, spec.z)));
+    if (e < 0) return 0;
+    const rec = records.byPid.get(world.ents.pid[e]!)!;
+    rec.extra.set(WALKER_TAG, Uint8Array.of(ev.id & 0xff, ev.id >> 8, id));
+    records.dirty.add(rec.pid);
+    ev.walkers.push({ id, pid: rec.pid, points: [], mode: COURSE_ONCE, at: -1, step: 1 });
+    this.note(`event ${ev.id}: walker ${id} placed at ${spec.x.toFixed(0)} ${spec.z.toFixed(0)}`);
+    this.dirty();
+    return id;
+  }
+
+  walk(ev: MapEvent, id: number, points: readonly WalkPoint[], mode: "once" | "loop" | "back"): void {
+    const w = ev.walkers.find((x) => x.id === id);
+    if (!w) throw new Error(`event ${ev.id} has no walker ${id}`);
+    const bad = (p: WalkPoint): boolean => !Number.isFinite(p?.x) || !Number.isFinite(p?.z) || (p.radius !== undefined && !(p.radius > 0 && p.radius <= 100));
+    if (!Array.isArray(points) || points.length === 0 || points.length > 64 || points.some(bad)) throw new Error("a walk is 1 to 64 points, each an x and a z, and a radius over 0 and at most 100 where given");
+    const m = mode === "loop" ? COURSE_LOOP : mode === "back" ? COURSE_BACK : mode === "once" ? COURSE_ONCE : -1;
+    if (m < 0) throw new Error(`a walk goes "once", "loop" or "back", not "${mode}"`);
+    w.points = points.map((p) => ({ x: p.x, z: p.z, radius: p.radius ?? 1.5 }));
+    w.mode = m;
+    w.at = 0;
+    w.step = 1;
+    this.walkOn(w);
+    this.dirty();
+  }
+
+  /** Gives a walker's body its walk, from the point it was making for. */
+  private walkOn(w: EventWalker): void {
+    const e = this.ctx.records.entOf.get(w.pid);
+    if (e === undefined || w.at < 0 || w.points.length === 0) return;
+    const c = course(w.points.map((p) => ({ ...p, kind: 0, priority: 0, pull: 0 })), w.mode);
+    c.at = Math.min(w.at, c.points.length - 1);
+    c.step = w.step;
+    const why = this.ctx.courses.give(e, c, this.walking);
+    if (why !== "") this.ctx.say(`map events: walker of record ${w.pid} cannot walk: ${why}`);
+  }
+
+  private readonly walking: CourseOwner = {
+    arrived: (e, at) => this.walked(e, at, "walkerAt"),
+    failed: (e, at) => this.walked(e, at, "walkerFailed"),
+    ended: (e) => this.walked(e, -1, "walkerDone"),
+  };
+
+  /** A walker's course told of a point, or of its end: its kind hears of it in its turn. */
+  private walked(e: number, at: number, what: "walkerAt" | "walkerFailed" | "walkerDone"): void {
+    const pid = this.ctx.world.ents.pid[e]!;
+    for (const ev of this.events) {
+      const w = ev.walkers.find((x) => x.pid === pid);
+      if (!w) continue;
+      if (what === "walkerDone") w.at = -1;
+      this.dirty();
+      this.later(ev, what, (run) => {
+        const on = this.kinds.get(ev.kind)?.def.on;
+        if (what === "walkerDone") on?.walkerDone?.(run, w.id);
+        else on?.[what]?.(run, w.id, at);
+      });
+      return;
+    }
+  }
+
   down(ev: MapEvent, id: number): void {
     const c = ev.crafts.find((x) => x.id === id);
     if (!c || ev.state !== MAPEVENT_LIVE || craftState(c, ev.start, this.ctx.world.tick) !== "flying") return;
@@ -617,6 +708,12 @@ export class MapEvents implements RunHost {
       return;
     }
     ev.waiting = ev.waiting.filter((x) => x.id !== id);
+    const w = ev.walkers.find((x) => x.id === id);
+    if (w) {
+      ev.walkers = ev.walkers.filter((x) => x !== w);
+      this.ctx.unplace(w.pid);
+      this.dirty();
+    }
     if (ev.sites.some((s) => s.id === id)) {
       ev.sites = ev.sites.filter((s) => s.id !== id);
       this.changed();
@@ -644,6 +741,11 @@ export class MapEvents implements RunHost {
       if (box) out.push({ type: "crate", id: crate.id, pid: crate.pid, x: box.x, y: box.y, z: box.z, stacks: box.inv ? box.inv.used() : 0 });
     }
     for (const s of ev.sites) out.push({ type: "site", id: s.id, x: s.x, z: s.z });
+    const ents = this.ctx.world.ents;
+    for (const w of ev.walkers) {
+      const e = this.ctx.records.entOf.get(w.pid);
+      if (e !== undefined) out.push({ type: "walker", id: w.id, pid: w.pid, x: ents.x[e]!, z: ents.z[e]!, at: this.ctx.courses.of(e)?.at ?? -1 });
+    }
     return out;
   }
 
@@ -1123,6 +1225,10 @@ export class MapEvents implements RunHost {
     const events: SavedEvent[] = [];
     for (const ev of this.events) {
       if (ev.state === MAPEVENT_ENDED) continue;
+      for (const w of ev.walkers) {
+        const e = this.ctx.records.entOf.get(w.pid), c = e !== undefined ? this.ctx.courses.of(e) : null;
+        if (c) [w.at, w.step] = [c.at, c.step];
+      }
       const { crafts, told: _t, staging: _s, ...rest } = ev;
       events.push({ ...rest, crafts: crafts.map(saveCraft) });
     }
@@ -1170,6 +1276,14 @@ export class MapEvents implements RunHost {
         else this.mended++;
         return mine;
       });
+      ev.walkers = ev.walkers.filter((w) => {
+        const tag = records.byPid.get(w.pid)?.extra.get(WALKER_TAG);
+        const mine = !!tag && tag.length === 3 && (tag[0]! | (tag[1]! << 8)) === ev.id && tag[2] === w.id;
+        if (mine) claimed.add(w.pid);
+        else this.mended++;
+        return mine;
+      });
+      for (const w of ev.walkers) this.walkOn(w);
       this.events.push(ev);
       deadlines.push(Math.max(tick + 1, ev.start), this.deadline, ev.id, 0);
       deadlines.push(Math.max(tick + 1, ev.until), this.deadline, ev.id, 0);
@@ -1187,9 +1301,11 @@ export class MapEvents implements RunHost {
         });
     }
     for (const rec of [...records.byPid.values()]) {
-      if (claimed.has(rec.pid) || !rec.extra.has(MAPEVENT_TAG)) continue;
+      const walker = rec.extra.has(WALKER_TAG);
+      if (claimed.has(rec.pid) || (!rec.extra.has(MAPEVENT_TAG) && !walker)) continue;
       this.mended++;
-      death.remove(rec);
+      if (walker) this.ctx.unplace(rec.pid);
+      else death.remove(rec);
     }
     if (this.mended > 0) this.ctx.say(`map events: ${this.mended} put right at load, a crate with no event or an event with no crate`);
     this.plan();

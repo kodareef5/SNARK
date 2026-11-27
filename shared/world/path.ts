@@ -88,6 +88,8 @@ const FREE = 2;
 const NEAR_KNOWN = 4;
 const NEAR_YES = 8;
 const CLOSED = 16;
+/** Water deep enough to swim, in a search that crosses it (`swim`). */
+const WET = 32;
 
 export class PathFinder {
   readonly world: CollisionWorld;
@@ -100,6 +102,11 @@ export class PathFinder {
    * doorway finds it wherever the wall stands on the grid.
    */
   doorways: Uint8Array | null = null;
+  /**
+   * Where above 0, water deep enough to swim is crossed at this many times the price of dry ground, and what stands in it
+   * still stops a way; at 0, such water stops a way, as it stops a walker's.
+   */
+  swim = 0;
   /** The last way found: `count` points in metres, the first where it began. */
   readonly x: number[] = [];
   readonly z: number[] = [];
@@ -143,10 +150,20 @@ export class PathFinder {
   private readonly trail: number[] = [];
   private readonly px: number[] = [];
   private readonly pz: number[] = [];
-
   constructor(world: CollisionWorld, body: Walker) {
     this.world = world;
     this.body = body;
+  }
+
+  /**
+   * groundAt for the body searched for. Where it crosses water, water deep enough to swim is free unless something stands
+   * in it where the body floats, whatever is on the bed below.
+   */
+  private ground(x: number, z: number, r = this.body.radius): number {
+    const g = groundAt(this.world, this.body, x, z, r);
+    if (g !== GROUND_WATER || this.swim <= 0) return g;
+    const b = this.body, y = Math.max(groundUnder(this.world.hf, x, z, r), this.world.hf.waterAt(x, z) - swimDepth(b));
+    return capsuleFree(this.world, x, y, z, r, b.height) ? GROUND_FREE : GROUND_SOLID;
   }
 
   /** Later searches treat the cell at (x, z) as not free, until `forget`. */
@@ -240,7 +257,9 @@ export class PathFinder {
         if (ni < 0 || nj < 0 || ni >= SIDE || nj >= SIDE) continue;
         const n = nj * SIDE + ni;
         if ((state[n]! & CLOSED) !== 0 || !this.free(n) || !this.passes(i, j, d)) continue;
-        const cost = g[c]! + ((d & 1) !== 0 ? DIAGONAL : STRAIGHT) + (this.beside(ni, nj) ? BESIDE : 0);
+        let step = ((d & 1) !== 0 ? DIAGONAL : STRAIGHT) + (this.beside(ni, nj) ? BESIDE : 0);
+        if ((state[n]! & WET) !== 0) step = Math.round(step * this.swim);
+        const cost = g[c]! + step;
         if (cost >= g[n]!) continue;
         g[n] = cost;
         from[n] = c;
@@ -275,7 +294,7 @@ export class PathFinder {
     }
     // Then the goal itself, where a body can stand on it and walk to it from the last cell.
     const { toX, toZ } = this;
-    if (status === PATH_FOUND && groundAt(this.world, this.body, toX, toZ) === GROUND_FREE && this.sight(px[px.length - 1]!, pz[pz.length - 1]!, toX, toZ)) {
+    if (status === PATH_FOUND && this.ground(toX, toZ) === GROUND_FREE && this.sight(px[px.length - 1]!, pz[pz.length - 1]!, toX, toZ)) {
       px.push(toX);
       pz.push(toZ);
     }
@@ -310,7 +329,9 @@ export class PathFinder {
     for (let k = 1; k <= n; k++) {
       const x = ax + (dx * k) / n;
       const z = az + (dz * k) / n;
-      if (groundAt(this.world, this.body, x, z, r) !== GROUND_FREE) return false;
+      if (this.ground(x, z, r) !== GROUND_FREE) return false;
+      // Where a swim costs more than a walk, a straight line may not swim what the search paid to go round.
+      if (this.swim > 1 && groundAt(this.world, this.body, x, z, r) === GROUND_WATER) return false;
       if (this.avoided.size > 0 && this.avoided.has(Math.floor(x) * 65536 + Math.floor(z))) return false;
     }
     return true;
@@ -350,8 +371,9 @@ export class PathFinder {
     const x = this.ox + i;
     const z = this.oz + (c - i) / SIDE;
     this.offX[c] = this.offZ[c] = 0;
-    const ground = groundAt(this.world, this.body, x + 0.5, z + 0.5);
+    const ground = this.ground(x + 0.5, z + 0.5);
     let ok = ground === GROUND_FREE;
+    const wet = ok && this.swim > 0 && groundAt(this.world, this.body, x + 0.5, z + 0.5) === GROUND_WATER;
     // Blocked beside a doorway, the cell's point moves onto the line through the doorway's middle.
     if (ground === GROUND_SOLID && this.doorways !== null && this.onDoor(x + 0.5, z + 0.5)) {
       this.offX[c] = this.doorX - x - 0.5;
@@ -359,7 +381,7 @@ export class PathFinder {
       ok = true;
     }
     ok &&= !this.avoided.has(x * 65536 + z);
-    this.state[c] = s | KNOWN | (ok ? FREE : 0);
+    this.state[c] = s | KNOWN | (ok ? FREE : 0) | (wet ? WET : 0);
     return ok;
   }
 
@@ -385,7 +407,7 @@ export class PathFinder {
       if (along > DOOR_REACH || along < -DOOR_REACH || across > 0.5 || across < -0.5) continue;
       const px = t.x[slot]! + along * frame.sin;
       const pz = t.z[slot]! + along * frame.cos;
-      if (groundAt(this.world, this.body, px, pz) !== GROUND_FREE) continue;
+      if (this.ground(px, pz) !== GROUND_FREE) continue;
       this.doorX = px;
       this.doorZ = pz;
       return true;
@@ -426,7 +448,7 @@ export class PathFinder {
     const n = c + DZ[d]! * SIDE + DX[d]!;
     const x = (this.pointX(c) + this.pointX(n)) / 2;
     const z = (this.pointZ(c) + this.pointZ(n)) / 2;
-    const ground = groundAt(this.world, this.body, x, z);
+    const ground = this.ground(x, z);
     let ok = ground === GROUND_FREE || (ground === GROUND_SOLID && this.doorways !== null && this.onDoor(x, z));
     if (ok && (d & 1) !== 0) ok = this.free(c + DX[d]!) && this.free(c + DZ[d]! * SIDE);
     this.edge[c] = e | bit | (ok ? bit << 4 : 0);

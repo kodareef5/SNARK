@@ -421,6 +421,13 @@ export const ORDER_WANDER = 8;
 export const ORDER_ATTACK = 9;
 /** Protocol 11. Its stance becomes attacking your target (ARK's "Attack My Target" whistle): neutral, and it goes for what its tribe hurts. */
 export const ORDER_YOURS = 10;
+/** Followed by a pin's id varint, 0 for where the orderer looks, which the server finds: it walks there and stays (server/courses.ts). */
+export const ORDER_MOVE = 12;
+/**
+ * Followed by a bit, set to walk back the way it came and clear to go round, the count of pins less one in 3 bits, and each
+ * pin's id varint: it walks the team's pins in that order until another order.
+ */
+export const ORDER_PATROL = 13;
 export const ORDER_LEVEL = 16;
 /** Every tribe creature within WHISTLE_RANGE. It cannot take ORDER_UNSADDLE, ORDER_MATE, ORDER_UNMATE, ORDER_WANDER or ORDER_LEVEL. */
 export const ORDER_ALL = 0xffffffff;
@@ -551,6 +558,15 @@ export const CMD_CHUNK_AGAIN = command();
 export const CMD_GROOM = command();
 /** Ends a remake the server offered (OWN_REMAKE): made 1 bit, then for one made its look, LOOK_BYTES. */
 export const CMD_REMAKE = command();
+/**
+ * A pin on the map for the survivor's team (server/pins.ts): op 2 bits (PIN_), then for PIN_ADD the place x f32, z f32, and
+ * for both adds a kind 3 bits (shared/world/course.ts WAYPOINT_KINDS), shared with the tribe 1 bit and a label string; for
+ * PIN_REMOVE the pin's id varint. PIN_LOOK carries no place: the server finds it along the survivor's own look.
+ */
+export const CMD_PIN = command();
+export const PIN_ADD = 0, PIN_LOOK = 1, PIN_REMOVE = 2;
+/** Bytes of a pin's label as kept and sent: the server cuts a longer one at a whole character. */
+export const PIN_LABEL_BYTES = 24;
 /** Chunks from its own within which a client says what it kept: the server's structRadius and the one more it lets go at. */
 export const HAVE_REACH = 4;
 export const SPOT_TICKS = 1800;
@@ -760,6 +776,13 @@ export const OWN_WARNED = ownKind();
 export const OWN_REMAKE = ownKind();
 /** The id of the cluster's people manifest string (shared/people/doc.ts peopleManifestPath), sent when it changes; "" for none. */
 export const OWN_PEOPLE = ownKind();
+/**
+ * The pins of the survivor's team that it may see (server/pins.ts), sent whole when they or its team change: count u8, then
+ * their authors' names (count u8, a string each), then per pin, oldest first: id varint, kind 3 bits, shared 1 bit, its
+ * own 1 bit, author u8 (its place among the names), x f32, z f32, radius u16 (tenths of a metre), priority 3 bits, pull
+ * 8 bits signed (127ths), the tick placed u32, expires 1 bit and if set the tick it goes u32, label string.
+ */
+export const OWN_PINS = ownKind();
 
 export const MARKER_DEATH = 1;
 

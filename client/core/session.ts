@@ -72,6 +72,7 @@ import {
   OWN_HELD,
   OWN_LOOK,
   OWN_MARKERS,
+  OWN_PINS,
   OWN_OPEN,
   MAX_OPEN_NAME_BYTES,
   OPEN_TAKE_ONLY,
@@ -169,6 +170,7 @@ import { F_PROP, GEAR_COUNT, WORN_LENGTH } from "../../shared/sim/entities.ts";
 import { FootContacts, FootVehicles } from "../../shared/sim/foot-contact.ts";
 import { Inventory } from "../../shared/sim/items.ts";
 import type { Kept } from "./balls.ts";
+import { readPins, type PinView } from "./pins.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
@@ -739,6 +741,8 @@ export class ClientSession {
   station: { kind: number; ref: number; out: number; lanes: { item: number; doneAt: number }[]; jobs: { item: number; left: number; doneAt: number; rest: number }[] } | null = null;
   /** Oldest first. */
   readonly markers: { kind: number; x: number; y: number; z: number; tick: number }[] = [];
+  /** The pins of its team that the survivor may see, oldest first (OWN_PINS). */
+  readonly pins: PinView[] = [];
   /**
    * While the survivor has no body: the map's spawn points, then its tribe's beds. `kind` is the bed's structure kind (0 for a
    * spawn point), `readyAt` the tick it may be risen at from (0 for now). `choosing` says why (CHOOSE_), and `placesList` is the
@@ -2166,6 +2170,7 @@ export class ClientSession {
         s.markers.push(...list);
       },
     });
+    ownKinds.add({ kind: OWN_PINS, read: (s, r) => readPins(r, s.pins) });
     ownKinds.add({
       kind: OWN_RULES,
       read(s, r) {

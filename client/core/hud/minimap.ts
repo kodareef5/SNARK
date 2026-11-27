@@ -1,11 +1,12 @@
-// The minimap in the top right and the markers the maps show: the reader, its tribe, deaths, drops, and what is in view.
+// The minimap in the top right and the markers the maps show: the reader, its tribe, its pins, deaths, drops, and what is in view.
 // The model's pictures are the chart's (client/core/tactical.ts); the map screen draws the same markers (ui/screens.ts).
 
-import { CMD_MAP_ZOOM, SESSION_DEAD } from "../../../shared/net/protocol.ts";
+import { CMD_MAP_ZOOM, MARKER_DEATH, SESSION_DEAD } from "../../../shared/net/protocol.ts";
 import { formatHour, hourOfDay } from "../../../shared/sim/clock.ts";
 import { mapU, mapV } from "../../../shared/world/coords.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import { MARK_MATE, MARK_OTHER, MARK_SPOT, MARK_TAME, MAX_MARKS, PLAYERS_OFF, type Marks } from "../../../shared/world/tactical.ts";
+import { PIN_TINT } from "../pins.ts";
 import type { ClientSession, RemoteSample } from "../session.ts";
 import type { Chart } from "../tactical.ts";
 import type { Settings } from "../settings.ts";
@@ -16,8 +17,11 @@ import { S_FRAME, S_HUD_HIT, S_HUD_KEY, S_ICE, S_LABEL, S_MARK_CREATURE, S_MARK_
 import { SPOT_INK } from "./marks.ts";
 import { band, type HudWidget } from "./widget.ts";
 
-/** One of the reader's tribe is a mate and one of its creatures a tame. A player is a survivor of another tribe, and a creature is not the tribe's. */
-export type MarkerKind = "self" | "mate" | "tame" | "death" | "spawn" | "player" | "creature" | "drop" | "dropPip" | "spotted";
+/**
+ * One of the reader's tribe is a mate and one of its creatures a tame. A player is a survivor of another tribe, and a creature is
+ * not the tribe's. A pin is one of its team's, tinted by its kind.
+ */
+export type MarkerKind = "self" | "mate" | "tame" | "death" | "spawn" | "player" | "creature" | "drop" | "dropPip" | "spotted" | "pin";
 
 export interface Marker {
   /** A "drop" is a supply drop the server's drop book tells of on the map, and a "dropPip" one it tells of on the compass alone. */
@@ -57,12 +61,12 @@ const ARROW_SIZE = 24;
 /** Indices of the minimap's picture and the map screen's in the frame's image table. */
 export const IMAGE_MINIMAP = 1;
 export const IMAGE_MAP = 2;
-export const MARKER_STYLE: Record<MarkerKind, number> = { self: S_MARK_SELF, mate: S_MARK_SELF, tame: S_MARK_SELF, player: S_MARK_PLAYER, creature: S_MARK_CREATURE, spawn: S_MARK_SPAWN, death: S_MARK_DEATH, drop: S_MARK_SELF, dropPip: S_MARK_SELF, spotted: S_MARK_CREATURE };
+export const MARKER_STYLE: Record<MarkerKind, number> = { self: S_MARK_SELF, mate: S_MARK_SELF, tame: S_MARK_SELF, player: S_MARK_PLAYER, creature: S_MARK_CREATURE, spawn: S_MARK_SPAWN, death: S_MARK_DEATH, drop: S_MARK_SELF, dropPip: S_MARK_SELF, spotted: S_MARK_CREATURE, pin: S_MARK_SELF };
 /** Colours of the kinds that have no style of their own. */
 export const MARKER_TINT: Partial<Record<MarkerKind, number>> = { mate: 0x6fd0ff, tame: 0xe8d24a, spotted: SPOT_INK };
 
 export interface MinimapModel {
-  /** The most important first: the reader, mates, tames, deaths, other survivors, then creatures in view. */
+  /** The most important first: the reader, mates, tames, pins, deaths, other survivors, then creatures in view. */
   markers: Marker[];
   /** How many more the last update had than a map shows. They were the least important. */
   unmarked: number;
@@ -80,9 +84,6 @@ export interface MinimapModel {
   zoomAsked: number;
   marksSeen: number;
   inView: Uint8Array;
-  /** A confirmed private chart pin belongs to this map, and never goes on the wire. */
-  privateU: number;
-  privateV: number;
   chartWorld: Heightfield | null;
   miniPixels: number;
   chartName: string;
@@ -159,7 +160,8 @@ function fillMarkers(model: MinimapModel, session: ClientSession, remote: Remote
   markFar(model, hf, marks, remote, team, MARK_TAME, "tame");
   // What the tribe spotted through a glass (D1082), in view or not.
   for (let i = 0; i < marks.count; i++) if (marks.kind[i] === MARK_SPOT) mark(model, "spotted", hf, marks.x[i]!, marks.z[i]!);
-  for (const m of session.markers) mark(model, "death", hf, m.x, m.z);
+  for (const p of session.pins) mark(model, "pin", hf, p.x, p.z, PIN_TINT[p.kind] ?? -1);
+  for (const m of session.markers) if (m.kind === MARKER_DEATH) mark(model, "death", hf, m.x, m.z);
   // Supply drops, where the server's drop book tells of them: on the compass, or on the compass and the map.
   for (const d of session.supply.rows) if (d.left === 0 && d.announce > 0) mark(model, d.announce > 1 ? "drop" : "dropPip", hf, d.x, d.z, session.supply.tiers[d.tier]?.rgb ?? -1);
   // Beds and spawn points, while one is being chosen.
@@ -187,11 +189,10 @@ export const MINIMAP: HudWidget<MinimapModel> = {
     zoomMinimap(m, settings, key === KEY_MINIMAP_OUT ? -1 : 1);
     return true;
   },
-  make: () => ({ markers: [], unmarked: 0, pool: [], chart: null, minimapVisible: true, mapSeen: -2, mapBox: { x: 0, y: 0, size: 1 }, pointedU: -1, pointedV: -1, zoomAsked: -1000, marksSeen: -1, inView: new Uint8Array(MAX_MARKS), clock: "", privateU: -1, privateV: -1, chartWorld: null, miniPixels: MINIMAP_SIZE, chartName: "", chartPlaces: [] }),
+  make: () => ({ markers: [], unmarked: 0, pool: [], chart: null, minimapVisible: true, mapSeen: -2, mapBox: { x: 0, y: 0, size: 1 }, pointedU: -1, pointedV: -1, zoomAsked: -1000, marksSeen: -1, inView: new Uint8Array(MAX_MARKS), clock: "", chartWorld: null, miniPixels: MINIMAP_SIZE, chartName: "", chartPlaces: [] }),
   fill(model, c) {
     const session = c.session, world = session.world!, b = session.own, scale = c.scale, a = c.frame;
     if (model.chartWorld !== world.hf) {
-      model.privateU = model.privateV = -1;
       model.chartWorld = world.hf;
       model.chartName = (world.mapId || "").replace(/^.*:/, "").replaceAll("_", " ").toUpperCase();
       model.chartPlaces.length = 0;
@@ -244,7 +245,9 @@ export const MINIMAP: HudWidget<MinimapModel> = {
         }
         // A drop told of on the compass alone is not on the map, the small one either.
         if (k.kind === "dropPip") continue;
-        f.add(KEY_MARKER + shown++, K_PANEL, x - 2, y - 2, 4, 4, MARKER_STYLE[k.kind]).tint = (k.tint ?? -1) >= 0 ? k.tint! : (MARKER_TINT[k.kind] ?? -1);
+        // A pin is a size up, so its kind's colour reads beside a mate's.
+        const half = k.kind === "pin" ? 3 : 2;
+        f.add(KEY_MARKER + shown++, K_PANEL, x - half, y - half, half * 2, half * 2, MARKER_STYLE[k.kind]).tint = (k.tint ?? -1) >= 0 ? k.tint! : (MARKER_TINT[k.kind] ?? -1);
       }
       if (view && !at.touch) {
         let shownPlaces = 0;
@@ -253,12 +256,6 @@ export const MINIMAP: HudWidget<MinimapModel> = {
           if (u <= 0 || u >= 1 || v <= 0 || v >= 1) continue;
           f.add(KEY_CHART_PLACE + shownPlaces++, K_PANEL, mapX + u * (MAP - 3), mapTop + v * (MAP - 3), 3, 3, S_MARK_SELF).tint = 0xb2d2e3;
           if (shownPlaces === 4) break;
-        }
-      }
-      if (view && m.privateU >= 0) {
-        const u = (m.privateU - view.u0) / view.du, v = (m.privateV - view.v0) / view.dv;
-        if (u >= 0 && u <= 1 && v >= 0 && v <= 1) {
-          f.add(KEY_MINIMAP_OUT + 2, K_PANEL, mapX + Math.min(MAP - 3, Math.max(3, u * MAP)) - 3, mapY + Math.min(MAP - 3, Math.max(3, v * MAP)) - 3, 6, 6, S_MARK_SELF).tint = 0xeebd72;
         }
       }
       if (at.controls) {

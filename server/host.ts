@@ -20,10 +20,18 @@ import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { Build } from "./build.ts";
 import { Plans } from "./plans.ts";
+import { PINS_SAVE_TICKS, Pins } from "./pins.ts";
+import { Courses, TameOrders } from "./courses.ts";
 import { Motion } from "./motion.ts";
 import { Fixtures } from "./fixtures.ts";
 import { Beds, type Place } from "./beds.ts";
 import { CastHost } from "./cast/host.ts";
+import { Decide } from "./decide/decide.ts";
+import { LineLog } from "./decide/log.ts";
+import { addNav } from "./decide/nav.ts";
+import { addPick, pullToward } from "./decide/nav-pick.ts";
+import { Reach } from "./decide/nav-reach.ts";
+import { DecideCopy, settingsOf } from "./decide/shared.ts";
 import type { CastSettings } from "../shared/cast/state.ts";
 import { Taming } from "./taming.ts";
 import { Riding } from "./riding.ts";
@@ -281,6 +289,10 @@ export interface Host {
   readonly voice: Voice;
   readonly build: Build;
   readonly plans: Plans;
+  readonly pins: Pins;
+  /** Movers sent through places in an order, and the tame orders that send them (server/courses.ts). */
+  readonly courses: Courses;
+  readonly tameOrders: TameOrders;
   readonly fixtures: Fixtures;
   readonly motion: Motion;
   readonly stations: Stations;
@@ -289,6 +301,10 @@ export interface Host {
   readonly urban: Urban;
   /** The city's background people (server/cast): always there, idle while CastEnabled is off. */
   readonly cast: CastHost;
+  /** Small choices for movers (server/decide): every point off unless DecidePolicy names it. */
+  readonly decide: Decide;
+  /** The cluster's copy of the Decide settings this world takes part in (server/decide/shared.ts); null for a world alone. */
+  readonly decideCopy: DecideCopy | null;
   readonly vehicles: VehicleService;
   readonly entangle: Entangle;
   readonly breeding: Breeding;
@@ -1164,8 +1180,25 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // Templates set down and not yet built: they follow their team, and go with it.
   const plans = new Plans({ world, game, records, items, tribes, rules });
   build.plans = plans;
-  tribes.onMerged = (from, to) => plans.moved(from, to);
-  tribes.onGone = (team) => plans.dropTeam(team);
+  // Pins on the map follow their team and go with it, as plans do.
+  const pins = new Pins({ world, game, records, tribes, deadlines, reach: (c) => gaze.lookReach(c) });
+  if (persistence && !loaded!.fresh) pins.restore(persistence.store.meta("pins"));
+  persistence?.sidecar("pins", pins, PINS_SAVE_TICKS);
+  tribes.onMerged = (from, to) => {
+    plans.moved(from, to);
+    pins.merge(from, to);
+  };
+  tribes.onGone = (team) => {
+    plans.dropTeam(team);
+    pins.drop(team);
+  };
+  tribes.onLeft = (rec, from, last) => pins.left(from, rec.team, rec.pid, last);
+  // Courses walk a body by its goal; a tame keeps its move or patrol on its record and takes it up with each new body.
+  const courses = new Courses({ world, mind: creatures.mind });
+  const tameOrders = new TameOrders({ world, records, pins, courses, mind: creatures.mind, reach: (c) => gaze.lookReach(c), tell: (pid, text) => notice(pid, text) });
+  taming.courses = tameOrders;
+  creatures.onAdopt.on((e, rec) => tameOrders.adopted(e, rec));
+  creatures.onRemove.on((e) => void courses.stop(e));
   if (persistence) {
     if (!loaded!.fresh) plans.load(persistence.store.loadPlans());
     persistence.plans = plans;
@@ -1617,7 +1650,15 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   supply.begin(persistence && !loaded!.fresh ? (persistence.store.meta("supply") as string | null) : null);
   persistence?.sidecar("supply", supply.saved);
   // Map events (server/mapevent/events.ts). Made before the modules, which define its kinds; begun after them.
-  const mapEvents = new MapEvents({ world, game, records, items, death, combat, projectiles, supply, containers, deadlines, bus, seed: opts.seed ?? 1, say, now: opts.now });
+  const mapEvents = new MapEvents({ world, game, records, items, death, combat, projectiles, supply, containers, deadlines, bus, seed: opts.seed ?? 1, say, now: opts.now, courses,
+    place: (kind, x, z) => spawnCreature(reg.ids[kind]!, x, z, 1, "mapevent"),
+    unplace: (pid) => {
+      const e = records.entOf.get(pid);
+      persistence?.detach(pid);
+      if (e !== undefined) creatures.remove(e);
+      survival.forget(pid);
+      records.delete(pid);
+    } });
   hitches.begin(persistence && !loaded!.fresh ? persistence.store.meta("hitches") as string | null : null);
   persistence?.sidecar("hitches", hitches.saved);
   const airSupport = new AirSupport({ world, game, records, rules, combat, projectiles, urban, hitches, items, wake: wakeView,
@@ -1969,6 +2010,35 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const seatedHead = new Float64Array(3);
   const parts = game.parts;
   const lane = game.lane;
+  // The decider (server/decide): every point is off, and costs nothing, until DecidePolicy names it.
+  const decide = new Decide({
+    world, lane, say,
+    settings: () => ({ policy: rules.text("DecidePolicy"), sample: rules.num("DecideSample"), megabytes: rules.num("DecideLogMegabytes") }),
+    log: opts.dbPath ? new LineLog(join(dirname(resolve(opts.dbPath)), "decide"), `decide-w${records.worldId}`) : null,
+  });
+  // The stuck ladder's points (server/decide/nav.ts): movers that are snagged or stuck get out.
+  creatures.mind.decide = decide;
+  const nav = addNav(decide, world, creatures.mind, game.players.blocking);
+  // Objectives pick by `nav.pick` (server/decide/nav-pick.ts), and a leg `nav.reach` doubts is given up early.
+  addPick(decide, world, creatures.mind, courses, (team) => pins.of(team), lane);
+  nav.rings.pullOf = (e, x, z, out) => void (world.ents.team[e] !== 0 && pullToward(pins.of(world.ents.team[e]!), x, z, out));
+  const reacher = creatures.mind.reacher;
+  if (reacher instanceof Reach) {
+    reacher.ends = (e) => courses.legEnds(e);
+    courses.reach = (e) => reacher.placeOf(e);
+    courses.legEnded = (e, ok, x, z) => reacher.ended(e, ok, x, z);
+  }
+  // A cluster's worlds take the Decide settings one of them copies to its folder (server/decide/shared.ts).
+  const decideCopy = cluster ? new DecideCopy({
+    root: cluster.folder.root, world: cluster.world, now: () => cluster.now(), say,
+    settings: () => settingsOf(rules),
+    set: (name, words, by) => host.pageSetting(name, words, by).why,
+    keep: () => persistence?.writeSidecar("decideCopy"),
+  }) : null;
+  if (decideCopy) {
+    decideCopy.restore(persistence && !loaded!.fresh ? (persistence.store.meta("decideCopy") as string | null) : null);
+    persistence?.sidecar("decideCopy", decideCopy.saved);
+  }
   // A car door held open strikes whoever stands where it swings (server/urban.ts doorStrikes): a blow by the car's
   // driver, by its speed, told to everyone near as a car's (EVENT_IMPACT), and a creature it kills tumbles.
   // A survivor knocked off their feet (Knockdowns) goes limp as its ragdoll, thrown as the blow left it moving, and gets
@@ -2474,8 +2544,12 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     physics(loose, LANE_ROW.loose),
     clouds,
     mark(PART.combat),
+    courses,
     creatures,
     mark(PART.creatures),
+    decide,
+    ...(decideCopy ? [decideCopy] : []),
+    mark(PART.decide),
     physics({ step: contacts }, LANE_ROW.contacts),
     mark(PART.contacts),
     impale,
@@ -2541,6 +2615,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     voice,
     build,
     plans,
+    pins,
+    courses,
+    tameOrders,
     fixtures,
     motion,
     stations,
@@ -2548,6 +2625,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     riding,
     urban,
     cast: castHost,
+    decide,
+    decideCopy,
     vehicles,
     entangle,
     breeding,
