@@ -92,6 +92,8 @@ const SLEEP_AFTER = 2 * REST_TICKS;
 /** Metres past the reach of the contact sweeps within which nothing may be awake round a sleeping vehicle. */
 const SLEEP_MARGIN = 16;
 const still = (n: number): boolean => Math.abs(n) < 1e-3;
+/** A vehicle at rest is not saved again until a number of its state is this far from what its record holds. */
+const REST_HAIR = 1e-3;
 
 /** Metres a second a car goes at, at least, for a door standing open on it to strike, and how open the door must stand. */
 export const DOOR_STRIKE_SPEED = 3;
@@ -1672,7 +1674,8 @@ export class Urban {
     const rec = records.byPid.get(ents.pid[e]!);
     if (!rec) return;
     ents.loadBody(e, this.saved);
-    if (this.saver.write(rec, this.saved, world.reg.vehicle[rec.kind]?.movement)) records.dirty.add(rec.pid);
+    // One at rest is stepped once a REST_TICKS, and many shift by a hair each time for as long as they stand.
+    if (this.saver.write(rec, this.saved, world.reg.vehicle[rec.kind]?.movement, this.resting(e) ? REST_HAIR : 0)) records.dirty.add(rec.pid);
   }
 
   /**
