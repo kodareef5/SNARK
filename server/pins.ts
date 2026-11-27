@@ -78,6 +78,18 @@ export function cleanLabel(s: string): string {
 }
 
 const NOTHING: readonly Pin[] = [];
+const lookDir = [0, 0, 0];
+
+/** Whether body `e`'s look from its own eye meets the ground or anything built or grown within `reach` metres; where, into `out`. */
+export function lookPlace(world: ServerWorld, e: number, reach: number, out: { x: number; z: number }): boolean {
+  const ents = world.ents, d = lookDir;
+  const ex = ents.x[e]!, ey = ents.y[e]! + stanceEye(world.reg.move[ents.kind[e]!]!, ents.stance[e]!), ez = ents.z[e]!;
+  lookDirection(ents.yaw[e]!, ents.pitch[e]!, d);
+  if (castWorld(world, ex, ey, ez, d[0]!, d[1]!, d[2]!, reach) === HIT_NONE) return false;
+  out.x = ex + d[0]! * rayHit.t;
+  out.z = ez + d[2]! * rayHit.t;
+  return true;
+}
 
 export class Pins {
   /** For the save: set when anything saved changed. */
@@ -89,7 +101,7 @@ export class Pins {
   private readonly deadline: number;
   /** Per author, the tick its allowance of adds is spent to (a leaky bucket). */
   private readonly spent = new Map<number, number>();
-  private readonly dir = [0, 0, 0];
+  private readonly hit = { x: 0, z: 0 };
   private readonly authors: number[] = [];
   private hitX = 0;
   private hitZ = 0;
@@ -288,12 +300,9 @@ export class Pins {
 
   /** Whether `c`'s look from its own eye meets anything within reach; where it does is left in hitX and hitZ. */
   private looked(c: Client): boolean {
-    const world = this.ctx.world, ents = world.ents, e = c.ent, d = this.dir;
-    const ex = ents.x[e]!, ey = ents.y[e]! + stanceEye(world.reg.move[ents.kind[e]!]!, ents.stance[e]!), ez = ents.z[e]!;
-    lookDirection(ents.yaw[e]!, ents.pitch[e]!, d);
-    if (castWorld(world, ex, ey, ez, d[0]!, d[1]!, d[2]!, Math.max(PIN_REACH, this.ctx.reach(c))) === HIT_NONE) return false;
-    this.hitX = ex + d[0]! * rayHit.t;
-    this.hitZ = ez + d[2]! * rayHit.t;
+    if (!lookPlace(this.ctx.world, c.ent, Math.max(PIN_REACH, this.ctx.reach(c)), this.hit)) return false;
+    this.hitX = this.hit.x;
+    this.hitZ = this.hit.z;
     return true;
   }
 

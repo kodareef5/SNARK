@@ -21,6 +21,7 @@ import { Genome } from "../shared/sim/genome.ts";
 import { Build } from "./build.ts";
 import { Plans } from "./plans.ts";
 import { PINS_SAVE_TICKS, Pins } from "./pins.ts";
+import { Courses, TameOrders } from "./courses.ts";
 import { Motion } from "./motion.ts";
 import { Fixtures } from "./fixtures.ts";
 import { Beds, type Place } from "./beds.ts";
@@ -279,6 +280,9 @@ export interface Host {
   readonly build: Build;
   readonly plans: Plans;
   readonly pins: Pins;
+  /** Movers sent through places in an order, and the tame orders that send them (server/courses.ts). */
+  readonly courses: Courses;
+  readonly tameOrders: TameOrders;
   readonly fixtures: Fixtures;
   readonly motion: Motion;
   readonly stations: Stations;
@@ -1174,6 +1178,12 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     plans.dropTeam(team);
     pins.drop(team);
   };
+  // Courses walk a body by its goal; a tame keeps its move or patrol on its record and takes it up with each new body.
+  const courses = new Courses({ world, mind: creatures.mind });
+  const tameOrders = new TameOrders({ world, records, pins, courses, mind: creatures.mind, reach: (c) => gaze.lookReach(c), tell: (pid, text) => notice(pid, text) });
+  taming.courses = tameOrders;
+  creatures.onAdopt.on((e, rec) => tameOrders.adopted(e, rec));
+  creatures.onRemove.on((e) => void courses.stop(e));
   if (persistence) {
     if (!loaded!.fresh) plans.load(persistence.store.loadPlans());
     persistence.plans = plans;
@@ -2437,6 +2447,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     physics(loose, LANE_ROW.loose),
     clouds,
     mark(PART.combat),
+    courses,
     creatures,
     mark(PART.creatures),
     decide,
@@ -2507,6 +2518,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     build,
     plans,
     pins,
+    courses,
+    tameOrders,
     fixtures,
     motion,
     stations,

@@ -1,8 +1,10 @@
 // The pins panel beside the corner chart while a pin is being placed: the kind and the sharing of the next one, its
-// label, and the team's pins, newest first, each with its kind, label, author and age, and a remove where the reader may.
+// label, and the team's pins, newest first, each with its kind, label, author and age, a send for the creatures in range,
+// and a remove where the reader may. Its patrol sends those creatures round the tribe's Go pins.
 
 import { fitBytes } from "../../../shared/net/codec.ts";
-import { PIN_LABEL_BYTES, RESULT_FAR, RESULT_NOT_YOURS, RESULT_OK, RESULT_RATE } from "../../../shared/net/protocol.ts";
+import { ORDER_ALL, PIN_LABEL_BYTES, RESULT_FAR, RESULT_NOT_YOURS, RESULT_OK, RESULT_RATE } from "../../../shared/net/protocol.ts";
+import { goPins, orderMove, orderPatrol } from "../courses.ts";
 import { PIN_TINT, PIN_WORDS, mayUnpin, pinAge, unpin, type PinView } from "../pins.ts";
 import type { ClientSession } from "../session.ts";
 import { K_BUTTON, K_INPUT, K_PANEL, fitText, type UiFrame } from "./nodes.ts";
@@ -17,11 +19,15 @@ export const KEY_PIN_LABEL = 4611;
 export const KEY_PIN_NOTE = 4612;
 /** The pager: back, on, and the page it is at. */
 export const KEY_PIN_PAGE = 4613;
+/** Sends the tribe's creatures in range round its shared Go pins, in the order they were placed. */
+export const KEY_PIN_PATROL = 4616;
 /** Per row of the list: its line, its colour and its remove. */
 export const KEY_PIN_ROW = 4620;
 export const KEY_PIN_SWATCH = 4630;
 export const KEY_PIN_REMOVE = 4640;
-export const PIN_BAND = { from: KEY_PIN_PANEL, count: 50 };
+/** Per row: sends the tribe's creatures in range to its pin. */
+export const KEY_PIN_SEND = 4650;
+export const PIN_BAND = { from: KEY_PIN_PANEL, count: 60 };
 /** Rows of the list a page shows. */
 export const PIN_ROWS = 8;
 export const PIN_PANEL_W = 236;
@@ -42,6 +48,8 @@ export class PinChoice {
   asked = 0;
   /** The pin each row of the list shows, -1 for none. */
   readonly rows = new Int32Array(PIN_ROWS).fill(-1);
+  /** The Go pins a patrol would walk, as the panel was last built. */
+  readonly go: number[] = [];
 
   /** The label as typed, cut to what the server keeps. */
   edit(value: string): void {
@@ -82,7 +90,13 @@ export function buildPins(f: UiFrame, session: ClientSession, p: PinChoice, x: n
   const h = PAD + 18 + 26 + 26 + (p.note ? ROW_H : 0) + Math.max(1, shown) * ROW_H + (pages > 1 ? 22 : 0) + PAD;
   f.add(KEY_PIN_PANEL, K_PANEL, x, y, w, h, S_PANEL).alpha = .9;
   let top = y + PAD;
-  f.text(KEY_PIN_TITLE, x + PAD, top, inner, S_HUD_KEY, pins.length === 0 ? "PINS" : `PINS  ${pins.length}`);
+  f.text(KEY_PIN_TITLE, x + PAD, top, inner - 64, S_HUD_KEY, pins.length === 0 ? "PINS" : `PINS  ${pins.length}`);
+  goPins(pins, p.go);
+  const patrol = f.add(KEY_PIN_PATROL, K_BUTTON, x + w - PAD - 60, top - 2, 60, 18, S_BUTTON);
+  patrol.text = p.go.length > 0 ? `Patrol ${p.go.length}` : "Patrol";
+  patrol.label = "Send your creatures in range round the tribe's Go pins, in order";
+  patrol.interactive = p.go.length > 0;
+  patrol.alpha = patrol.interactive ? 1 : .4;
   top += 18;
   const each = Math.floor(inner / PIN_WORDS.length);
   for (let k = 0; k < PIN_WORDS.length; k++) {
@@ -117,9 +131,13 @@ export function buildPins(f: UiFrame, session: ClientSession, p: PinChoice, x: n
     f.add(KEY_PIN_SWATCH + i, K_PANEL, x + PAD, ry + 5, 7, 7, S_MARK_SELF).tint = PIN_TINT[pin.kind] ?? -1;
     const who = pin.mine ? "you" : pin.author;
     const words = (PIN_WORDS[pin.kind] ?? "?") + (pin.label ? "  " + pin.label : "") + (who ? "  " + who : "") + "  " + pinAge(now, pin.at);
-    const removable = mayUnpin(pin, rank);
-    const text = f.text(KEY_PIN_ROW + i, x + PAD + 12, ry, inner - 12 - (removable ? 22 : 0), S_KEY_SMALL, fitText(words, inner - 12 - (removable ? 22 : 0), S_KEY_SMALL));
+    const removable = mayUnpin(pin, rank), room = inner - 12 - 22 - (removable ? 22 : 0);
+    const text = f.text(KEY_PIN_ROW + i, x + PAD + 12, ry, room, S_KEY_SMALL, fitText(words, room, S_KEY_SMALL));
     text.label = pin.shared ? "Shared with the tribe" : "Seen by you alone";
+    const send = f.add(KEY_PIN_SEND + i, K_BUTTON, x + w - PAD - 18 - (removable ? 22 : 0), ry, 18, 16, S_BUTTON);
+    send.text = "→";
+    send.label = "Send your creatures in range here";
+    send.interactive = true;
     if (removable) {
       const b = f.add(KEY_PIN_REMOVE + i, K_BUTTON, x + w - PAD - 18, ry, 18, 16, S_BUTTON);
       b.text = "×";
@@ -152,6 +170,9 @@ export function pressPins(key: number, session: ClientSession, p: PinChoice): bo
   else if (key >= KEY_PIN_REMOVE && key < KEY_PIN_REMOVE + PIN_ROWS) {
     const id = p.rows[key - KEY_PIN_REMOVE]!;
     if (id >= 0) p.sent(unpin(session, id));
-  }
+  } else if (key >= KEY_PIN_SEND && key < KEY_PIN_SEND + PIN_ROWS) {
+    const id = p.rows[key - KEY_PIN_SEND]!;
+    if (id >= 0) p.sent(orderMove(session, ORDER_ALL, id));
+  } else if (key === KEY_PIN_PATROL) p.sent(orderPatrol(session, ORDER_ALL, goPins(session.pins, p.go), false));
   return true;
 }

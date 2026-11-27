@@ -5,6 +5,7 @@
 import { makeHandle } from "../../shared/ids.ts";
 import { CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, CMD_THROW, CMD_VEHICLE, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, VEHICLE_DOOR, VEHICLE_PACK, VEHICLE_INSPECT, VEHICLE_LIGHTS } from "../../shared/net/protocol.ts";
 import { isSkateboard, isWheelVehicle } from "../../shared/sim/vehicle.ts";
+import { orderMove } from "./courses.ts";
 import { BUILD_FIRST_KEYS, BUILD_KEYS, HAMMER_KEYS } from "./editor-keys.ts";
 import { GLASS_KEYS } from "./glass.ts";
 import { FEED_KEYS } from "./air-feed.ts";
@@ -204,6 +205,34 @@ const ATTACK_MINE: KeyRow = {
   },
 };
 
+// Go there: [ and ' are bound to nothing else, [ beside the attack whistle ] for one and ' for all.
+/** By app, the creature a held go-there whistle is for: the one looked at as the key went down. */
+const goingFor = new WeakMap<object, number>();
+const GO_ONE: KeyRow = {
+  name: "go there: one",
+  keys: ["BracketLeft"],
+  guide: [{ code: "BracketLeft", group: G_WORLD, title: "Go there: one", detail: "Hold while looking at your creature, turn to where it is to go, and let go." }],
+  press(c, _code, down, repeat) {
+    if (repeat) return true;
+    if (down) goingFor.set(c, c.lookedAt);
+    else {
+      const which = goingFor.get(c) ?? -1;
+      goingFor.delete(c);
+      if (which >= 0) orderMove(c.session, which, 0);
+    }
+    return true;
+  },
+};
+const GO_ALL: KeyRow = {
+  name: "go there: all",
+  keys: ["Quote"],
+  guide: [{ code: "Quote", group: G_WORLD, title: "Go there: all", detail: "Sends tribe creatures that can hear you to where you look, to stay there." }],
+  press(c, _code, down, repeat) {
+    if (down && !repeat) orderMove(c.session, ORDER_ALL, 0);
+    return true;
+  },
+};
+
 const VOICE: KeyRow = {
   name: "voice",
   keys: ["KeyB"],
@@ -284,6 +313,8 @@ export const KEY_ROWS: readonly KeyRow[] = [
   whistle("stay: all", "KeyU", T_STAY, "Stay: all", false, ORDER_STAY),
   ATTACK_THIS,
   ATTACK_MINE,
+  GO_ONE,
+  GO_ALL,
   VOICE,
   HOTBAR,
   VIEW,

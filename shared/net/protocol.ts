@@ -421,6 +421,13 @@ export const ORDER_WANDER = 8;
 export const ORDER_ATTACK = 9;
 /** Protocol 11. Its stance becomes attacking your target (ARK's "Attack My Target" whistle): neutral, and it goes for what its tribe hurts. */
 export const ORDER_YOURS = 10;
+/** Followed by a pin's id varint, 0 for where the orderer looks, which the server finds: it walks there and stays (server/courses.ts). */
+export const ORDER_MOVE = 12;
+/**
+ * Followed by a bit, set to walk back the way it came and clear to go round, the count of pins less one in 3 bits, and each
+ * pin's id varint: it walks the team's pins in that order until another order.
+ */
+export const ORDER_PATROL = 13;
 export const ORDER_LEVEL = 16;
 /** Every tribe creature within WHISTLE_RANGE. It cannot take ORDER_UNSADDLE, ORDER_MATE, ORDER_UNMATE, ORDER_WANDER or ORDER_LEVEL. */
 export const ORDER_ALL = 0xffffffff;
