@@ -197,7 +197,8 @@ test("turning the bar off lets go of every hook, and on takes them again", async
 });
 
 test("a player can download the debug capture on a narrow screen without reporting", async () => {
-  const h = new Harness({}, 1, 60), port = fakePort(), { app, run } = client(h, port, 390, 844);
+  const build = { commit: "badc0ffee0".repeat(4), clean: false, wire: 3000000001 };
+  const h = new Harness({}, 1, 60), port = { ...fakePort(), build }, { app, run } = client(h, port, 390, 844);
   port.get = async () => ({ status: 404, text: "" });
   app.ui.settings.debug = true;
   const bar = await barOf(app, run);
@@ -216,13 +217,32 @@ test("a player can download the debug capture on a narrow screen without reporti
   await play(run, 200);
   expect(port.posted).toEqual([]);
   const capture = port.downloads[0]!;
-  expect(capture.name).toMatch(/^snark-debug-.*\.zip$/);
+  expect(capture.name).toMatch(/^snark-debug-.*-badc0ffee0-dirty\.zip$/);
   expect([...capture.fields.keys()]).toEqual(["report", "perf", "log", "events", "net"]);
   expect(capture.fields.get("log")).toContain("page marker");
   expect([...capture.fields.values()].join("")).not.toContain("private server marker");
   expect(capture.pictures.length).toBeGreaterThan(1);
   expect(port.dropped).toContain(capture.pictures.at(-1)!);
-  expect(JSON.parse(capture.fields.get("report")!).shots).toHaveLength(capture.pictures.length);
+  const report = JSON.parse(capture.fields.get("report")!);
+  expect(report.build).toEqual(build);
+  expect(report.shots).toHaveLength(capture.pictures.length);
+});
+
+test("a source-only client leaves its build unknown when the server has a sidecar", async () => {
+  const port = fakePort(), h = new Harness({}, 1, 60), { app, run } = client(h, port);
+  const served = { commit: "ab".repeat(20), clean: true, wire: 2101, at: "2026-11-27T12:00:00Z" };
+  const reads: string[] = [];
+  port.get = async (path) => {
+    reads.push(path);
+    return path === "build.json" ? { status: 200, text: JSON.stringify(served) } : { status: 404, text: "" };
+  };
+  app.ui.settings.debug = true;
+  const bar = await barOf(app, run);
+  await play(run, 100);
+  bar.save("", true);
+  await play(run, 100);
+  expect(reads).not.toContain("build.json");
+  expect(JSON.parse(port.downloads[0]!.fields.get("report")!).build).toBeUndefined();
 });
 
 test("a save arrives in a report store as a capture an agent can read", async () => {

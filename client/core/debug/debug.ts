@@ -8,7 +8,6 @@ import { LEVEL_ERROR, LEVEL_INFO, LEVEL_WARN, type CodeNames, type DebugAnswer, 
 import { TEXT_NOTICE } from "../../../shared/net/protocol.ts";
 import { PASSES, type PassCpu } from "../passes.ts";
 import type { FramePacket } from "../render/packet.ts";
-import type { ReportBuild } from "../../../shared/report.ts";
 import type { UiFrame, UiImage } from "../ui/nodes.ts";
 import { Draw, KEY_DEBUG } from "./draw.ts";
 import { EV_ASSET, EV_CORRECTION, EV_ERROR, EV_GAP, EV_GOVERNOR, EV_JUMP, EV_TASK, EV_TICK, GAP_MS, LagEvents, Rises, type LagEvent } from "./events.ts";
@@ -78,11 +77,10 @@ export class DebugBar {
   chosenSpans: SpanFrame | null = null;
   /** When the bar last began to record, on the frame's clock: a capture reaches back no further. */
   recordingFrom = Infinity;
-  /** What the last save said, for the bar; words waiting for the next frame's picture to save with; the client's build. */
+  /** What the last save said, for the bar; words waiting for the next frame's picture to save with. */
   saved = "";
   private saving: { words: string; local: boolean } | null = null;
   private writing = false;
-  clientBuild: ReportBuild = {};
 
   private hooked = false;
   private hookedOnce = false;
@@ -130,11 +128,6 @@ export class DebugBar {
     this.port = port;
     this.shots = new ShotRing(port);
     this.hooked = false;
-    void port.get("build.json").then((a) => {
-      try {
-        if (a.status === 200) this.clientBuild = JSON.parse(a.text) as ReportBuild;
-      } catch {}
-    });
   }
 
   /** A socket's count on the frame's clock, which is the page's in a browser and the harness's in a test. */

@@ -17,7 +17,7 @@
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { EVENTS_SHAPE, FOLDER_BYTES_MOST, LOG_SHAPE, NET_SHAPE, spanRoots, REPORT_BYTES_MOST, REPORT_VERSION, SHOTS_MOST, SHOT_WIDE_MOST, THUMB_WIDE, clean, cleanPerf, cleanRecord, cleanReport, clockText, jpegSize, readableJson, reportFolder, shotFile, type PerfSummary, type Report, type ReportBuild, type Shape } from "../shared/report.ts";
+import { BUILD_SHAPE, EVENTS_SHAPE, FOLDER_BYTES_MOST, LOG_SHAPE, NET_SHAPE, spanRoots, REPORT_BYTES_MOST, REPORT_VERSION, SHOTS_MOST, SHOT_WIDE_MOST, THUMB_WIDE, clean, cleanPerf, cleanRecord, cleanReport, clockText, jpegSize, readableJson, reportFolder, shotFile, type PerfSummary, type Report, type ReportBuild, type Shape } from "../shared/report.ts";
 import { TOKEN_BYTES } from "../shared/voice/packet.ts";
 
 /** Who sent a report, as the session its token names. */
@@ -254,7 +254,7 @@ export class ReportStore {
   /** The build.json beside the client this server serves, as it is now. */
   private servedBuild(): ReportBuild {
     try {
-      return clean(JSON.parse(readFileSync(join(this.clientDir, "build.json"), "utf8")), { fields: { commit: { text: 40 }, clean: "bool", at: { text: 40 } } }) as ReportBuild;
+      return clean(JSON.parse(readFileSync(join(this.clientDir, "build.json"), "utf8")), BUILD_SHAPE) as ReportBuild;
     } catch {
       return {};
     }

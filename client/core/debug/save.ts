@@ -118,7 +118,7 @@ export async function saveCapture(d: DebugBar, words: string, local: boolean, fu
   if (big) perfRecord.census[0]!.shot = pictures.length - 1;
   const s = app.session;
   const report: Report = {
-    version: REPORT_VERSION, kind: "capture", began: Math.round(wallFrom), ms: span, ...head.head, map: { id: s.world?.mapId ?? "" }, build: d.clientBuild, shots,
+    version: REPORT_VERSION, kind: "capture", began: Math.round(wallFrom), ms: span, ...head.head, map: { id: s.world?.mapId ?? "" }, build: port.build, shots,
     ...(chosenAt >= from && chosenAt <= head.at && shots.length > 0 ? { chosen: chosenOf(chosenAt - from, chosenEvent, shots) } : {}),
     text: words ? [{ at: span, line: words }] : [], voice: { segments: [] },
   };
@@ -129,7 +129,9 @@ export async function saveCapture(d: DebugBar, words: string, local: boolean, fu
   try {
     if (local) {
       const stamp = new Date(head.wall).toISOString().replace(/[:.]/g, "-");
-      await port.download(`snark-debug-${stamp}.zip`, fields, pictures);
+      const commit = port.build?.commit;
+      const version = commit && /^[0-9a-f]{40}$/i.test(commit) ? `-${commit.slice(0, 10)}${port.build?.clean === false ? "-dirty" : ""}` : "";
+      await port.download(`snark-debug-${stamp}${version}.zip`, fields, pictures);
       return "ZIP ready";
     }
     const answer = await port.post("__report", [["token", d.token()], ...fields], pictures.map((p) => ["shot", p.blob] as const));

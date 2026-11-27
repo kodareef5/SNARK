@@ -33,7 +33,7 @@ interface LongFrameEntry extends PerformanceEntry {
   readonly scripts: readonly { readonly duration: number; readonly sourceURL: string; readonly invoker: string }[];
 }
 
-export function debugPort(canvas: HTMLCanvasElement, renderer: DebugRenderer, Clock: new (gl: QueryGl, each: boolean) => PassClock, log: (to: (line: PageLine) => void) => void): DebugPort {
+export function debugPort(canvas: HTMLCanvasElement, renderer: DebugRenderer, Clock: new (gl: QueryGl, each: boolean) => PassClock, log: (to: (line: PageLine) => void) => void, build?: DebugPort["build"]): DebugPort {
   const lines: PageLine[] = [];
   const keep = (line: PageLine): void => {
     if (lines.push(line) > LINES_MOST) lines.shift();
@@ -102,6 +102,7 @@ export function debugPort(canvas: HTMLCanvasElement, renderer: DebugRenderer, Cl
     }
   };
   return {
+    build,
     now: () => performance.now(),
     origin: performance.timeOrigin,
     shot(wide, quality) {
