@@ -112,6 +112,7 @@ export class Persistence {
   backupKeep: BackupKeep = KEEP;
   /** A backup has been asked for and has not been answered. */
   backingUp = false;
+  private backupQueued = false;
   /** `changes` as it was when the last backup that was made was asked for, and as the one being made was: -1 for none. */
   private backedUp = -1;
   private asked = -1;
@@ -208,7 +209,7 @@ export class Persistence {
   }
 
   private rekeep(): void {
-    this.keeper.close();
+    this.closeKeeper();
     this.keeper = this.keep(this.store);
     this.keeper.onBackup = (r) => this.answered(r);
     // Another file has no backups, and a keeper that was closed answers nothing.
@@ -216,11 +217,16 @@ export class Persistence {
     this.backedUp = this.asked = -1;
   }
 
-  /** Asks the keeper for a backup of the save as its last commit left it. */
-  backup(): void {
+  /** Starts a backup. A request during a copy queues one more and returns false. */
+  backup(): boolean {
+    if (this.backingUp) {
+      this.backupQueued = true;
+      return false;
+    }
     this.backingUp = true;
     this.asked = this.changes;
     this.keeper.backup(this.backupKeep);
+    return true;
   }
 
   /** Whether a backup made now would hold what the last one made holds, the clock aside. */
@@ -232,12 +238,24 @@ export class Persistence {
     this.backingUp = false;
     if (r.path !== "") this.backedUp = this.asked;
     this.onBackup?.(r);
+    if (this.backupQueued) {
+      this.backupQueued = false;
+      this.backup();
+    }
   }
 
   /** Stops the keeper, then closes the save without a commit. A server stopping commits first (Host.shutdown). */
   close(): void {
-    this.keeper.close();
+    this.closeKeeper();
     this.store.close();
+  }
+
+  private closeKeeper(): void {
+    this.keeper.onBackup = null;
+    // The worker processes requests in order even when the host is shutting down.
+    if (this.backupQueued) this.keeper.backup(this.backupKeep);
+    this.backupQueued = false;
+    this.keeper.close();
   }
 
   /** The entry is written in the same transaction as the state it produced. */
