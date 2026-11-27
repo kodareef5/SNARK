@@ -397,3 +397,32 @@ test("a refused head lets go at once, is made again after a wait, and keeps its 
   expect(f.ready(MESH)).toBe(false);
   expect(Number.isFinite(f.bytes)).toBe(true);
 });
+
+test("a body is short of its look until its own head, hair and beard are drawn", () => {
+  const f = new Faces(wornAssets());
+  f.register(MESH, REST);
+  f.wear(MESH, HAIR, false);
+  f.wear(MESH, BEARD, true);
+  const look = lookOf(7);
+  let shared = -1, frames = 0;
+  for (; frames < 400; frames++) {
+    f.begin(tierOf("high"), [], []);
+    f.groomed(HAIR);
+    const drawn = f.ready(MESH) ? f.head(MESH, look, 0, ONES, 0, 0, HAIR, BEARD) : null;
+    if (drawn && shared < 0) shared = drawn.slot;
+    // Drawn whole only on its own head with the hair and beard made on it.
+    const whole = drawn !== null && drawn.slot !== shared && drawn.hair === drawn.slot + 2 && drawn.beard === drawn.slot + 4;
+    expect(f.short, `frame ${frames}`).toBe(whole ? 0 : 1);
+    if (whole) break;
+  }
+  expect(frames).toBeGreaterThan(2);
+  expect(frames).toBeLessThan(400);
+  // A neutral face is whole on the shared head once its hair and beard are.
+  f.begin(tierOf("high"), [], []);
+  f.head(MESH, defaultLook(), 0, ONES, 0, 0, HAIR, BEARD);
+  expect(f.short).toBe(0);
+  // A tier that makes no heads is never short of one.
+  f.begin(tierOf("lowpoly"), [], []);
+  f.head(MESH, lookOf(9), 0, ONES, 0, 0, HAIR, BEARD);
+  expect(f.short).toBe(0);
+});

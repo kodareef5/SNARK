@@ -19,7 +19,7 @@ import { tierOf } from "../core/assets/tiers.ts";
 import { printHost } from "../shell/picture-array.ts";
 import { Playback } from "../core/studio/clock.ts";
 import { Orbit, pinchZoom } from "../core/studio/orbit.ts";
-import { framingOf, PersonStage } from "../core/studio/person.ts";
+import { framingOf, PersonStage, stageSettled } from "../core/studio/person.ts";
 import { printPath } from "../../shared/people/doc.ts";
 import { parseStageCommand, STAGE_FROM, type StageAnswer, type StageCommand } from "../../shared/people/stage.ts";
 import type { Clip } from "../../shared/anim/clip.ts";
@@ -244,8 +244,6 @@ async function start(): Promise<void> {
     scene.viewDistance = 120;
     const packet = scene.build(cam, actors);
     renderer.draw(packet);
-    // Settled: nothing wanted, coming or waiting, every texture shown begun, the pose's clip here, and the person drawn.
-    const residency = scene.assets.residency;
     const body = `core:human_${SEX_IDS[stage.look[LOOK_SEX]!]}`;
     const meshes = new Set<string>();
     for (let i = 0; i < packet.drawCount; i++) {
@@ -254,8 +252,7 @@ async function start(): Promise<void> {
     }
     // A seated pose without its clip once the emotes have come is drawn standing, as the game would.
     const posed = clip !== null || (stage.pose === "seated" && chars.emotesHere);
-    const prints = scene.prints.loads.fetching === 0 && scene.prints.loads.waiting === 0;
-    const settled = residency.flying === 0 && residency.waiting === 0 && residency.wanting() === 0 && residency.bare() === 0 && meshes.size > 0 && posed && prints;
+    const settled = stageSettled(scene, meshes.size > 0, posed);
     settledFrames = settled ? settledFrames + 1 : 0;
     frames++;
     document.body.dataset.settled = String(settledFrames >= 3);

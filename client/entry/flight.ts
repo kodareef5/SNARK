@@ -311,10 +311,12 @@ async function start() {
       refineAfter = Infinity;
     }
     if (reset) settle = 20;
+    // A paused view draws on until its faces, hair and beards are made, so its last frame shows the look asked for.
+    const faces = scene.characters.faces;
     if (
       !document.hidden &&
       now - lastRender >= interval - 0.6 &&
-      (!paused || settle > 0 || !announced || capture || scene.assets.residency.flying > 0 || scene.assets.residency.waiting > 0)
+      (!paused || settle > 0 || !announced || faces.short > 0 || capture || scene.assets.residency.flying > 0 || scene.assets.residency.waiting > 0)
     ) {
       update();
       lastRender = now;
@@ -336,7 +338,7 @@ async function start() {
       frames > 12 &&
       (shore
         ? readyToReveal() || (now - started > 6500 && focus!.every((m) => scene.assets.held(m) !== 0))
-        : shot === "survivor" || (complete && city > 0))
+        : shot === "survivor" ? faces.short === 0 : complete && city > 0)
     ) {
       announced = true;
       if (live) refineAfter = now + 1200;
