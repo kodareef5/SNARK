@@ -33,6 +33,8 @@ export interface EpisodeResult {
   route?: number;
   acted?: number;
   arrived: boolean;
+  /** In an escape, whether the threat caught it. */
+  caught?: boolean;
   ticks: number;
   healthLost: number;
   stuckTicks: number;

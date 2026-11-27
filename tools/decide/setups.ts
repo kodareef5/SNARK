@@ -3,7 +3,7 @@
 // headline) and a label's replay (label.ts): the replay forces a candidate at one answer of the point, reseeds the
 // mover's luck there when the movement code allows it, and reads the cost one second on, five, and at the end.
 
-import { GOAL_WALK, SEARCH_CELLS } from "../../server/behavior.ts";
+import { GOAL_WALK, MIND_FLEE, SEARCH_CELLS } from "../../server/behavior.ts";
 import { LEAVE, SPARE, type Point } from "../../server/decide/decide.ts";
 import { PROGRESS } from "../../server/decide/nav.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
@@ -84,6 +84,10 @@ export interface Built {
   oracle?: Oracle;
   /** Bodies that stand, and when each is let go. */
   standers: { e: number; until: number; then?: { x: number; z: number } }[];
+  /** In a chase, the prey's entity (else -1); in an escape, where the threat is now, and whether it has caught the mover. */
+  prey: number;
+  threat: { x: number; z: number } | null;
+  caught: boolean;
 }
 
 /** The nearest place to (x, z), out to 24 m, where a body of `r` and `h` stands free, and `also` holds where it is given. */
@@ -268,7 +272,8 @@ function place(w: Lab, s: Scene, body: { radius: number; height: number; pace: n
     }
     const start = freeNear(w, sx, sz, body.radius, body.height, (x, z) => clearYaw(w, move, x, z, s.start.yaw) >= 0), goal = freeNear(w, gx, gz, body.radius, body.height);
     const way = reach(w, s.kind, start.x, start.z, goal.x, goal.z, arrive);
-    if (!((way / body.pace) * TICK_RATE <= WAY_SHARE * s.horizon)) continue;
+    // An escape's goal is only a place far enough off, for the oracle: any way there will do.
+    if (!((way / body.pace) * TICK_RATE <= WAY_SHARE * s.horizon) && !(s.intent?.kind === "escape" && Number.isFinite(way))) continue;
     if (city && !Number.isNaN(reach(w, s.kind, start.x, start.z, goal.x, goal.z, arrive, SEARCH_CELLS))) easy ??= { start, goal, way };
     else out = { start, goal, way };
   }
@@ -296,14 +301,25 @@ export function build(s0: Scene, at0?: Placed | null): Built {
     mind.stay(e, st.until + s.horizon * 4);
     standers.push({ e, until: st.until, then: st.then });
   }
+  const intent = s.intent?.kind ?? "walk";
+  let prey = -1;
+  if (intent === "chase") {
+    const pb = bodyOf(s.intent!.prey!), p = freeNear(w, goal.x, goal.z, pb.radius, pb.height);
+    prey = w.host.spawnCreature(s.intent!.prey!, p.x, p.z, 1);
+    if (prey >= 0) mind.stay(prey, s.horizon * 4);
+  }
   const mover = w.host.spawnCreature(s.kind, start.x, start.z, 1);
+  const threat = intent === "escape" ? { x: s.intent!.threat!.x, z: s.intent!.threat!.z } : null;
+  const built: Built = { scene: s, lab: w, mover, goal, body, arrive, standers, way: at?.way ?? NaN, prey, threat, caught: false, ...(at?.oracle ? { oracle: at.oracle } : {}) };
   // Where the body cannot be put down after all, the scene is not played, as one with no way.
-  if (mover < 0) return { scene: s, lab: w, mover, goal, body, arrive, standers, way: NaN };
+  if (mover < 0 || (intent === "chase" && prey < 0)) return { ...built, way: NaN };
   const facing = clearYaw(w, move, start.x, start.z, s.start.yaw);
   w.world.ents.yaw[mover] = mind.look[mover] = facing >= 0 ? facing : s.start.yaw;
   mind.stay(mover, s.horizon * 4);
-  mind.goTo(mover, goal.x, goal.z, GOAL_WALK);
-  return { scene: s, lab: w, mover, goal, body, arrive, standers, way: at?.way ?? NaN, ...(at?.oracle ? { oracle: at.oracle } : {}) };
+  if (intent === "chase") mind.attack(mover, prey);
+  else if (intent === "escape") w.host.creatures.provoke(mover, threat!.x, threat!.z, -1);
+  else mind.goTo(mover, goal.x, goal.z, GOAL_WALK);
+  return built;
 }
 
 export interface Hooks {
@@ -332,8 +348,8 @@ export interface Trace {
   round: boolean;
 }
 
-function healthShare(b: Built): number {
-  const w = b.lab, rec = w.host.records.byPid.get(w.world.ents.pid[b.mover]!);
+function healthShare(b: Built, e = b.mover): number {
+  const w = b.lab, rec = w.host.records.byPid.get(w.world.ents.pid[e]!);
   const v = rec?.vitals;
   if (!v) return 1;
   const max = v.max[V_HEALTH]!;
@@ -364,6 +380,36 @@ export function policyText(point: string, policy: Hooks["policy"]): string {
   return NAV_POINTS.includes(point) ? NAV_POINTS.map((p) => `${p}=${policy}`).join(",") : `${point}=${policy}`;
 }
 
+/**
+ * How far the mover has yet to go, in metres, and whether it has arrived: to its goal on a walk; to its prey in a chase,
+ * arriving at its first bite; in an escape, to `safe` metres from the threat, and never once caught.
+ */
+export function progress(b: Built): { left: number; arrived: boolean } {
+  const ents = b.lab.world.ents, x = ents.x[b.mover]!, z = ents.z[b.mover]!, intent = b.scene.intent;
+  if (intent?.kind === "escape") {
+    const d = Math.hypot(x - b.threat!.x, z - b.threat!.z), safe = intent.threat!.safe;
+    return { left: b.caught ? safe : Math.max(0, safe - d), arrived: !b.caught && d >= safe };
+  }
+  if (intent?.kind === "chase") return { left: Math.hypot(ents.x[b.prey]! - x, ents.z[b.prey]! - z), arrived: healthShare(b, b.prey) < 1 };
+  const left = Math.hypot(b.goal.x - x, b.goal.z - z);
+  return { left, arrived: left <= b.arrive };
+}
+
+/** Seconds between the times an escaping mover is hurt from the threat again, while it is not running from it. */
+const SCARE_TICKS = TICK_RATE;
+
+/** The threat of an escape comes a tick nearer the mover, catches it within `caught`, and scares it again where it has stopped running. */
+function chase(b: Built, t: number): void {
+  const th = b.scene.intent!.threat!, ents = b.lab.world.ents, mind = b.lab.host.creatures.mind;
+  const dx = ents.x[b.mover]! - b.threat!.x, dz = ents.z[b.mover]! - b.threat!.z, d = Math.hypot(dx, dz), step = th.speed / TICK_RATE;
+  if (d > step) {
+    b.threat!.x += (dx / d) * step;
+    b.threat!.z += (dz / d) * step;
+  }
+  if (d - step <= th.caught) b.caught = true;
+  else if (d < th.safe && t % SCARE_TICKS === 0 && mind.mind[b.mover] !== MIND_FLEE) b.lab.host.creatures.provoke(b.mover, b.threat!.x, b.threat!.z, -1);
+}
+
 /** Plays a built scene under `hooks` until it arrives, the hooks stop it, or `limit` ticks pass. */
 export function play(b: Built, hooks: Hooks, limit = b.scene.horizon): Trace {
   const w = b.lab, d = w.host.decide, mind = w.host.creatures.mind, ents = w.world.ents;
@@ -392,11 +438,16 @@ export function play(b: Built, hooks: Hooks, limit = b.scene.horizon): Trace {
     step(tick);
     spent = (performance.now() - from) * 1000;
   };
+  const escape = b.scene.intent?.kind === "escape";
   for (let t = 0; t < limit; t++) {
     const tick = w.world.tick;
-    if (Math.hypot(b.goal.x - ents.x[b.mover]!, b.goal.z - ents.z[b.mover]!) <= b.arrive) {
+    if (progress(b).arrived) {
       trace.arrivedAt = t;
       break;
+    }
+    if (escape) {
+      chase(b, t);
+      if (b.caught) break;
     }
     if (hooks.stop?.(tick)) break;
     for (const s of b.standers) if (s.then && tick === s.until) mind.goTo(s.e, s.then.x, s.then.z, GOAL_WALK);
@@ -412,9 +463,8 @@ export function play(b: Built, hooks: Hooks, limit = b.scene.horizon): Trace {
 
 /** The cost of where a mover is: ticks since `from`, the straight way left at its pace, and the prices of health and search. */
 function costNow(b: Built, from: number, health0: number, cells0: number, end: boolean): number {
-  const w = b.lab, ents = w.world.ents, mind = w.host.creatures.mind;
-  const left = Math.hypot(b.goal.x - ents.x[b.mover]!, b.goal.z - ents.z[b.mover]!);
-  const arrived = left <= b.arrive;
+  const w = b.lab, mind = w.host.creatures.mind;
+  const { left, arrived } = progress(b);
   const elapsed = w.world.tick - from, rest = arrived ? 0 : (left / b.body.pace) * TICK_RATE;
   const prices = PRICES.health * Math.max(0, health0 - healthShare(b)) + PRICES.cell * (mind.searched - cells0);
   return (end && !arrived ? PRICES.stuck * b.scene.horizon : elapsed) + rest + prices;
@@ -428,7 +478,7 @@ export function episode(s: Scene, point: string, policy: Hooks["policy"], models
   const t = play(b, { point, policy, models, extra });
   const result: EpisodeResult = {
     family: s.map === "miami" ? "miami" : s.family, seed: s.seed, skipped: Number.isNaN(b.way), route: b.way, acted: t.acted, arrived: t.arrivedAt >= 0, ticks: t.ticks, healthLost: Math.max(0, health0 - healthShare(b)), stuckTicks: t.stuckTicks,
-    searches: mind.searches - searches0, cells: mind.searched - cells0, end: { x: b.lab.world.ents.x[b.mover]!, z: b.lab.world.ents.z[b.mover]! }, cost: costNow(b, tick0, health0, cells0, true), decideMicros: t.decideMicros,
+    ...(s.intent?.kind === "escape" ? { caught: b.caught } : {}), searches: mind.searches - searches0, cells: mind.searched - cells0, end: { x: b.lab.world.ents.x[b.mover]!, z: b.lab.world.ents.z[b.mover]! }, cost: costNow(b, tick0, health0, cells0, true), decideMicros: t.decideMicros,
   };
   b.lab.host.shutdown();
   return result;

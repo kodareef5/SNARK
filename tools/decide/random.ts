@@ -48,6 +48,22 @@ export interface Scene {
   water?: { x0: number; z0: number; x1: number; z1: number; depth: number; more?: { x0: number; z0: number; x1: number; z1: number }[] };
   /** One side of a pair (`ford`, `gap`): see Pair. */
   pair?: Pair;
+  /** One intent of a layout (`intentU`, `intentTrees`): see Intent. Without one, the mover walks to its goal. */
+  intent?: Intent;
+}
+
+/**
+ * What the mover is about. `walk`: it is sent to the goal. `chase`: it is ordered on a body of `prey` standing at the goal,
+ * and arrives at its first bite. `escape`: a threat starts at `threat` and comes after it at `speed` (m/s); the mover is
+ * hurt from it at the start and again each time its flight ends while the threat is within `safe` metres, and arrives once
+ * it is `safe` metres off; within `caught` metres it is caught, and the play ends. The scene's goal is then a place that
+ * far off, for the oracle.
+ */
+export interface Intent {
+  id: number;
+  kind: "walk" | "chase" | "escape";
+  prey?: string;
+  threat?: { x: number; z: number; speed: number; safe: number; caught: number };
 }
 
 /**
@@ -62,7 +78,9 @@ export interface Pair {
 }
 
 /** Seconds each family is given. The owner may turn them: they are guesses, long enough that backing away to get round pays. */
-export const HORIZON_SECONDS: Record<Family, number> = { trees: 60, deadEnd: 90, pen: 90, water: 75, blocker: 75, crowd: 75, miami: 90, ford: 90, gap: 90 };
+export const HORIZON_SECONDS: Record<Family, number> = { trees: 60, deadEnd: 90, pen: 90, water: 75, blocker: 75, crowd: 75, miami: 90, ford: 90, gap: 90, intentU: 90, intentTrees: 60 };
+/** Seconds an escape is given, whatever its family. */
+export const ESCAPE_SECONDS = 30;
 
 const PIECE = 3;
 /** A wall piece's thickness. */
@@ -125,6 +143,7 @@ class Frame {
 
 /** A scene of `family` from `seed`. */
 export function draw(family: Family, seed: number): Scene {
+  if (family === "intentU" || family === "intentTrees") return intended(family, seed);
   if ((SITUATIONS as readonly string[]).includes(family)) return situation(family, seed);
   const rng = new Rng((seed * 2654435761 + FAMILIES.indexOf(family as (typeof FAMILIES)[number]) * 97 + 13) >>> 0);
   const kind = weighted(rng, MOVERS);
@@ -291,6 +310,60 @@ function situation(family: Family, seed: number): Scene {
     pair: { id, side, fact, mouth: { x: m.x, z: m.z, nx: out.x - m.x, nz: out.z - m.z } },
   };
   if (water) scene.water = water;
+  return scene;
+}
+
+/** Bodies that chase and escape in the intent families: those that bite, how often each. */
+const HUNTERS: readonly (readonly [string, number])[] = [["core:raptor", 3], ["core:parasaur", 2], ["core:trike", 1], ["core:stego", 1], ["core:rex", 1]];
+/** Of the mover's walk, how fast a threat comes after it; metres it must put between them; and metres more than its radius at which it is caught. */
+const THREAT_PACE = 0.8;
+const SAFE_GAIN = 20;
+const CAUGHT = 1.5;
+
+/**
+ * One intent of a layout. `intentU`: a U open behind the mover and closed toward the goal, deep enough that today's search
+ * often fills it; a threat comes in at its mouth. `intentTrees`: a wood between the mover and the goal; a threat comes from
+ * behind, so the way from it is into the wood.
+ */
+function intended(family: Family, seed: number): Scene {
+  const id = Math.floor((seed + 2) / 3), which = (["walk", "chase", "escape"] as const)[(seed + 2) % 3]!;
+  const rng = new Rng((id * 2654435761 + (FAMILIES.length + SITUATIONS.indexOf(family as (typeof SITUATIONS)[number])) * 97 + 13) >>> 0);
+  const kind = weighted(rng, HUNTERS), body = bodyOf(kind);
+  const f = new Frame(FLAT_SIDE / 2 + rng.range(-20, 20), FLAT_SIDE / 2 + rng.range(-20, 20), rng.int(4));
+  const yaw0 = Math.round(rng.range(-0.25, 0.25) * 65536);
+  let startU = 0, startV = 0, goalU: number, goalV: number, behind: number, safeU: number, safeV: number;
+  let trees: Scene["trees"];
+  if (family === "intentU") {
+    const half = rng.range(15, 30), depth = rng.range(35, 66);
+    f.along(-half, -depth, 2);
+    f.along(half, -depth, 2);
+    f.across(-half, half, 2);
+    startV = -rng.range(2, 8);
+    startU = rng.range(-0.3, 0.3) * half;
+    goalV = 2 + rng.range(4, 15);
+    goalU = rng.range(-6, 6);
+    behind = rng.range(8, 12);
+    const out = rng.float() < 0.5 ? -1 : 1;
+    safeU = out * (half + 8);
+    safeV = -depth - 8;
+  } else {
+    goalV = rng.range(35, 80);
+    goalU = rng.range(-10, 10);
+    behind = rng.range(8, 12);
+    safeU = rng.range(-10, 10);
+    safeV = behind + SAFE_GAIN + 10;
+    trees = { perChunk: Math.round((40 + rng.int(100)) * Math.min(1, 1.2 / (body.radius + 0.6))), seed: 1 + rng.int(1 << 20) };
+  }
+  const line = Math.hypot(goalU - startU, goalV - startV);
+  const ticks = (which === "escape" ? ESCAPE_SECONDS : HORIZON_SECONDS[family]) * TICK_RATE;
+  const horizon = which === "escape" ? ticks : Math.max(ticks, Math.ceil((HORIZON_LINES * line) / body.pace) * TICK_RATE);
+  const start = f.at(startU, startV), threat = f.at(startU, startV - behind);
+  const goal = which === "escape" ? f.at(safeU, safeV) : f.at(goalU, goalV);
+  const intent: Intent = { id, kind: which };
+  if (which === "chase") intent.prey = "core:dodo";
+  if (which === "escape") intent.threat = { ...threat, speed: THREAT_PACE * body.pace, safe: behind + SAFE_GAIN, caught: body.radius + CAUGHT };
+  const scene: Scene = { family, map: "flat", seed, kind, start: { ...start, yaw: (f.yaw() + yaw0) & 0xffff }, goal, horizon, pieces: f.pieces, standers: [], intent };
+  if (trees) scene.trees = trees;
   return scene;
 }
 

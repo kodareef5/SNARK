@@ -11,6 +11,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { FAMILIES } from "./catalog.ts";
 import { scenes, type Family, type Scene } from "./random.ts";
+import { LEAVE } from "../../server/decide/decide.ts";
+import { K } from "../../server/decide/nav.ts";
 import { build, play } from "./setups.ts";
 
 export interface Seen {
@@ -21,8 +23,8 @@ export interface Seen {
   way: number;
   line: number;
   /** For today's code and the rule: ticks to arrive (-1 for never), ticks stuck or pinned, answers of nav.ring, and in a pair whether it went round. */
-  off: { arrived: number; stuck: number; asked: number; round?: boolean };
-  rule: { arrived: number; stuck: number; asked: number; round?: boolean };
+  off: { arrived: number; stuck: number; asked: number; round?: boolean; caught?: boolean };
+  rule: { arrived: number; stuck: number; asked: number; round?: boolean; caught?: boolean; away?: number };
   /** The oracle at real pace: its seconds and which way it takes. */
   seconds?: number;
   choice?: "cross" | "round";
@@ -30,6 +32,7 @@ export interface Seen {
   round?: number;
   cross?: number;
   pair?: { id: number; side: number; fact: string };
+  intent?: string;
 }
 
 /** One scene seen by the oracle and played under today's code and the rule. */
@@ -38,13 +41,25 @@ export function see(s: Scene): Seen {
   const line = Math.hypot(b.goal.x - ents.x[b.mover]!, b.goal.z - ents.z[b.mover]!);
   b.lab.host.shutdown();
   const run = (policy: "off" | "rule") => {
-    const w = build(s), t = play(w, { point: "nav.ring", policy });
+    const w = build(s), ents = w.lab.world.ents, k = K;
+    // In an escape, how squarely each heading the ring picks runs from the threat.
+    let away = 0, picks = 0;
+    const answered = (_n: number, _tick: number, pick: number) => {
+      if (pick >= 0 && w.threat) {
+        const dx = ents.x[w.mover]! - w.threat.x, dz = ents.z[w.mover]! - w.threat.z, d = Math.hypot(dx, dz) || 1, a = (pick / k) * 2 * Math.PI;
+        away += (Math.sin(a) * dx + Math.cos(a) * dz) / d;
+        picks++;
+      }
+      return LEAVE;
+    };
+    const t = play(w, { point: "nav.ring", policy, answered });
     w.lab.host.shutdown();
-    return { arrived: t.arrivedAt, stuck: t.stuckTicks, asked: t.answers, ...(s.pair ? { round: t.round } : {}) };
+    return { arrived: t.arrivedAt, stuck: t.stuckTicks, asked: t.answers, ...(s.pair ? { round: t.round } : {}), ...(s.intent?.kind === "escape" ? { caught: w.caught, away: picks ? away / picks : NaN } : {}) };
   };
   const seen: Seen = { family: s.family, seed: s.seed, kind: s.kind, way, line, off: run("off"), rule: run("rule") };
   if (b.oracle) Object.assign(seen, { seconds: b.oracle.seconds, choice: b.oracle.choice, ...(s.pair ? { round: b.oracle.round, cross: b.oracle.cross } : {}) });
   if (s.pair) seen.pair = { id: s.pair.id, side: s.pair.side, fact: s.pair.fact };
+  if (s.intent) seen.intent = s.intent.kind;
   return seen;
 }
 
@@ -102,6 +117,27 @@ export function pairText(all: readonly Seen[]): string[] {
   return out;
 }
 
+/** Lines on the intent families of `all`: for each family and intent, who arrives (bites, gets clear), how fast, and who was caught. */
+export function intentText(all: readonly Seen[]): string[] {
+  const out: string[] = [];
+  for (const family of [...new Set(all.filter((s) => s.intent).map((s) => s.family))]) {
+    for (const intent of ["walk", "chase", "escape"]) {
+      const list = all.filter((s) => s.family === family && s.intent === intent && !Number.isNaN(s.way));
+      if (!list.length) continue;
+      const of = (p: "off" | "rule") => {
+        const got = list.filter((s) => s[p].arrived >= 0), caught = list.filter((s) => s[p].caught).length;
+        const mean = got.length ? (got.reduce((a, s) => a + s[p].arrived, 0) / got.length / TICK_RATE).toFixed(1) : "–";
+        return `${got.length} in ${mean} s${intent === "escape" ? `, caught ${caught}` : ""}`;
+      };
+      const asked = list.filter((s) => s.rule.asked > 0).length;
+      const aways = list.map((s) => s.rule.away ?? NaN).filter((v) => !Number.isNaN(v));
+      const away = intent === "escape" && aways.length ? `; the ring's picks run from the threat by a cosine of ${(aways.reduce((a, v) => a + v, 0) / aways.length).toFixed(2)} on average` : "";
+      out.push(`${family} ${intent}: ${list.length} played, ring asked in ${asked}; today ${of("off")}; the rule ${of("rule")}${away}`);
+    }
+  }
+  return out;
+}
+
 /** Scenes played in both audits that `policy` now arrives in and did not (gained), and arrived in before and now does not (lost). */
 export function against(was: readonly Seen[], now: readonly Seen[], policy: "off" | "rule"): { gained: Seen[]; lost: Seen[] } {
   const before = new Map(was.map((s) => [`${s.family}/${s.seed}`, s]));
@@ -148,6 +184,7 @@ if (import.meta.main) {
   mkdirSync(".cache/decide", { recursive: true });
   writeFileSync(arg("--out") ?? ".cache/decide/audit.json", JSON.stringify(all, null, 1));
   if (all.some((s) => s.pair)) for (const line of pairText(all)) console.log(line);
+  if (all.some((s) => s.intent)) for (const line of intentText(all)) console.log(line);
   const was = arg("--against");
   if (was) for (const line of againstText(JSON.parse(readFileSync(was, "utf8")) as Seen[], all)) console.log(line);
 }

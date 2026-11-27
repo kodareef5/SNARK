@@ -5,7 +5,7 @@
 // read back are the same numbers.
 
 import { MID_SECONDS, MID_SPANS, NEAR_SPANS, RING_FAR, RING_MID, RING_NEAR } from "../../shared/decide/profiles.ts";
-import { span, unit } from "../../shared/decide/units.ts";
+import { soon, span, unit } from "../../shared/decide/units.ts";
 import { swimDepth, type MoveParams } from "../../shared/sim/character.ts";
 import { GROUND_OFF, GROUND_SOLID, groundAt } from "../../shared/world/path.ts";
 import { WAY_ON, type Behavior } from "../behavior.ts";
@@ -46,6 +46,8 @@ const CONTACT_RADIUS = 0.8;
 /** Points of the trail kept, one a think, and metres from where it stands that a point must be to be the way back. */
 const TRAIL = 8;
 const TRAIL_AWAY = 2;
+/** Seconds of its pace off at which what it flees counts a half. */
+const THREAT_HALF = 3;
 /** Seconds of the prey's run that a hunter leads it by, at most. */
 const LEAD_MOST = 2;
 
@@ -215,6 +217,18 @@ export class Rings {
       tz = Math.cos(a);
       td = 1;
     }
+    // What it flees, nearer counting more: a half at THREAT_HALF seconds of its pace off.
+    let hx = 0, hz = 0, near = 0;
+    if (this.mode === 2) {
+      hx = this.mind.fleeX[this.e]! - x;
+      hz = this.mind.fleeZ[this.e]! - z;
+      const hd = Math.hypot(hx, hz);
+      near = hd > 0.1 ? 1 - soon(hd / this.pace, THREAT_HALF) : 0;
+      if (hd > 0.1) {
+        hx /= hd;
+        hz /= hd;
+      }
+    }
     if (gd > 0) {
       gx /= gd;
       gz /= gd;
@@ -223,7 +237,7 @@ export class Rings {
       const at = (s * k + i) * FK, dx = this.dx[i]!, dz = this.dz[i]!;
       this.farC[at] = gd > 0 ? q(gx * dx + gz * dz) : 0;
       this.farC[at + 1] = wd > 0.1 ? q((wx * dx + wz * dz) / wd) : 0;
-      this.farC[at + 2] = 0;
+      this.farC[at + 2] = near > 0 ? q((hx * dx + hz * dz) * near) : 0;
       this.farC[at + 3] = pd > 0.1 ? q((px * dx + pz * dz) / pd) : 0;
       this.farC[at + 4] = 0;
       this.farC[at + 5] = td > 0 ? q((tx * dx + tz * dz) / td) : 0;

@@ -442,6 +442,9 @@ export class Behavior {
   private targetGen = new Uint16Array(0);
   private homeX = new Float32Array(0);
   private homeZ = new Float32Array(0);
+  /** For a fleeing creature, the point it runs from. */
+  fleeX = new Float32Array(0);
+  fleeZ = new Float32Array(0);
   private until = new Uint32Array(0);
   private rested = new Uint32Array(0);
   /** The tick a startled creature stops standing and runs, 0 when it is not startled; and 1 for a hunt it was ordered on. */
@@ -520,6 +523,8 @@ export class Behavior {
     this.targetGen = wider(this.targetGen, cap);
     this.homeX = wider(this.homeX, cap);
     this.homeZ = wider(this.homeZ, cap);
+    this.fleeX = wider(this.fleeX, cap);
+    this.fleeZ = wider(this.fleeZ, cap);
     this.until = wider(this.until, cap);
     this.rested = wider(this.rested, cap);
     this.calm = wider(this.calm, cap);
@@ -1143,6 +1148,8 @@ export class Behavior {
     const run = ((flyer ? p.flySpeed * p.flySprintMul : p.walkSpeed * p.sprintMul) * ticks) / TICK_RATE;
     this.homeX[e] = ents.x[e]! + Math.sin(a) * run;
     this.homeZ[e] = ents.z[e]! + Math.cos(a) * run;
+    this.fleeX[e] = x;
+    this.fleeZ[e] = z;
     if (!flyer && this.blocked(e, -1, tick)) this.ask(e, tick, ASK_NOW);
     if (clip) this.onStartle?.(e);
   }

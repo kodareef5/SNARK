@@ -12,9 +12,10 @@ import { TOY_CATALOG } from "./toy.ts";
 export const FAMILIES = ["trees", "deadEnd", "pen", "water", "blocker", "crowd"] as const;
 /**
  * Situations made to teach (random.ts), drawn beside the families and leaving what those draw as it was. `ford` and `gap`
- * are pairs: seeds 2n - 1 and 2n are one layout with one fact changed, so the right way flips.
+ * are pairs: seeds 2n - 1 and 2n are one layout with one fact changed, so the right way flips. `intentU` and `intentTrees`
+ * put one obstacle in front of three intents: seeds 3n - 2, 3n - 1 and 3n are one layout walked, chased and escaped.
  */
-export const SITUATIONS = ["ford", "gap"] as const;
+export const SITUATIONS = ["ford", "gap", "intentU", "intentTrees"] as const;
 export const SPLIT: Split = { held: ["pen"], heldMaps: ["miami"], validation: ["blocker"] };
 
 /** The stuck ladder's points (server/decide/nav.ts), found by name on a host's decider and always decided together. */
