@@ -90,8 +90,6 @@ export class Nav implements Ladder {
   private readonly dx: Float64Array;
   private readonly dz: Float64Array;
   private taking = -1;
-  private actsAt = -1;
-  private ringActs = false;
 
   constructor(world: ServerWorld, mind: Behavior, blocking: BodyBlocking, decide: Decide, k = K, size = 1024) {
     if (k < 3 || k > 16) throw new Error(`a ring of ${k} headings`);
@@ -151,7 +149,7 @@ export class Nav implements Ladder {
   }
 
   climb(e: number, tick: number): boolean {
-    if (!this.decide.on(this.ring) || !this.acts(tick)) return false;
+    if (!this.decide.acts(this.ring)) return false;
     let s = this.slot(e);
     if (s < 0) s = this.take(e, tick);
     const r = this.rungOf[s]! + 1;
@@ -187,19 +185,6 @@ export class Nav implements Ladder {
     let tried = 0;
     for (let i = 0; i < this.k; i++) if (this.tried(s, i, this.world.tick) > 0) tried |= 1 << i;
     return { rung: this.rungOf[s]!, since: this.since[s]!, held: this.holdK[s]!, until: this.holdUntil[s]!, tried, lastPick: this.lastPick[s]! };
-  }
-
-  /**
-   * Whether the ring point acts on its answers (rule or model, not watch). The contract has no call for it, so the
-   * report is read, at most once a tick and only where a mover would be told there is no way.
-   */
-  private acts(tick: number): boolean {
-    if (tick !== this.actsAt) {
-      this.actsAt = tick;
-      const policy = this.decide.report().points[this.ring]?.policy;
-      this.ringActs = policy === "rule" || policy === "model";
-    }
-    return this.ringActs;
   }
 
   private moving(e: number): boolean {
