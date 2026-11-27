@@ -22,6 +22,8 @@ import type { LineLog } from "./log.ts";
 
 export const OFF = 0, WATCH = 1, RULE = 2, MODEL = 3;
 export const POLICIES = ["off", "watch", "rule", "model"] as const;
+/** What the lab's `force` may answer besides a candidate: act on the one chosen, or on none. */
+export const LEAVE = -1, SPARE = -2;
 
 /** What a question costs to answer: a yes or no from numbers already held, a few probes, or a full ring of them. */
 export const COST_YES = 0, COST_PROBE = 1, COST_RING = 2;
@@ -191,7 +193,8 @@ export class Decide {
   overflow = 0;
   /**
    * The lab's two hooks (tools/decide), never set in a game. `force` may name the candidate to act on in place of the one
-   * chosen (-1 leaves it). `tap` sees every answer while its tables are still filled.
+   * chosen, leave it (LEAVE), or have nothing done at all so today's code stands for this one answer (SPARE). `tap` sees
+   * every answer while its tables are still filled.
    */
   force: ((point: number, e: number, pick: number) => number) | null = null;
   tap: ((point: number, e: number, tick: number, rung: number, pick: number) => void) | null = null;
@@ -357,7 +360,8 @@ export class Decide {
       this.sample = s.sample;
       if (this.ctx.log) this.ctx.log.cap = s.megabytes * 1024 * 1024;
     }
-    void this.flush();
+    // Only with something to write: a promise made every five seconds for nothing would hold a world a lab has done with.
+    if (this.ctx.log?.busy || this.sinks.some((s) => s.busy)) void this.flush();
   }
 
   private answerAll(q: Asked, tick: number, back: number): void {
@@ -401,9 +405,11 @@ export class Decide {
       return;
     }
     c.answered++;
+    let spared = false;
     if (this.force) {
       const forced = this.force(id, e, pick);
       if (forced >= 0) pick = forced;
+      else spared = forced === SPARE;
     }
     this.tap?.(id, e, tick, rung, pick);
     const looked = tick < this.lookUntil;
@@ -428,7 +434,7 @@ export class Decide {
         if (point.horizon > 0 && point.outcome) this.wait(id, e, tick + point.horizon, row.id);
       }
     }
-    if (policy !== WATCH) {
+    if (policy !== WATCH && !spared) {
       point.apply(e, tick, rung, pick);
       c.applied++;
     }

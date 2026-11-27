@@ -3,7 +3,7 @@
 // the world's grain and by what it covers in a reaction time), ranges in seconds of travel at its pace, angles from its
 // facing. Weights carry their profile's name and hash and are refused on any other.
 
-import { hashString } from "../hash.ts";
+import { hashString } from "./hash.ts";
 
 export interface Profile<S extends string = string, C extends string = string> {
   readonly name: string;

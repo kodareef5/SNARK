@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CAPS, COST_PROBE, COST_RING, COST_YES, Decide, QUEUE, QUEUE_BACK, type Ask, type Point } from "../../server/decide/decide.ts";
+import { CAPS, COST_PROBE, COST_RING, COST_YES, Decide, LEAVE, QUEUE, QUEUE_BACK, SPARE, type Ask, type Point } from "../../server/decide/decide.ts";
 import { Pool } from "../../server/decide/pool.ts";
 import { LineLog } from "../../server/decide/log.ts";
 import { Lane } from "../../server/lane.ts";
@@ -311,12 +311,15 @@ test("the lab may see every answer with its table and force another candidate", 
   d.set("a=rule");
   const seen: [number, number, number][] = [];
   d.tap = (point, e, _tick, _rung, pick) => void seen.push([point, e, Math.round(p.table.rows[(e % 8) * RING_MID.columns.length + RING_MID.c.run]!) + pick]);
-  d.force = (_point, e, pick) => (e === 2 ? 6 : -1);
+  d.force = (_point, e) => (e === 2 ? 6 : e === 3 ? SPARE : LEAVE);
   d.put(id, 1, 0);
   d.put(id, 2, 0);
+  d.put(id, 3, 0);
   d.step(1);
+  // The third is answered and seen, and nothing is done to its mover: today's code stands for that one answer.
   expect(p.applied).toEqual([[1, 1], [2, 6]]);
-  expect(seen).toEqual([[id, 1, 2], [id, 2, 7]]);
+  expect(seen).toEqual([[id, 1, 2], [id, 2, 7], [id, 3, 4]]);
+  expect(d.report().points[0]!.counts).toMatchObject({ answered: 3, applied: 2 });
 });
 
 test("answers are kept for a page only while it looks, and weights are read again when asked", () => {

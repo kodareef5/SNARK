@@ -1,5 +1,9 @@
 // The decision engine (shared/decide): a table in, a probability for each candidate out.
 import { expect, test } from "bun:test";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { hashString as ownHash } from "../../shared/decide/hash.ts";
+import { hashString } from "../../shared/hash.ts";
 import { addPass, stick } from "../../shared/decide/combine.ts";
 import { answer, decide, inputsAt, linear, scoreTable, type Model } from "../../shared/decide/forward.ts";
 import { inputsOf, profile, profileHash } from "../../shared/decide/profile.ts";
@@ -235,6 +239,16 @@ test("the snag rule is surer the slower a mover gains and nearly sure once it is
   expect(slowing).toBeGreaterThan(moving);
   expect(stuck).toBeGreaterThan(slowing);
   expect(stuck).toBeGreaterThan(0.7);
+});
+
+test("the engine names nothing outside its own folder", () => {
+  const dir = join(import.meta.dir, "../../shared/decide");
+  for (const file of readdirSync(dir)) {
+    const outside = [...readFileSync(join(dir, file), "utf8").matchAll(/from "([^"]+)"/g)].map((m) => m[1]!).filter((from) => !/^\.\/[a-z-]+\.ts$/.test(from));
+    expect([file, outside]).toEqual([file, []]);
+  }
+  // Its own hash is the game's, so a profile's hash is the same wherever the engine is lifted to.
+  for (const s of ["", "ring.mid|choice", "né 日本"]) expect(ownHash(s)).toBe(hashString(s));
 });
 
 test("a span is never under the world's grain nor under a reaction's run", () => {
