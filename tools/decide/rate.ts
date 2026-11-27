@@ -6,7 +6,7 @@ import type { Model } from "../../shared/decide/forward.ts";
 import type { Profile } from "../../shared/decide/profile.ts";
 import type { EpisodeScore, PointScores, Score } from "../../shared/decide/scoreboard.ts";
 import { Rng } from "../../shared/rng.ts";
-import { gateOf, summarize, type Graded } from "./board.ts";
+import { gateOf, ruleGate, summarize, type Graded } from "./board.ts";
 import { todayCost, type Decision, type TableRow } from "./dataset.ts";
 import { examples, grade, logLossOf, probabilities, roleOf, scoreModel, type Alter, type Catalog, type Example } from "./fit.ts";
 
@@ -29,7 +29,10 @@ export interface EpisodeResult {
   ticks: number;
   healthLost: number;
   stuckTicks: number;
+  /** Path searches finished and the cells they expanded, and where the mover ended. */
+  searches: number;
   cells: number;
+  end: { x: number; z: number };
   cost: number;
   /** The decide part of each tick, in microseconds. */
   decideMicros: number[];
@@ -41,7 +44,7 @@ export function episodeScore(name: string, list: readonly EpisodeResult[]): Epis
   const parts = list.flatMap((e) => e.decideMicros).sort((a, b) => a - b);
   return {
     name, scenes: list.length, arrived: list.filter((e) => e.arrived).length, ticks: mean((e) => e.ticks), healthLost: mean((e) => e.healthLost),
-    stuckTicks: mean((e) => e.stuckTicks), cells: mean((e) => e.cells), cost: mean((e) => e.cost),
+    stuckTicks: mean((e) => e.stuckTicks), searches: mean((e) => e.searches), cells: mean((e) => e.cells), cost: mean((e) => e.cost),
     decideMicros: parts.length ? parts[Math.min(parts.length - 1, Math.floor(parts.length * 0.99))]! : NaN,
   };
 }
@@ -100,13 +103,14 @@ export function ratePoint(o: RateOptions): PointScores {
   const rule = cat.rules.get(p.name) ?? null;
   const seed = o.seed ?? 1;
   const scores: Score[] = [];
-  const base = (s: Score, pass = false): Score => ({ ...s, gate: { pass, why: pass ? [] : ["a baseline is not gated"] } });
+  const base = (s: Score): Score => ({ ...s, gate: { pass: false, why: ["a baseline is not gated"] } });
   scores.push(base(summarize("uniform", "baseline", grade(p.kind, ex, null, rule), { seed })));
   if (p.kind === "choice") {
     const today = todayGraded(held, ex, p, reading, rule);
     if (today.length > 0) scores.push(base(summarize("today", "baseline", today, { seed })));
   }
-  if (rule) scores.push(base(summarize("rule", "rule", grade(p.kind, ex, rule, rule), { seed }), true));
+  const played = (name: string) => o.episodes?.find((e) => e.name === name);
+  if (rule) scores.push({ ...summarize("rule", "rule", grade(p.kind, ex, rule, rule), { seed }), gate: ruleGate(played("rule"), played("today")) });
   const hasState = p.state.length > 0;
   const blindSets = {
     state: hasState ? examples(held, p, cat.profiles, cat.rules, reading, hide("state")) : null,
@@ -123,7 +127,7 @@ export function ratePoint(o: RateOptions): PointScores {
     s.medianFast = t.medianFast ?? NaN;
     s.medianSlow = t.medianSlow ?? NaN;
     s.bytes = t.bytes;
-    s.gate = gateOf(s, { hasState, mine: o.episodes?.find((e) => e.name === t.name), rule: o.episodes?.find((e) => e.name === "rule") });
+    s.gate = gateOf(s, { hasState, mine: played(t.name), rule: played("rule"), today: played("today") });
     scores.push(s);
   }
   const all = examples(o.decisions, p, cat.profiles, cat.rules, reading);

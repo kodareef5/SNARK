@@ -48,10 +48,11 @@ export interface EpisodeScore {
   scenes: number;
   /** Episodes that reached the goal inside the horizon. */
   arrived: number;
-  /** Means over the episodes: ticks (to arrival, or the horizon), the share of health lost, ticks stuck or pinned, path cells searched, and the cost (setups.ts). */
+  /** Means over the episodes: ticks (to arrival, or the horizon), the share of health lost, ticks stuck or pinned, path searches and the cells they expanded, and the cost (setups.ts). */
   ticks: number;
   healthLost: number;
   stuckTicks: number;
+  searches: number;
   cells: number;
   cost: number;
   /** The 99th percentile of the tick's `decide` part, in microseconds. */

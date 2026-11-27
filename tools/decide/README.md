@@ -75,10 +75,11 @@ scorer passes only if, held out:
 - its ECE is at most 0.05;
 - hiding the state costs it at least 10% more log loss;
 - one answer's 99th percentile is at most 25 µs on a fast core, and its file at most 64 KB;
-- in whole episodes it arrives at least as often as the rule, at no higher mean cost;
+- in whole episodes it arrives at least as often as the rule and as today's code, at no higher mean cost than the rule;
 - and there are at least 2,000 decisions from 200 scenes, or it is not measurable.
 
-For a "yes" point, regret is read as log loss.
+For a "yes" point, regret is read as log loss. The rule itself is marked as failing where it arrives in fewer whole
+episodes than today's code: then turning the point on loses episodes, whatever a scorer does.
 
 ## Another engine
 

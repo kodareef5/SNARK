@@ -1,7 +1,7 @@
 // The scoreboard's arithmetic (tools/decide/board.ts, fit.ts's grading) on cases worked by hand.
 import { expect, test } from "bun:test";
 import type { EpisodeScore, Score } from "../../shared/decide/scoreboard.ts";
-import { GATE, boardHtml, eceOf, gateOf, regretInterval, summarize, type Graded } from "../../tools/decide/board.ts";
+import { GATE, boardHtml, eceOf, gateOf, regretInterval, ruleGate, summarize, type Graded } from "../../tools/decide/board.ts";
 import { gradeOne, type Example } from "../../tools/decide/fit.ts";
 
 const example = (cost: number[], target: number[]): Example => ({
@@ -49,7 +49,7 @@ function good(): Score {
     logLoss: 1, brier: 0.2, ece: 0.03, reliability: [], blind: { state: 0.2, columns: 0.5, shuffled: 0.15 }, microsFast: 4, microsSlow: 9, medianFast: 2, medianSlow: 5, bytes: 4000, gate: { pass: false, why: [] },
   };
 }
-const ep = (name: string, arrived: number, cost: number): EpisodeScore => ({ name, scenes: 50, arrived, ticks: 600, healthLost: 0, stuckTicks: 10, cells: 100, cost, decideMicros: 20 });
+const ep = (name: string, arrived: number, cost: number): EpisodeScore => ({ name, scenes: 50, arrived, ticks: 600, healthLost: 0, stuckTicks: 10, searches: 2, cells: 100, cost, decideMicros: 20 });
 
 test("the gate passes a scorer that meets every mark and names each one missed", () => {
   expect(gateOf(good(), { hasState: true, mine: ep("m", 40, 700), rule: ep("rule", 38, 720) })).toEqual({ pass: true, why: [] });
@@ -64,6 +64,12 @@ test("the gate passes a scorer that meets every mark and names each one missed",
   expect(gateOf(good(), { hasState: true }).why).toEqual(["no whole episodes were played"]);
   // A profile with no state has none to hide.
   expect(gateOf({ ...good(), blind: { state: NaN, columns: 0.5, shuffled: NaN } }, { hasState: false, mine: ep("m", 40, 700), rule: ep("rule", 38, 720) }).pass).toBe(true);
+});
+
+test("neither a scorer nor the rule passes where it loses whole episodes to today's code", () => {
+  expect(gateOf(good(), { hasState: true, mine: ep("m", 40, 700), rule: ep("rule", 38, 720), today: ep("today", 45, 650) }).why).toEqual(["whole episodes: it arrives in 40 of 50, today's code in 45"]);
+  expect(ruleGate(ep("rule", 9, 5000), ep("today", 47, 2000))).toEqual({ pass: false, why: ["whole episodes: the rule arrives in 9 of 50, today's code in 47"] });
+  expect(ruleGate(ep("rule", 47, 1900), ep("today", 47, 2000)).pass).toBe(true);
 });
 
 test("the board's page fetches nothing from outside it", () => {

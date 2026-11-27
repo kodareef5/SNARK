@@ -99,6 +99,8 @@ export function examples(ds: readonly Decision[], p: Profile, profiles: readonly
     });
     let target: Float64Array, cost: Float64Array;
     if (p.kind === "yes") {
+      // An outcome never read (the play ended before its horizon) teaches nothing.
+      if (Number.isNaN(d.label)) return;
       target = Float64Array.of(d.label);
       cost = new Float64Array(0);
     } else {

@@ -118,8 +118,15 @@ export function summarize(name: string, kind: Score["kind"], g: readonly Graded[
   };
 }
 
+/** The rule may decide where it loses no whole episodes to today's code. */
+export function ruleGate(rule?: EpisodeScore, today?: EpisodeScore): { pass: boolean; why: string[] } {
+  if (!rule || !today) return { pass: true, why: [] };
+  const why = rule.arrived < today.arrived ? [`whole episodes: the rule arrives in ${rule.arrived} of ${rule.scenes}, today's code in ${today.arrived}`] : [];
+  return { pass: why.length === 0, why };
+}
+
 /** The gate's verdict on a trained scorer, with every reason it fails. */
-export function gateOf(s: Score, o: { hasState: boolean; mine?: EpisodeScore; rule?: EpisodeScore }): { pass: boolean; why: string[] } {
+export function gateOf(s: Score, o: { hasState: boolean; mine?: EpisodeScore; rule?: EpisodeScore; today?: EpisodeScore }): { pass: boolean; why: string[] } {
   const why: string[] = [];
   const f = (v: number, d = 3) => (Number.isFinite(v) ? v.toFixed(d) : String(v));
   if (s.decisions < GATE.decisions || s.scenes < GATE.scenes) {
@@ -135,6 +142,7 @@ export function gateOf(s: Score, o: { hasState: boolean; mine?: EpisodeScore; ru
   if (o.mine && o.rule) {
     if (o.mine.arrived < o.rule.arrived) why.push(`whole episodes: it arrives in ${o.mine.arrived} of ${o.mine.scenes}, the rule in ${o.rule.arrived}`);
     if (o.mine.cost > o.rule.cost) why.push(`whole episodes: its mean cost ${f(o.mine.cost, 1)} is above the rule's ${f(o.rule.cost, 1)}`);
+    if (o.today && o.mine.arrived < o.today.arrived) why.push(`whole episodes: it arrives in ${o.mine.arrived} of ${o.mine.scenes}, today's code in ${o.today.arrived}`);
   } else why.push("no whole episodes were played");
   return { pass: why.length === 0, why };
 }
@@ -153,8 +161,8 @@ function chart(r: readonly Reliability[]): string {
 
 function episodes(list: readonly EpisodeScore[]): string {
   if (list.length === 0) return `<p class="muted">No whole episodes were played.</p>`;
-  const rows = list.map((e) => `<tr><th>${esc(e.name)}</th><td>${e.arrived} of ${e.scenes}</td><td>${num(e.ticks, 0)}</td><td>${num(e.healthLost, 3)}</td><td>${num(e.stuckTicks, 0)}</td><td>${num(e.cells, 0)}</td><td>${num(e.cost, 0)}</td><td>${num(e.decideMicros, 1)}</td></tr>`).join("");
-  return `<div class="wide"><table><thead><tr><th>policy</th><th>arrived</th><th>ticks</th><th>health lost</th><th>stuck ticks</th><th>cells searched</th><th>cost</th><th>decide p99 µs</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  const rows = list.map((e) => `<tr><th>${esc(e.name)}</th><td>${e.arrived} of ${e.scenes}</td><td>${num(e.ticks, 0)}</td><td>${num(e.healthLost, 3)}</td><td>${num(e.stuckTicks, 0)}</td><td>${num(e.searches, 1)} / ${num(e.cells, 0)}</td><td>${num(e.cost, 0)}</td><td>${num(e.decideMicros, 1)}</td></tr>`).join("");
+  return `<div class="wide"><table><thead><tr><th>policy</th><th>arrived</th><th>ticks</th><th>health lost</th><th>stuck ticks</th><th>searches / cells</th><th>cost</th><th>decide p99 µs</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function scores(list: readonly Score[]): string {
@@ -163,7 +171,7 @@ function scores(list: readonly Score[]): string {
 }
 
 function point(p: PointScores): string {
-  const trained = p.scores.filter((s) => s.kind === "linear" || s.kind === "hidden");
+  const trained = p.scores.filter((s) => s.kind !== "baseline");
   const verdicts = trained.map((s) => `<li><b>${esc(s.name)}</b>: ${s.gate.pass ? "passes the gate" : `fails: ${s.gate.why.map(esc).join("; ")}`}</li>`).join("");
   const charts = p.scores.filter((s) => s.reliability.length > 0).map((s) => `<figure>${chart(s.reliability)}<figcaption>${esc(s.name)}, ECE ${num(s.ece)}</figcaption></figure>`).join("");
   const room = p.headroom < 0.05 ? `under 0.05: no model is worth training for it` : `worth training for`;

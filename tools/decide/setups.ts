@@ -169,6 +169,8 @@ export function play(b: Built, hooks: Hooks, limit = b.scene.horizon): Trace {
   d.tap = (p) => {
     if (p === point.id) trace.answers++;
   };
+  // A lab world keeps no log, and the flush every five seconds would hold the whole world in a promise until the job ends.
+  d.flush = () => Promise.resolve();
   const step = d.step.bind(d);
   let spent = 0;
   d.step = (tick) => {
@@ -212,12 +214,12 @@ function costNow(b: Built, from: number, health0: number, cells0: number, end: b
 /** A whole episode of a scene, one policy deciding the point from start to finish. */
 export function episode(s: Scene, point: string, policy: Hooks["policy"], models: readonly Model[] = [], extra?: Installer): EpisodeResult {
   const b = build(s), mind = b.lab.host.creatures.mind;
-  const health0 = healthShare(b), cells0 = mind.searched;
+  const health0 = healthShare(b), cells0 = mind.searched, searches0 = mind.searches;
   const tick0 = b.lab.world.tick;
   const t = play(b, { point, policy, models, extra });
   const result: EpisodeResult = {
     arrived: t.arrivedAt >= 0, ticks: t.ticks, healthLost: Math.max(0, health0 - healthShare(b)), stuckTicks: t.stuckTicks,
-    cells: mind.searched - cells0, cost: costNow(b, tick0, health0, cells0, true), decideMicros: t.decideMicros,
+    searches: mind.searches - searches0, cells: mind.searched - cells0, end: { x: b.lab.world.ents.x[b.mover]!, z: b.lab.world.ents.z[b.mover]! }, cost: costNow(b, tick0, health0, cells0, true), decideMicros: t.decideMicros,
   };
   b.lab.host.shutdown();
   return result;

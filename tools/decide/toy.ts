@@ -144,8 +144,10 @@ interface Played {
   stuckSteps: number;
   /** Distance left at each step. */
   left: Float64Array;
-  /** The step of the hooked decision, or -1. */
+  /** The step of the hooked decision, or -1, and where it ended. */
   at: number;
+  x: number;
+  z: number;
 }
 
 /** Plays a toy scene from its start under `policy`. A scorer is asked at the end of each leg and whenever it is stuck; "today" walks straight at the goal and takes a random free heading once stuck. */
@@ -217,7 +219,7 @@ function play(s: ToyScene, policy: ToyPolicy, hooks: Hooks = {}): Played {
     stuck = 0;
   }
   left[step] = wayAt(x, z);
-  return { arrived: Math.hypot(L.gx - x, L.gz - z) < 1, steps: step, stuckSteps, left: left.subarray(0, step + 1), at };
+  return { arrived: Math.hypot(L.gx - x, L.gz - z) < 1, steps: step, stuckSteps, left: left.subarray(0, step + 1), at, x, z };
 }
 
 function mix(values: number[]): number {
@@ -265,7 +267,7 @@ export function toyReplayer(policy: ToyPolicy): Replayer<ToyScene> {
 /** A whole toy episode under `policy`. */
 export function toyEpisode(s: ToyScene, policy: ToyPolicy): EpisodeResult {
   const p = play(s, policy);
-  return { arrived: p.arrived, ticks: p.steps, healthLost: 0, stuckTicks: p.stuckSteps, cells: 0, cost: costAt(p, 0, Infinity), decideMicros: [] };
+  return { arrived: p.arrived, ticks: p.steps, healthLost: 0, stuckTicks: p.stuckSteps, searches: 0, cells: 0, end: { x: p.x, z: p.z }, cost: costAt(p, 0, Infinity), decideMicros: [] };
 }
 
 /** The scenes of a run: `per` of each family, seeds from `seed`. */
