@@ -15,7 +15,7 @@ ARK-style dinosaur survival and GTA-style vehicles in a persistent multiplayer b
 
 [Map pipeline](tools/maps/README.md) · [Art & downloads](distribution/README.md) · [Agent setup](agent/README.md#run-it) · [Benchmarks](planning/quality/performance.md) · [Code license](LICENSE)
 
-[![Six mobile gameplay screens surrounding the SNARK emblem on the Miami waterfront](docs/media/mobile.webp)](docs/media/mobile.webp)
+[![Six mobile gameplay screens frame the SNARK emblem and a Meridian-armored rider on a roaring Rex at sunset](docs/media/mobile.webp)](docs/media/mobile.webp)
 
 [![The wiki’s Rex dossier, item index and home page with three mounted flyers at daybreak](docs/media/wiki.webp)](docs/media/wiki.webp)
 
@@ -27,6 +27,8 @@ https://github.com/user-attachments/assets/dd66a6e2-3d90-46d9-89e4-ec1469549d84
 
 [![At the Lookout, a plasma bolt leaves a survivor’s rifle as a damage number hangs over a red-lit raptor](docs/media/lookout.webp)](docs/media/lookout.webp)
 
-[![Two survivors in Meridian armor flee a Rex beneath the blue rings of the Tide Eye on Virginia Key](docs/media/tide-chase.webp)](docs/media/tide-chase.webp)
+[![Five building tiers line the Miami shore, from a thatch hut to a glowing Tek base behind the stone lookout and metal tower](docs/media/beach-buildings.webp)](docs/media/beach-buildings.webp)
 
-[![One SNARK city compared with Miami, GTA V, GTA VI and The Island at the same scale](docs/media/map-size.webp)](docs/media/map-size.webp)
+[![A mounted Pteranodon crosses Biscayne Bay at sunset beside a map of SNARK’s 266.3 km² Miami, with four smaller areas drawn at the same scale](docs/media/map-size.webp)](docs/media/map-size.webp)
+
+[![Two survivors in Meridian armor flee a Rex beneath the blue rings of the Tide Eye on Virginia Key](docs/media/tide-chase.webp)](docs/media/tide-chase.webp)
