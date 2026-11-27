@@ -189,6 +189,8 @@ export class Decide {
    */
   force: ((point: number, e: number, pick: number) => number) | null = null;
   tap: ((point: number, e: number, tick: number, rung: number, pick: number) => void) | null = null;
+  /** What a point knows of mover `e` now (its rung, the heading it holds), for a page or the debug bar; null where nothing does. */
+  describe: ((e: number) => Record<string, unknown> | null) | null = null;
   /** The last answers, newest last, kept only while someone looks (`look`): an admin's page shows what a mover saw. */
   readonly recent: Answered[] = [];
   private lookUntil = -1;
