@@ -4,20 +4,19 @@
 
 import "./shell.ts";
 import { STAGE_FRAMINGS, STAGE_POSES, isStageReply, stageMessage, type StageCommand, type StageFraming, type StagePose } from "../../shared/people/stage.ts";
+import { printPath } from "../../shared/people/doc.ts";
 import { $, esc, palette } from "./dom.ts";
 import {
-  DRAFT_PRINT, FONTS, Latest, changeGarment, giveEdition, latestOnly, publishAsPressed, publishedText, sameDesign, sheetOfCut, FRAMING_WORDS, LOOKS, POSE_WORDS, SHEET_SIZES, TEXT_MAX, addPicture, addShape, addText, draftFaults, draftFrom, editionPrintKey, editionsHtml, fitNote, fitStep,
+  DRAFT_PRINT, FONTS, Pictures, changeGarment, giveEdition, giveOptionsHtml, givenEdition, publishAsPressed, publishedText, sameDesign, sheetOfCut, FRAMING_WORDS, LOOKS, POSE_WORDS, SHEET_SIZES, TEXT_MAX, addPicture, addShape, addText, draftFaults, draftFrom, editionPrintKey, editionsHtml, fitNote, fitStep,
   fontOf, garmentsHtml, heldSize, hexOf, kb, layerAt, layerBox, layersHtml, lookOf, moveLayer, newDraft, newSheet, outcomeText, paletteHtml, placeOf, previewChanges,
   removeLayer, retireEdition, starPoints, stateOf, stepText, wardrobeCommand, type Answer, type Draft, type Fault, type Layer, type PeopleState, type Preview,
-  type PublishIo, type Shape, type Sheet,
+  type PublishIo, type Read, type Shape, type Sheet,
 } from "../core/admin/wardrobe.ts";
 
 const API = "/admin/people/";
 /** The largest picture file the page reads. */
 const PICTURE_FILE_MAX = 16 << 20;
 const PREVIEW_WAIT_MS = 250;
-/** Pictures read into the draft: of several read at once, only the last asked for is taken. */
-const reads = new Latest();
 
 type Picture = HTMLCanvasElement | ImageBitmap;
 
@@ -28,9 +27,13 @@ const S = {
   /** Which of the three colours a swatch sets. */
   well: 0,
   layer: 0,
-  pictures: new Map<number, Picture>(),
+  pictures: new Pictures<Picture>((p) => {
+    if ("close" in p) p.close();
+  }),
   /** The edition the person wears, or 0 for the draft. */
   showing: 0,
+  /** The edition Give hands out. */
+  given: 0,
   busy: false,
   printVersion: 0,
   seed: (Math.random() * 0xffffffff) >>> 0,
@@ -231,9 +234,8 @@ function drawLists(): void {
   const st = S.state;
   if (!st) return;
   $("editions").innerHTML = editionsHtml(st, palette, S.showing);
-  const giving = $<HTMLSelectElement>("give-edition"), was = giving.value;
-  giving.innerHTML = [...st.editions].reverse().map((e) => `<option value="${e.id}">#${e.id} ${esc(e.name)}</option>`).join("");
-  if (was && st.editions.some((e) => String(e.id) === was)) giving.value = was;
+  S.given = givenEdition(st, S.showing, S.given);
+  $("give-edition").innerHTML = giveOptionsHtml(st, S.given);
   $<HTMLButtonElement>("give").disabled = st.editions.length === 0;
   $("garments").innerHTML = garmentsHtml(st);
   const live = st.editions.filter((e) => !e.retired).length;
@@ -320,7 +322,6 @@ function edited(sheet: boolean, redraw = false): void {
 }
 
 function begin(d: Draft | null): void {
-  for (const p of S.pictures.values()) if ("close" in p) p.close();
   S.pictures.clear();
   S.draft = d;
   S.layer = 0;
@@ -493,7 +494,7 @@ async function publish(): Promise<void> {
 
 /** Gives the edition chosen to the survivor named, as the console's dress. */
 async function give(): Promise<void> {
-  const id = Number($<HTMLSelectElement>("give-edition").value), who = $<HTMLInputElement>("give-who").value, typed = $<HTMLInputElement>("give-dye").value.trim();
+  const id = S.given, who = $<HTMLInputElement>("give-who").value, typed = $<HTMLInputElement>("give-dye").value.trim();
   const dye = typed === "" ? [0, 0, 0] : typed.split(",").map((x) => Number(x.trim()));
   if (!(id > 0)) return void ($("give-note").textContent = "Publish an edition first.");
   if (who.trim() === "") return void ($("give-note").textContent = "Name a survivor in this world, or give their number as #12.");
@@ -527,53 +528,58 @@ async function retire(id: number, retired: boolean): Promise<void> {
   }
 }
 
-/** Reads a picture file into a layer, shrunk as it is read if it is big. */
+/** Reads a picture file into a new layer on top, shrunk as it is read if it is big. */
 async function takePicture(file: File): Promise<void> {
   const d = S.draft;
   if (!d?.sheet) return;
   if (file.size > PICTURE_FILE_MAX) return say(`That file is ${kb(file.size)}; the page reads pictures of ${kb(PICTURE_FILE_MAX)} at most.`, "warn");
-  let bitmap: ImageBitmap | null;
-  try {
-    bitmap = await latestOnly(reads, () => createImageBitmap(file));
-  } catch {
-    return say(`${file.name} could not be read as a picture.`, "warn");
-  }
-  // A picture chosen since, or another draft begun, wins over this one.
-  if (!bitmap || S.draft !== d || !d.sheet) return bitmap?.close();
-  const natural = { width: bitmap.width, height: bitmap.height }, held = heldSize(natural.width, natural.height);
-  let picture: Picture = bitmap;
-  if (held.width !== natural.width) {
+  const l = addPicture(d.sheet, file.name);
+  if (!l) return say("The sheet holds no more layers.", "warn");
+  edited(true, true);
+  let natural = { width: 0, height: 0 };
+  const read = async (): Promise<Read<Picture>> => {
+    const bitmap = await createImageBitmap(file);
+    natural = { width: bitmap.width, height: bitmap.height };
+    const held = heldSize(natural.width, natural.height);
+    if (held.width === natural.width) return { picture: bitmap, ...held };
     const c = document.createElement("canvas");
     c.width = held.width;
     c.height = held.height;
     c.getContext("2d")!.drawImage(bitmap, 0, 0, held.width, held.height);
     bitmap.close();
-    picture = c;
+    return { picture: c, ...held };
+  };
+  try {
+    if (!(await S.pictures.fill(d, l, read, () => S.draft))) return;
+  } catch {
+    say(`${file.name} could not be read as a picture.`, "warn");
+    return edited(true, true);
   }
-  const l = addPicture(d.sheet, file.name, held.width, held.height);
-  if (!l) return say("The sheet holds no more layers.", "warn");
-  S.pictures.set(l.id, picture);
   S.layer = l.id;
-  say(held.width !== natural.width ? `${file.name} was ${natural.width} × ${natural.height}; it is held at ${held.width} × ${held.height}.` : `Added ${file.name}.`);
+  say(l.width !== natural.width ? `${file.name} was ${natural.width} × ${natural.height}; it is held at ${l.width} × ${l.height}.` : `Added ${file.name}.`);
   edited(true, true);
 }
 
-/** Begins a draft from a published edition, its print as a picture filling the sheet. */
+/** Begins a draft from a published edition, its print a picture filling the sheet under whatever is added while it loads. */
 async function startFrom(id: number): Promise<void> {
   const e = S.state?.editions.find((x) => x.id === id);
   if (!e || (hasWork() && !confirm("Put a copy of this edition in place of the draft?"))) return;
   const d = draftFrom(e);
   begin(d);
-  const path = e.printPath;
-  if (path && d.sheet) {
-    const bitmap = await latestOnly(reads, async () => createImageBitmap(await (await fetch(path)).blob()));
-    if (!bitmap || S.draft !== d) return bitmap?.close();
-    const l = addPicture(d.sheet, `edition ${e.id}'s print`, bitmap.width, bitmap.height) as Extract<Layer, { kind: "picture" }>;
-    l.w = 1;
-    S.pictures.set(l.id, bitmap);
+  say(`A copy of edition ${e.id}. Change it and publish it as a new edition.`);
+  const original = d.sheet?.layers[0];
+  if (!e.print || original?.kind !== "picture") return;
+  const path = printPath(e.print.hash);
+  const read = async (): Promise<Read<Picture>> => {
+    const bitmap = await createImageBitmap(await (await fetch(path)).blob());
+    return { picture: bitmap, width: bitmap.width, height: bitmap.height };
+  };
+  try {
+    if (await S.pictures.fill(d, original, read, () => S.draft)) edited(true, true);
+  } catch {
+    say(`Edition ${e.id}'s print could not be read; the copy has no picture of it.`, "warn");
     edited(true, true);
   }
-  say(`A copy of edition ${e.id}. Change it and publish it as a new edition.`);
 }
 
 document.addEventListener("click", (ev) => {
@@ -613,9 +619,7 @@ document.addEventListener("click", (ev) => {
   } else if (data.layerDel && sheet) {
     const id = Number(data.layerDel);
     removeLayer(sheet, id);
-    const p = S.pictures.get(id);
-    if (p && "close" in p) p.close();
-    S.pictures.delete(id);
+    S.pictures.drop(id);
     if (S.layer === id) S.layer = 0;
     edited(true, true);
   } else if (t.id === "publish") void publish().catch(failed);
@@ -684,6 +688,11 @@ function changed(t: HTMLInputElement | HTMLSelectElement, final: boolean): void 
 document.addEventListener("input", (e) => changed(e.target as HTMLInputElement, false));
 document.addEventListener("change", (e) => {
   const t = e.target as HTMLInputElement;
+  if (t.id === "give-edition") {
+    S.given = S.showing = Number(t.value);
+    drawLists();
+    return soon();
+  }
   if (t.id === "picture-file") {
     const file = t.files?.[0];
     t.value = "";

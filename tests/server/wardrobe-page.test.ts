@@ -4,7 +4,7 @@ import { afterAll, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addText, newDraft, newSheet, publishDraft, retireEdition, stateOf, type Answer, type PublishIo } from "../../client/core/admin/wardrobe.ts";
+import { addText, giveEdition, givenEdition, newDraft, newSheet, publishDraft, retireEdition, stateOf, type Answer, type PeopleState, type PublishIo } from "../../client/core/admin/wardrobe.ts";
 import { peopleAdmin } from "../../server/admin/people-routes.ts";
 import { adminSite } from "../../server/admin/site.ts";
 import { PeopleStore } from "../../server/people/store.ts";
@@ -35,10 +35,12 @@ test("the admin build makes the wardrobe page, which the site serves with its sc
 
 /** The page's calls, answered by the people routes over `store`, as a development world's open page makes them. */
 function routes(store: PeopleStore): PublishIo {
+  // A give dresses nobody here: it says which edition it was asked for.
+  const dress = (edition: unknown, survivor: unknown) => ({ status: 200, answer: { said: `dressed ${String(survivor)} in edition ${String(edition)}` } });
   const answer = async (path: string, body: string | Uint8Array, type: string): Promise<Answer> => {
     const length = typeof body === "string" ? new TextEncoder().encode(body).length : (body as Uint8Array).length;
     const req = new Request(`http://snark.test/admin/people/${path}`, { method: "POST", body: body as unknown as string, headers: { "content-type": type, "content-length": String(length) } });
-    const r = await peopleAdmin(req, `/admin/people/${path}`, store, () => reg)!;
+    const r = await peopleAdmin(req, `/admin/people/${path}`, store, () => reg, null, null, dress)!;
     return { status: r.status, answer: (await r.json()) as Record<string, unknown> };
   };
   return {
@@ -82,6 +84,28 @@ test("the page publishes a print, meets a stale revision, publishes again and re
     expect(retired.kind === "retired" && retired.state?.editions.find((e) => e.id === 1)?.retired).toBe(true);
     expect(await retireEdition(io, 1, false, 0)).toMatchObject({ kind: "stale" });
     expect(stateOf({ revision: "x" })).toBeNull();
+  } finally {
+    store.close();
+  }
+});
+
+test("after two publishes Give hands out the second, the edition on show", async () => {
+  const dir = join(root, "give");
+  const store = new PeopleStore({ db: join(dir, "people.sqlite"), media: join(dir, "media"), tmp: join(dir, "tmp") });
+  try {
+    const io = routes(store);
+    // The page after a publish: the draft put away, then the new edition on show.
+    let state: PeopleState | null = null, given = 0;
+    for (const name of ["Edition A", "Edition B"]) {
+      const d = newDraft("core:tee", "tee");
+      d.name = name;
+      const o = await publishDraft(io, d, null, state?.revision ?? 0);
+      if (o.kind !== "published" || !o.state) throw new Error(`${name} was not published`);
+      state = o.state;
+      given = givenEdition(state, 0, given);
+      given = givenEdition(state, o.id, given);
+    }
+    expect(await giveEdition(io, given, "ada")).toEqual({ ok: true, text: "Dressed ada in edition 2." });
   } finally {
     store.close();
   }
